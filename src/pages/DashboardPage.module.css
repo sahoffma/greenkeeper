@@ -1,0 +1,114 @@
+.dashboard {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.hero {
+  padding: var(--space-lg);
+  border-radius: var(--radius-xl);
+  background: linear-gradient(180deg, #ffffff 0%, #f7faf7 100%);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 12px 40px var(--color-shadow);
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(1.6rem, 4vw, 2rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.size {
+  margin: var(--space-sm) 0 0;
+  font-size: 1.15rem;
+  color: var(--color-text-secondary);
+}
+
+.scoreRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  margin-top: var(--space-xl);
+}
+
+.scoreCircle {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  min-width: 112px;
+  min-height: 112px;
+  padding: var(--space-md);
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.scoreValue {
+  font-size: 2.4rem;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  line-height: 1;
+}
+
+.scoreMax {
+  margin-left: 2px;
+  font-size: 1rem;
+  font-weight: 600;
+  opacity: 0.72;
+}
+
+.scoreLabel {
+  margin: 0 0 6px;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+.status {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--color-accent);
+}
+
+.section {
+  padding: var(--space-lg);
+}
+
+.sectionTitle {
+  margin: 0 0 var(--space-md);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+.briefing {
+  margin: 0;
+  color: var(--color-text);
+  line-height: 1.65;
+  font-size: 1.02rem;
+}
+
+.fertilizationMeta {
+  display: grid;
+  gap: var(--space-md);
+}
+
+@media (min-width: 640px) {
+  .fertilizationMeta {
+    grid-template-columns: 180px 1fr;
+    gap: var(--space-lg);
+  }
+}

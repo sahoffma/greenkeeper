@@ -1,0 +1,113 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: var(--space-md);
+  background: rgba(18, 22, 18, 0.28);
+  backdrop-filter: blur(4px);
+}
+
+.sheet {
+  width: min(100%, 560px);
+  max-height: min(82dvh, 720px);
+  overflow: auto;
+  padding: var(--space-md) var(--space-md) max(var(--space-lg), env(safe-area-inset-bottom));
+  border-radius: 28px 28px 24px 24px;
+  background: var(--color-surface);
+  box-shadow: 0 24px 60px rgba(28, 31, 27, 0.18);
+}
+
+.handle {
+  width: 42px;
+  height: 5px;
+  margin: 4px auto var(--space-md);
+  border-radius: 999px;
+  background: rgba(28, 31, 27, 0.12);
+}
+
+.title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.subtitle {
+  margin: var(--space-xs) 0 var(--space-lg);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  font-size: 0.95rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 92px;
+  padding: var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+  text-align: left;
+  font-size: 0.98rem;
+  font-weight: 600;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.item:hover {
+  background: var(--color-accent-soft);
+  border-color: rgba(47, 107, 79, 0.18);
+}
+
+.itemIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: var(--color-surface);
+  color: var(--color-accent);
+  font-size: 0.95rem;
+}
+
+.cancel {
+  width: 100%;
+  min-height: 52px;
+  margin-top: var(--space-md);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.cancel:hover {
+  color: var(--color-text);
+}
+
+@media (min-width: 640px) {
+  .overlay {
+    align-items: center;
+  }
+
+  .sheet {
+    border-radius: var(--radius-xl);
+  }
+
+  .grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}

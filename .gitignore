@@ -1,3 +1,6 @@
+# Local tooling
+.tools/
+
 # Logs
 logs
 *.log
