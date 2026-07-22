@@ -1,0 +1,12 @@
+.screen {
+  width: min(100%, var(--max-width));
+  margin: 0 auto;
+  padding:
+    max(var(--space-sm), env(safe-area-inset-top))
+    var(--space-md)
+    calc(var(--nav-height) + var(--space-xl));
+}
+
+.lawnSpacing {
+  margin-top: var(--space-lg);
+}

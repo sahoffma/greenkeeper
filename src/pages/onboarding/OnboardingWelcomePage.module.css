@@ -1,0 +1,71 @@
+.content {
+  padding-top: clamp(38px, calc(22vh - 34px), 94px);
+}
+
+.brandBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 48px;
+}
+
+.logoMark {
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  background: #2f6b4f;
+}
+
+.wordmark {
+  margin: 0;
+  color: #1f3d2b;
+  font-family: 'Inter', var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.divider {
+  width: 40px;
+  height: 2px;
+  margin: 32px 0;
+  padding: 0;
+  border: 0;
+  background: rgba(47, 107, 79, 0.38);
+}
+
+.statement {
+  margin: 0;
+  max-width: 260px;
+  color: rgba(31, 61, 43, 0.74);
+  font-family: 'Inter', var(--font-sans);
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-wrap: balance;
+}
+
+.footer {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16px;
+}
+
+.secondaryLink {
+  display: block;
+  padding: 8px 0;
+  color: #2f6b4f;
+  font-family: 'Inter', var(--font-sans);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: center;
+  text-decoration: none;
+}
+
+.secondaryLink:active {
+  opacity: 0.72;
+}

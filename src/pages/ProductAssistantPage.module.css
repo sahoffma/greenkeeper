@@ -1,0 +1,245 @@
+.productAssistant {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.hero h1 {
+  margin: 0;
+  letter-spacing: -0.03em;
+  font-size: clamp(1.6rem, 4vw, 2rem);
+}
+
+.hero p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  box-shadow: 0 8px 24px var(--color-shadow);
+}
+
+.sectionTitle {
+  margin: 0 0 var(--space-md);
+  font-size: 1rem;
+}
+
+.uploadArea {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  min-height: 160px;
+  padding: var(--space-lg);
+  border: 2px dashed rgba(47, 107, 79, 0.25);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-soft);
+  text-align: center;
+  cursor: pointer;
+}
+
+.uploadArea input {
+  display: none;
+}
+
+.uploadIcon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--color-surface);
+  color: var(--color-accent);
+  font-size: 1.4rem;
+}
+
+.previewImage {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+
+.fieldGrid {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.92rem;
+  color: var(--color-text-secondary);
+}
+
+.field input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+@media (min-width: 640px) {
+  .actions {
+    flex-direction: row;
+  }
+}
+
+.primaryButton,
+.secondaryButton,
+.ghostButton {
+  width: 100%;
+  min-height: 48px;
+  padding: 14px 18px;
+  border-radius: var(--radius-sm);
+  border: none;
+  font-weight: 600;
+}
+
+.primaryButton {
+  background: var(--color-accent);
+  color: white;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.secondaryButton {
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.ghostButton {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--color-text-secondary);
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(47, 107, 79, 0.2);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.errorBox,
+.successBox,
+.warningBox {
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  line-height: 1.5;
+}
+
+.errorBox {
+  background: #fdeeee;
+  color: #8b2f2f;
+}
+
+.successBox {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.warningBox {
+  background: #fff8e8;
+  color: #7a611f;
+}
+
+.matchList {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.matchButton {
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.matchButton strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.matchButton span {
+  color: var(--color-text-secondary);
+  font-size: 0.92rem;
+}
+
+.detailGrid {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.detailRow {
+  display: grid;
+  gap: 4px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.detailRow:last-child {
+  border-bottom: none;
+}
+
+.detailLabel {
+  font-size: 0.85rem;
+  color: var(--color-text-tertiary);
+}
+
+.detailValue {
+  font-size: 1rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: 0.82rem;
+  font-weight: 600;
+}

@@ -39,7 +39,7 @@ export function BottomNav({ areaId, onPlusClick }: BottomNavProps) {
         <button
           type="button"
           className={styles.plusButton}
-          aria-label="Aktion hinzufügen"
+          aria-label="Neue Maßnahme"
           onClick={onPlusClick}
         >
           +

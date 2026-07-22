@@ -1,10 +1,6 @@
 import { useOutletContext } from 'react-router-dom'
-import type { Area } from '../types/area'
+import type { AreaOutletContext } from '../types/area'
 import styles from './DashboardPage.module.css'
-
-interface AreaContext {
-  area: Area
-}
 
 function formatNutrient(value: number): string {
   return value.toLocaleString('de-DE', {
@@ -14,7 +10,7 @@ function formatNutrient(value: number): string {
 }
 
 export function DashboardPage() {
-  const { area } = useOutletContext<AreaContext>()
+  const { area } = useOutletContext<AreaOutletContext>()
   const dashboard = area.dashboard!
 
   return (

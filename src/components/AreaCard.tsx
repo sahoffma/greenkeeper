@@ -7,8 +7,6 @@ interface AreaCardProps {
 }
 
 export function AreaCard({ area }: AreaCardProps) {
-  const isNavigable = area.id === 'main' && area.dashboard
-
   const content = (
     <>
       <div className={styles.header}>
@@ -33,13 +31,9 @@ export function AreaCard({ area }: AreaCardProps) {
     </>
   )
 
-  if (isNavigable) {
-    return (
-      <Link to={`/area/${area.id}`} className={`${styles.card} ${styles.cardInteractive}`}>
-        {content}
-      </Link>
-    )
-  }
-
-  return <article className={styles.card}>{content}</article>
+  return (
+    <Link to={`/area/${area.id}`} className={`${styles.card} ${styles.cardInteractive}`}>
+      {content}
+    </Link>
+  )
 }

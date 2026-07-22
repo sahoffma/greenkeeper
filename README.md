@@ -41,6 +41,30 @@ npm run build
 npm run preview
 ```
 
+## KI-Auswertung lokal testen
+
+Die OpenAI-Anbindung läuft über eine Netlify Function. `npm run dev` startet nur das Vite-Frontend – die Route `/.netlify/functions/parse-activity` ist damit nicht verfügbar.
+
+Für lokale Tests:
+
+```bash
+npm install -g netlify-cli
+cp .env.example .env.local
+# VITE_SUPABASE_* und OPENAI_API_KEY eintragen
+netlify dev
+```
+
+**Wichtig:** Nicht mit `sudo netlify dev` starten – sudo kann `.env.local` nicht lesen oder Umgebungsvariablen blockieren.
+
+`netlify dev` lädt `.env.local` und `.env` (siehe `netlify.toml`). Supabase-Keys gehören in `.env.local`:
+
+```env
+VITE_SUPABASE_URL=https://dein-projekt.supabase.co
+VITE_SUPABASE_ANON_KEY=dein-anon-key
+```
+
+Der OpenAI API Key gehört in `.env` oder `.env.local` – niemals mit `VITE_`-Prefix.
+
 ## Projektstruktur
 
 ```text

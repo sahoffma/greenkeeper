@@ -1,0 +1,40 @@
+.shell {
+  background: #faf8f3;
+}
+
+.screen {
+  background: #faf8f3;
+}
+
+.content {
+  align-items: center;
+  text-align: center;
+  justify-content: flex-start;
+  padding-top: clamp(72px, 22vh, 128px);
+}
+
+.title {
+  margin: 0;
+  color: #1f3d2b;
+  font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+.description {
+  margin: var(--space-lg) 0 0;
+  max-width: 280px;
+  color: rgba(31, 61, 43, 0.74);
+  font-family: 'Inter', var(--font-sans);
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-wrap: balance;
+}
+
+.footer {
+  padding-top: 0;
+}

@@ -31,6 +31,11 @@ export interface Area {
   dashboard?: AreaDashboard
 }
 
+export interface AreaOutletContext {
+  area: Area
+  refreshArea: () => Promise<void>
+}
+
 export type PlusMenuAction =
   | 'fertilization'
   | 'mowing'

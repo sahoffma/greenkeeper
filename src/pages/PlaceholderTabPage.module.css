@@ -1,0 +1,21 @@
+.page {
+  width: min(100%, var(--max-width));
+  margin: 0 auto;
+  min-height: 60dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding:
+    max(var(--space-2xl), env(safe-area-inset-top))
+    var(--space-md)
+    calc(var(--nav-height) + var(--space-xl));
+}
+
+.label {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}

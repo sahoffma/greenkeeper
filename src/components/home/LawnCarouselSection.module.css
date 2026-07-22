@@ -1,0 +1,109 @@
+.section {
+  padding: 0 0 var(--space-lg);
+}
+
+.trackSingle,
+.trackPair {
+  display: grid;
+  gap: var(--space-sm);
+  width: 100%;
+}
+
+.trackSingle {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.trackPair {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.trackScroll {
+  display: flex;
+  gap: var(--space-sm);
+  overflow-x: auto;
+  margin: 0 calc(-1 * var(--space-md));
+  padding: 0 var(--space-md) var(--space-xs);
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.trackScroll::-webkit-scrollbar {
+  display: none;
+}
+
+.trackScroll .card {
+  flex: 0 0 85%;
+  scroll-snap-align: start;
+}
+
+.card {
+  min-width: 0;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 8px 24px var(--color-shadow);
+}
+
+.image {
+  height: 112px;
+}
+
+.image--main {
+  background:
+    linear-gradient(180deg, rgba(20, 40, 28, 0.05) 0%, rgba(20, 40, 28, 0.18) 100%),
+    linear-gradient(135deg, #d8dfd3 0%, #b5c0ad 55%, #96a38d 100%);
+}
+
+.image--side {
+  background:
+    linear-gradient(180deg, rgba(20, 40, 28, 0.05) 0%, rgba(20, 40, 28, 0.18) 100%),
+    linear-gradient(135deg, #dde2d4 0%, #bcc6ae 55%, #9eaa92 100%);
+}
+
+.content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md) var(--space-md);
+}
+
+.meta {
+  min-width: 0;
+}
+
+.name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.lastActivity {
+  margin: 4px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+.micButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.micButton svg {
+  width: 18px;
+  height: 18px;
+}
