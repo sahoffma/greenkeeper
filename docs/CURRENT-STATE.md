@@ -1,6 +1,6 @@
 # Current Project State
 
-Version 1.1
+Version 1.2
 
 ## Zweck
 
@@ -22,6 +22,8 @@ Die grundlegende Architektur steht. Zentrale Infrastruktur, Authentifizierung, D
 
 Der Onboarding-Flow ist auf Dev vollständig verifiziert (RPC, Browser-E2E, Route-Guards) und **production-freigabefähig**.
 
+**Betriebsentscheidung (verbindlich):** greenkeeper-prod wird bis zum geplanten öffentlichen Rollout **nicht weiter verändert**. Entwicklung und Tests laufen ausschließlich gegen greenkeeper-dev. Supabase bleibt in der Entwicklungsphase im **Free-Plan**; vor dem ersten öffentlichen Production-Rollout ist **mindestens Pro** erforderlich (ca. 25 USD/Monat — Kosten erst bei tatsächlich bevorstehendem Production-Betrieb). Details: [database-bootstrap.md](./database-bootstrap.md#betriebsentscheidung-supabase-plan-und-production-freeze).
+
 ---
 
 # Bereits umgesetzt
@@ -31,7 +33,9 @@ Der Onboarding-Flow ist auf Dev vollständig verifiziert (RPC, Browser-E2E, Rout
 - GitHub Repository eingerichtet
 - Cursor als Entwicklungsumgebung
 - Supabase integriert (Production + separates Dev-Projekt)
+- **Supabase Free-Plan** während der Entwicklungsphase (Upgrade auf Pro erst vor öffentlichem Rollout)
 - Lokale Entwicklung nutzt ausschließlich Supabase Dev (siehe [GA-010](./architecture/ga-010.md))
+- **greenkeeper-prod eingefroren** bis zum öffentlichen Rollout — keine Migrationen, kein Deploy ohne Freigabe, Pro-Plan und bestätigtes Backup
 - Dev-Datenbank (`amyounxrsxgujsfutshx`): vollständig migriert; chronologischer Neuaufbau verifiziert ([database-bootstrap.md](./database-bootstrap.md))
 - Datenbankstruktur aufgebaut
 - Authentifizierung eingerichtet
