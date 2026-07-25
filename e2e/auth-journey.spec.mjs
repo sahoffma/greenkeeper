@@ -36,7 +36,7 @@ function trackUser(user) {
 
 test('1 – Willkommensseite führt zur Registrierung', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Garten einrichten' }).click()
+  await page.getByRole('button', { name: 'Rasen einrichten' }).click()
   await expect(page).toHaveURL('/register')
 })
 
@@ -192,7 +192,7 @@ test('19 – Mobile-Viewport auf Willkommensseite', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Willkommen bei Greenkeeper' })).toBeVisible()
-  await page.getByRole('button', { name: 'Garten einrichten' }).click()
+  await page.getByRole('button', { name: 'Rasen einrichten' }).click()
   await expect(page).toHaveURL('/register')
 })
 

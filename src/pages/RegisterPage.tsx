@@ -6,7 +6,10 @@ import {
   validateEmailAddress,
   validatePasswordConfirmation,
 } from '../lib/authMessages'
-import styles from './AuthPage.module.css'
+import layoutStyles from './onboarding/onboardingScreen.module.css'
+import themeStyles from './onboarding/onboardingTheme.module.css'
+import welcomeStyles from './onboarding/OnboardingWelcomePage.module.css'
+import styles from './RegisterPage.module.css'
 
 export function RegisterPage() {
   const { signUp } = useAuth()
@@ -57,16 +60,22 @@ export function RegisterPage() {
   }
 
   return (
-    <div className="app-shell">
-      <main className={`page page--home ${styles.page}`}>
-        <header className="page-header">
-          <h1 className="page-title">Konto erstellen</h1>
-          <p className="page-subtitle">Starte mit deinem persönlichen Garten.</p>
+    <div className={`app-shell ${themeStyles.shell}`}>
+      <main className={`${layoutStyles.screen} ${themeStyles.screen} ${styles.screen}`}>
+        <header className={styles.header}>
+          <div className={`${welcomeStyles.brandBlock} ${styles.brandBlock}`}>
+            <div className={welcomeStyles.logoMark} aria-hidden="true" />
+            <p className={welcomeStyles.wordmark}>Greenkeeper</p>
+          </div>
+
+          <h1 className={`${themeStyles.title} ${styles.title}`}>Konto erstellen</h1>
+
+          <p className={styles.subtitle}>Für deinen Rasen.</p>
         </header>
 
-        <section className={`surface-card ${styles.card}`} aria-labelledby="register-heading">
-          <h2 id="register-heading" className={styles.cardTitle}>
-            Dein Greenkeeper-Konto
+        <section className={styles.card} aria-labelledby="register-heading">
+          <h2 id="register-heading" className="visually-hidden">
+            Registrierungsformular
           </h2>
 
           <form className={styles.form} onSubmit={handleSubmit} noValidate>
@@ -110,19 +119,24 @@ export function RegisterPage() {
 
             {error && <p className={styles.error}>{error}</p>}
 
-            <button className={styles.submit} type="submit" disabled={submitting}>
+            <button
+              className={layoutStyles.primaryButton}
+              type="submit"
+              disabled={submitting}
+            >
               {submitting ? 'Bitte warten …' : 'Konto erstellen'}
             </button>
           </form>
 
           <p className={styles.note}>
-            Mit deinem Konto bleiben deine Rasenflächen und Pflegedaten sicher gespeichert und
-            auf deinen Geräten verfügbar.
+            Sicher gespeichert.
+            <br />
+            Auf all deinen Geräten verfügbar.
           </p>
 
-          <p className={styles.switch}>
-            Du hast bereits ein Konto?{' '}
-            <Link to="/login" className={styles.switchLink}>
+          <p className={`${welcomeStyles.loginHint} ${styles.loginHint}`}>
+            Du bist bereits bei Greenkeeper?{' '}
+            <Link to="/login" className={welcomeStyles.loginLink}>
               Anmelden
             </Link>
           </p>

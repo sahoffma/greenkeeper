@@ -58,8 +58,8 @@ export async function loginViaUi(page, email, password) {
 
 export async function startOnboardingFromWelcome(page) {
   await page.goto('/onboarding')
-  await expect(page.getByRole('heading', { name: /Garten einrichten/ })).toBeVisible()
-  await page.getByRole('button', { name: 'Garten einrichten' }).click()
+  await expect(page.getByRole('heading', { name: /Rasen einrichten/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Rasen einrichten' }).click()
   await expect(page).toHaveURL(/\/onboarding\/2/)
 }
 
@@ -101,7 +101,7 @@ export async function assertNoTechnicalTerms(page) {
 }
 
 export async function assertOnboardingCopy(page) {
-  await expect(page.getByRole('heading', { name: /Garten einrichten/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Rasen einrichten/ })).toBeVisible()
 }
 
 export async function completeSingleLawnWithSize(page, size) {

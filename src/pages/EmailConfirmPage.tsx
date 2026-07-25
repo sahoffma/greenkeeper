@@ -87,7 +87,7 @@ export function EmailConfirmPage() {
 
           <p className={styles.bodyText}>
             Wir haben dir eine E-Mail mit einem Bestätigungslink geschickt. Öffne den Link, um
-            dein Konto zu bestätigen und deinen Garten einzurichten.
+            dein Konto zu bestätigen und deine Rasenflächen einzurichten.
           </p>
 
           {displayEmail && (

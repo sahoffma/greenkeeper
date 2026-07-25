@@ -34,7 +34,7 @@ export function WelcomePage() {
             className={layoutStyles.primaryButton}
             onClick={() => navigate('/register')}
           >
-            Garten einrichten
+            Rasen einrichten
           </button>
 
           <p className={welcomeStyles.loginHint}>

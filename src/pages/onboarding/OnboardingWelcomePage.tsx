@@ -18,7 +18,7 @@ export function OnboardingWelcomePage() {
           <h1 className={themeStyles.title}>
             Lass uns deinen
             <br />
-            Garten einrichten
+            Rasen einrichten
           </h1>
 
           <hr className={styles.divider} />
@@ -34,7 +34,7 @@ export function OnboardingWelcomePage() {
             className={layoutStyles.primaryButton}
             onClick={() => navigate('/onboarding/2')}
           >
-            Garten einrichten
+            Rasen einrichten
           </button>
         </div>
       </main>
