@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import layoutStyles from './onboarding/onboardingScreen.module.css'
 import themeStyles from './onboarding/onboardingTheme.module.css'
 import welcomeStyles from './onboarding/OnboardingWelcomePage.module.css'
@@ -28,7 +28,7 @@ export function WelcomePage() {
           </p>
         </div>
 
-        <div className={`${layoutStyles.footer} ${themeStyles.footer}`}>
+        <div className={`${layoutStyles.footer} ${themeStyles.footer} ${welcomeStyles.footer}`}>
           <button
             type="button"
             className={layoutStyles.primaryButton}
@@ -37,13 +37,12 @@ export function WelcomePage() {
             Garten einrichten
           </button>
 
-          <button
-            type="button"
-            className={welcomeStyles.secondaryLink}
-            onClick={() => navigate('/login')}
-          >
-            Du hast bereits ein Konto? Anmelden
-          </button>
+          <p className={welcomeStyles.loginHint}>
+            Du bist bereits bei Greenkeeper?{' '}
+            <Link to="/login" className={welcomeStyles.loginLink}>
+              Anmelden
+            </Link>
+          </p>
         </div>
       </main>
     </div>

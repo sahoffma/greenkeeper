@@ -42,7 +42,7 @@ test('1 – Willkommensseite führt zur Registrierung', async ({ page }) => {
 
 test('2 – Willkommensseite führt zum Login', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Du hast bereits ein Konto? Anmelden' }).click()
+  await page.getByRole('link', { name: 'Anmelden' }).click()
   await expect(page).toHaveURL('/login')
 })
 

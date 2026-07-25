@@ -51,21 +51,47 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  width: 100%;
   gap: 16px;
+  padding-bottom: max(4px, env(safe-area-inset-bottom, 0px));
 }
 
-.secondaryLink {
-  display: block;
-  padding: 8px 0;
-  color: #2f6b4f;
+.loginHint {
+  align-self: center;
+  margin: 0;
+  padding: 0;
+  max-width: 100%;
+  color: rgba(31, 61, 43, 0.72);
   font-family: 'Inter', var(--font-sans);
   font-size: 15px;
   font-weight: 400;
-  line-height: 1.4;
+  line-height: 1.5;
   text-align: center;
-  text-decoration: none;
+  text-wrap: balance;
 }
 
-.secondaryLink:active {
-  opacity: 0.72;
+.loginLink {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #2f6b4f;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 600;
+  line-height: inherit;
+  text-decoration: none;
+  border-radius: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.loginLink:hover {
+  color: #245a42;
+}
+
+.loginLink:focus-visible {
+  outline: 2px solid rgba(47, 107, 79, 0.55);
+  outline-offset: 3px;
 }
