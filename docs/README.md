@@ -48,6 +48,10 @@ Fachliche Spezifikation des langfristigen KI-Entwicklungspartners — Rolle, Arb
 | [Fachliches Datenmodell](./greenkeeper-data-model.md) | Maßnahmen, Geräte, Beziehungen; Entitäten und Abläufe |
 | [Model-Index](./model/index.md) | Fachliche Modellentscheidungen (**GM-**) |
 | [Produkt-Governance](./product-governance.md) | Offizielle Produktdatenbank, Review, technischer Governance-Workflow |
+| [Aktueller Stand](./CURRENT-STATE.md) | Umsetzungsstand inkl. Authentifizierungsreise und Production-Freeze |
+| [Onboarding (Playbook)](./playbook/onboarding.md) | Willkommen → Registrierung → E-Mail-Bestätigung → Garten-Onboarding |
+| [GA-009 Authentifizierung](./architecture/ga-009.md) | Routing, Guards, E-Mail-Bestätigung, Dev-E2E-Strategie |
+| [GK-015 Free/Pro](./ideas/gk-015.md) | Offene Monetarisierungsstrategie (noch keine Billing-Umsetzung) |
 | [Datenbank-Bootstrap](./database-bootstrap.md) | Verbindlicher Neuaufbau: schema.sql + Migrationen chronologisch |
 | [Migrations-Audit](./MIGRATION-AUDIT.md) | Bestandsaufnahme vor Konsolidierung (2026-07-22) |
 | [Konsolidierungsbericht](./CONSOLIDATION-REPORT.md) | Änderungen aus GM-Umbenennung und Status-Vereinheitlichung |

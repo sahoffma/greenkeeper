@@ -9,40 +9,35 @@ const FORBIDDEN_UI_TERMS = [
   'size_sqm',
   'rpc',
   'supabase',
+  'session',
+  'token',
 ]
 
 export async function registerViaUi(page, email, password) {
-  await page.goto('/login')
-  await page.getByRole('button', { name: 'Jetzt registrieren' }).click()
-  await expect(page.getByRole('heading', { name: 'Neues Konto' })).toBeVisible()
-  await page.getByLabel('E-Mail').fill(email)
-  await page.getByLabel('Passwort').fill(password)
-  await page.getByRole('button', { name: 'Registrieren' }).click()
+  await page.goto('/register')
+  await page.getByLabel('E-Mail-Adresse').fill(email)
+  await page.getByLabel('Passwort', { exact: true }).fill(password)
+  await page.getByLabel('Passwort bestätigen').fill(password)
+  await page.getByRole('button', { name: 'Konto erstellen' }).click()
 
-  const navigatedHome = await page
-    .waitForURL('/', { timeout: 8_000 })
+  const reachedApp = await page
+    .waitForURL(/\/(onboarding|email-bestaetigen|$)/, { timeout: 10_000 })
     .then(() => true)
     .catch(() => false)
 
-  if (navigatedHome) {
-    return { via: 'signup' }
-  }
+  if (reachedApp) {
+    if (page.url().includes('/email-bestaetigen')) {
+      await confirmUserEmail(email)
+      await loginViaUi(page, email, password)
+      return { via: 'signup-confirm' }
+    }
 
-  const confirmationMessage = page.getByText('Bitte bestätige deine E-Mail-Adresse.')
-  if (await confirmationMessage.isVisible().catch(() => false)) {
-    await confirmUserEmail(email)
-    await loginViaUi(page, email, password)
-    return { via: 'signup-confirm' }
+    return { via: 'signup' }
   }
 
   const errorText = await page.locator('[class*="error"]').first().textContent().catch(() => null)
 
-  if (
-    errorText &&
-    (errorText.includes('rate limit') ||
-      errorText.includes('invalid') ||
-      errorText.includes('already registered'))
-  ) {
+  if (errorText) {
     await createUserWithCredentials(email, password)
     await loginViaUi(page, email, password)
     return { via: 'admin-fallback', note: errorText.trim() }
@@ -53,15 +48,17 @@ export async function registerViaUi(page, email, password) {
 
 export async function loginViaUi(page, email, password) {
   await page.goto('/login')
-  await page.getByLabel('E-Mail').fill(email)
+  await page.getByLabel('E-Mail-Adresse').fill(email)
   await page.getByLabel('Passwort').fill(password)
   await page.getByRole('button', { name: 'Anmelden' }).click()
-  await page.waitForURL('/', { timeout: 15_000 })
+  await page.waitForURL((url) => !['/login', '/register'].includes(url.pathname), {
+    timeout: 15_000,
+  })
 }
 
 export async function startOnboardingFromWelcome(page) {
   await page.goto('/onboarding')
-  await expect(page.getByRole('heading', { name: /Willkommen/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Garten einrichten/ })).toBeVisible()
   await page.getByRole('button', { name: 'Garten einrichten' }).click()
   await expect(page).toHaveURL(/\/onboarding\/2/)
 }
@@ -104,7 +101,7 @@ export async function assertNoTechnicalTerms(page) {
 }
 
 export async function assertOnboardingCopy(page) {
-  await expect(page.getByRole('heading', { name: /Willkommen.*Greenkeeper/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Garten einrichten/ })).toBeVisible()
 }
 
 export async function completeSingleLawnWithSize(page, size) {

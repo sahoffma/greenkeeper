@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { AuthError, Session, User } from '@supabase/supabase-js'
+import { emailConfirmRedirectUrl, isEmailConfirmed, passwordResetRedirectUrl } from '../lib/authState'
 import { fetchUserProfileState, isOnboardingCompleted } from '../lib/profile'
 import { supabase } from '../lib/supabase'
 
@@ -15,6 +16,7 @@ interface AuthContextValue {
   session: Session | null
   user: User | null
   bootstrapping: boolean
+  emailConfirmed: boolean
   onboardingCompleted: boolean
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>
   signUp: (email: string, password: string) => Promise<{
@@ -22,6 +24,9 @@ interface AuthContextValue {
     needsEmailConfirmation: boolean
   }>
   signOut: () => Promise<void>
+  resendSignupConfirmation: (email: string) => Promise<{ error: AuthError | null }>
+  requestPasswordReset: (email: string) => Promise<{ error: AuthError | null }>
+  updatePassword: (password: string) => Promise<{ error: AuthError | null }>
   refreshProfile: () => Promise<void>
 }
 
@@ -32,6 +37,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authLoading, setAuthLoading] = useState(true)
   const [profileLoading, setProfileLoading] = useState(false)
   const [onboardingCompleted, setOnboardingCompleted] = useState(false)
+
+  const user = session?.user ?? null
+  const emailConfirmed = isEmailConfirmed(user)
 
   const loadProfile = useCallback(async (userId: string) => {
     setProfileLoading(true)
@@ -108,15 +116,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       session,
-      user: session?.user ?? null,
+      user,
       bootstrapping,
+      emailConfirmed,
       onboardingCompleted,
       async signIn(email, password) {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         return { error }
       },
       async signUp(email, password) {
-        const { data, error } = await supabase.auth.signUp({ email, password })
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: emailConfirmRedirectUrl(),
+          },
+        })
+
         return {
           error,
           needsEmailConfirmation: !error && !data.session,
@@ -125,9 +141,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async signOut() {
         await supabase.auth.signOut()
       },
+      async resendSignupConfirmation(email) {
+        const { error } = await supabase.auth.resend({
+          type: 'signup',
+          email,
+          options: {
+            emailRedirectTo: emailConfirmRedirectUrl(),
+          },
+        })
+
+        return { error }
+      },
+      async requestPasswordReset(email) {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: passwordResetRedirectUrl(),
+        })
+
+        return { error }
+      },
+      async updatePassword(password) {
+        const { error } = await supabase.auth.updateUser({ password })
+        return { error }
+      },
       refreshProfile,
     }),
-    [session, bootstrapping, onboardingCompleted, refreshProfile],
+    [session, user, bootstrapping, emailConfirmed, onboardingCompleted, refreshProfile],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

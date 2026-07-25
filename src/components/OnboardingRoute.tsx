@@ -8,7 +8,7 @@ interface OnboardingRouteProps {
 }
 
 export function OnboardingRoute({ children }: OnboardingRouteProps) {
-  const { session, bootstrapping, onboardingCompleted } = useAuth()
+  const { session, bootstrapping, emailConfirmed, onboardingCompleted } = useAuth()
   const location = useLocation()
 
   if (bootstrapping) {
@@ -17,6 +17,10 @@ export function OnboardingRoute({ children }: OnboardingRouteProps) {
 
   if (!session) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  }
+
+  if (!emailConfirmed) {
+    return <Navigate to="/email-bestaetigen" replace />
   }
 
   if (onboardingCompleted) {

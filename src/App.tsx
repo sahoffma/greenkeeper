@@ -1,11 +1,15 @@
 import { Routes, Route } from 'react-router-dom'
+import { EmailConfirmationRoute } from './components/EmailConfirmationRoute'
+import { GuestRoute } from './components/GuestRoute'
 import { OnboardingRoute } from './components/OnboardingRoute'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { ResetPasswordRoute } from './components/ResetPasswordRoute'
 import { AreaShell } from './components/AreaShell'
 import { AreasPage } from './pages/AreasPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { EmailConfirmPage } from './pages/EmailConfirmPage'
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
 import { GardenPage } from './pages/GardenPage'
-import { HomeScreen } from './pages/HomeScreen'
 import { JournalPage } from './pages/JournalPage'
 import { LoginPage } from './pages/LoginPage'
 import { OnboardingLawnAreasPage } from './pages/onboarding/OnboardingLawnAreasPage'
@@ -16,13 +20,56 @@ import { OnboardingStep4PlaceholderPage } from './pages/onboarding/OnboardingSte
 import { OnboardingWelcomePage } from './pages/onboarding/OnboardingWelcomePage'
 import { MorePage } from './pages/MorePage'
 import { ProductAssistantPage } from './pages/ProductAssistantPage'
+import { RegisterPage } from './pages/RegisterPage'
+import { ResetPasswordPage } from './pages/ResetPasswordPage'
+import { RootPage } from './pages/RootPage'
 import { TimelinePage } from './pages/TimelinePage'
 import { NewActivityPage } from './pages/NewActivityPage'
 
 export default function App() {
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
+      <Route path="/" element={<RootPage />} />
+      <Route
+        path="/login"
+        element={
+          <GuestRoute>
+            <LoginPage />
+          </GuestRoute>
+        }
+      />
+      <Route
+        path="/register"
+        element={
+          <GuestRoute>
+            <RegisterPage />
+          </GuestRoute>
+        }
+      />
+      <Route
+        path="/email-bestaetigen"
+        element={
+          <EmailConfirmationRoute>
+            <EmailConfirmPage />
+          </EmailConfirmationRoute>
+        }
+      />
+      <Route
+        path="/passwort-vergessen"
+        element={
+          <GuestRoute>
+            <ForgotPasswordPage />
+          </GuestRoute>
+        }
+      />
+      <Route
+        path="/passwort-zuruecksetzen"
+        element={
+          <ResetPasswordRoute>
+            <ResetPasswordPage />
+          </ResetPasswordRoute>
+        }
+      />
       <Route
         path="/onboarding"
         element={
@@ -69,14 +116,6 @@ export default function App() {
           <OnboardingRoute>
             <OnboardingStep4PlaceholderPage />
           </OnboardingRoute>
-        }
-      />
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <HomeScreen />
-          </ProtectedRoute>
         }
       />
       <Route

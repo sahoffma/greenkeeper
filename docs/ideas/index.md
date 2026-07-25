@@ -22,6 +22,7 @@ Neue Idee: [Template](./templates/gk-template.md) · [README](./README.md)
 | [GK-012](./gk-012.md) | Produktgruppe Bodenhilfsstoffe | 💡 Idee | Mittel |
 | [GK-013](./gk-013.md) | Mehrere Rasenflächen | 💡 Idee (Entwurf) | — |
 | [GK-014](./gk-014.md) | Erinnerung bei fehlender Flächengröße | 💡 Idee (Entwurf) | — |
+| [GK-015](./gk-015.md) | Free-/Pro-Produktstrategie (offen) | 💡 Idee | Mittel |
 
 ---
 

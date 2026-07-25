@@ -8,7 +8,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { session, bootstrapping, onboardingCompleted } = useAuth()
+  const { session, bootstrapping, emailConfirmed, onboardingCompleted } = useAuth()
   const location = useLocation()
 
   if (bootstrapping) {
@@ -16,7 +16,11 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   if (!session) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />
+    return <Navigate to="/" replace state={{ from: location.pathname }} />
+  }
+
+  if (!emailConfirmed) {
+    return <Navigate to="/email-bestaetigen" replace state={{ from: location.pathname }} />
   }
 
   if (!onboardingCompleted) {

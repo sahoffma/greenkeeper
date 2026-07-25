@@ -1,13 +1,12 @@
-import { FormEvent, useEffect, useState } from 'react'
-import { Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { AuthLoadingScreen } from '../components/AuthLoadingScreen'
+import { FormEvent, useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import styles from './LoginPage.module.css'
-
-type AuthMode = 'login' | 'register'
+import { mapAuthError, validateEmailAddress, validatePassword } from '../lib/authMessages'
+import { resolveAuthenticatedDestination } from '../lib/authState'
+import styles from './AuthPage.module.css'
 
 export function LoginPage() {
-  const { session, bootstrapping, onboardingCompleted, signIn, signUp } = useAuth()
+  const { signIn, onboardingCompleted } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const redirectPath =
@@ -16,68 +15,36 @@ export function LoginPage() {
     'from' in location.state &&
     typeof location.state.from === 'string'
       ? location.state.from
-      : '/'
+      : resolveAuthenticatedDestination(onboardingCompleted)
 
-  const [mode, setMode] = useState<AuthMode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
-
-  useEffect(() => {
-    setError(null)
-    setMessage(null)
-  }, [mode])
-
-  if (bootstrapping) {
-    return <AuthLoadingScreen />
-  }
-
-  if (session) {
-    if (!onboardingCompleted) {
-      return <Navigate to="/onboarding" replace />
-    }
-
-    return <Navigate to={redirectPath} replace />
-  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+
+    const emailError = validateEmailAddress(email)
+    const passwordError = validatePassword(password)
+
+    if (emailError || passwordError) {
+      setError(emailError ?? passwordError)
+      return
+    }
+
     setSubmitting(true)
     setError(null)
-    setMessage(null)
 
     try {
-      if (mode === 'login') {
-        const { error: signInError } = await signIn(email.trim(), password)
+      const { error: signInError } = await signIn(email.trim(), password)
 
-        if (signInError) {
-          setError(signInError.message)
-          return
-        }
-
-        navigate(redirectPath, { replace: true })
+      if (signInError) {
+        setError(mapAuthError(signInError, 'Anmeldung fehlgeschlagen. Bitte versuche es erneut.'))
         return
       }
 
-      const { error: signUpError, needsEmailConfirmation } = await signUp(
-        email.trim(),
-        password,
-      )
-
-      if (signUpError) {
-        setError(signUpError.message)
-        return
-      }
-
-      if (needsEmailConfirmation) {
-        setMessage('Registrierung erfolgreich. Bitte bestätige deine E-Mail-Adresse.')
-        setMode('login')
-        return
-      }
-
-      navigate('/onboarding', { replace: true })
+      navigate(redirectPath, { replace: true })
     } finally {
       setSubmitting(false)
     }
@@ -87,20 +54,18 @@ export function LoginPage() {
     <div className="app-shell">
       <main className={`page page--home ${styles.page}`}>
         <header className="page-header">
-          <h1 className="page-title">Greenkeeper</h1>
-          <p className="page-subtitle">
-            {mode === 'login' ? 'Anmelden' : 'Konto erstellen'}
-          </p>
+          <h1 className="page-title">Anmelden</h1>
+          <p className="page-subtitle">Willkommen zurück in deinem Garten.</p>
         </header>
 
-        <section className={`surface-card ${styles.card}`} aria-labelledby="auth-heading">
-          <h2 id="auth-heading" className={styles.cardTitle}>
-            {mode === 'login' ? 'Willkommen zurück' : 'Neues Konto'}
+        <section className={`surface-card ${styles.card}`} aria-labelledby="login-heading">
+          <h2 id="login-heading" className={styles.cardTitle}>
+            Bei Greenkeeper anmelden
           </h2>
 
-          <form className={styles.form} onSubmit={handleSubmit}>
+          <form className={styles.form} onSubmit={handleSubmit} noValidate>
             <label className={styles.field}>
-              <span className={styles.label}>E-Mail</span>
+              <span className={styles.label}>E-Mail-Adresse</span>
               <input
                 className={styles.input}
                 type="email"
@@ -116,7 +81,7 @@ export function LoginPage() {
               <input
                 className={styles.input}
                 type="password"
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                autoComplete="current-password"
                 required
                 minLength={6}
                 value={password}
@@ -125,26 +90,23 @@ export function LoginPage() {
             </label>
 
             {error && <p className={styles.error}>{error}</p>}
-            {message && <p className={styles.message}>{message}</p>}
 
             <button className={styles.submit} type="submit" disabled={submitting}>
-              {submitting
-                ? 'Bitte warten …'
-                : mode === 'login'
-                  ? 'Anmelden'
-                  : 'Registrieren'}
+              {submitting ? 'Bitte warten …' : 'Anmelden'}
             </button>
           </form>
 
           <p className={styles.switch}>
-            {mode === 'login' ? 'Noch kein Konto?' : 'Bereits registriert?'}{' '}
-            <button
-              type="button"
-              className={styles.switchButton}
-              onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-            >
-              {mode === 'login' ? 'Jetzt registrieren' : 'Zur Anmeldung'}
-            </button>
+            <Link to="/passwort-vergessen" className={styles.switchLink}>
+              Passwort vergessen
+            </Link>
+          </p>
+
+          <p className={styles.switch}>
+            Noch kein Konto?{' '}
+            <Link to="/register" className={styles.switchLink}>
+              Konto erstellen
+            </Link>
           </p>
         </section>
       </main>

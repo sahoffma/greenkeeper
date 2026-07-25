@@ -1,0 +1,136 @@
+.page {
+  max-width: 480px;
+}
+
+.card {
+  padding: var(--space-xl);
+}
+
+.cardTitle {
+  margin: 0 0 var(--space-lg);
+  font-size: 1.25rem;
+  letter-spacing: -0.03em;
+}
+
+.form {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.field {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.input:focus {
+  outline: 2px solid var(--color-accent-soft);
+  border-color: var(--color-accent-muted);
+}
+
+.error {
+  margin: 0;
+  color: #9b3d3d;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.message {
+  margin: 0;
+  color: var(--color-accent-muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.note {
+  margin: var(--space-lg) 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.hint {
+  margin: var(--space-md) 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.submit {
+  margin-top: var(--space-xs);
+  padding: 14px 18px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.submit:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.secondaryButton {
+  padding: 12px 18px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.secondaryButton:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.switch {
+  margin: var(--space-lg) 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  text-align: center;
+}
+
+.switchLink {
+  color: var(--color-accent-muted);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.switchLink:hover {
+  color: var(--color-accent);
+}
+
+.emailDisplay {
+  margin: 0 0 var(--space-md);
+  color: var(--color-text);
+  font-size: 0.95rem;
+  word-break: break-all;
+}
+
+.bodyText {
+  margin: 0 0 var(--space-md);
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.actions {
+  display: grid;
+  gap: var(--space-sm);
+}

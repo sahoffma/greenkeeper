@@ -51,14 +51,16 @@ test('2 – Nutzer mit abgeschlossenem Onboarding sieht Startseite', async ({ pa
   await expect(page.getByRole('heading', { name: 'Rasenfläche 1' })).toBeVisible()
 })
 
-test('3 – Nicht angemeldeter Nutzer wird zum Login geführt', async ({ page }) => {
+test('3 – Nicht angemeldeter Nutzer sieht die Willkommensseite', async ({ page }) => {
   await page.goto('/')
-  await expect(page).toHaveURL(/\/login$/)
+  await expect(page).toHaveURL('/')
+  await expect(page.getByRole('heading', { name: 'Willkommen bei Greenkeeper' })).toBeVisible()
 })
 
-test('4 – Geschützte Route ohne Sitzung führt zum Login', async ({ page }) => {
+test('4 – Geschützte Route ohne Sitzung führt zur Willkommensseite', async ({ page }) => {
   await page.goto('/journal')
-  await expect(page).toHaveURL(/\/login$/)
+  await expect(page).toHaveURL('/')
+  await expect(page.getByRole('heading', { name: 'Willkommen bei Greenkeeper' })).toBeVisible()
 })
 
 test('5 – Onboarding nach Abschluss führt zur Startseite', async ({ page }) => {

@@ -9,6 +9,7 @@ import {
 
 export const DEV_PROJECT_REF = 'amyounxrsxgujsfutshx'
 export const TEST_PASSWORD = 'GkE2eTest123!'
+export const E2E_APP_URL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:5173'
 
 let adminClient
 let envConfig
@@ -147,7 +148,33 @@ export async function getProfileOnboardingState(userId) {
   return data
 }
 
-export async function findUserIdByEmail(email) {
+export async function cleanupAllGkE2eUsers() {
+  assertSafeSupabaseWriteTarget(loadE2eEnv())
+  const admin = getAdminClient()
+  let page = 1
+
+  while (page <= 10) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 })
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    const matches = data.users.filter((user) => user.email?.startsWith('gk-e2e-'))
+
+    for (const user of matches) {
+      await deleteUser(user.id)
+    }
+
+    if (data.users.length < 200) {
+      break
+    }
+
+    page += 1
+  }
+}
+
+async function findUserIdByEmailOnce(email) {
   assertSafeSupabaseWriteTarget(loadE2eEnv())
   const admin = getAdminClient()
   let page = 1
@@ -173,6 +200,21 @@ export async function findUserIdByEmail(email) {
   }
 
   throw new Error(`Nutzer nicht gefunden: ${email}`)
+}
+
+export async function findUserIdByEmail(email, retries = 5) {
+  let lastError
+
+  for (let attempt = 0; attempt < retries; attempt += 1) {
+    try {
+      return await findUserIdByEmailOnce(email)
+    } catch (error) {
+      lastError = error
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+  }
+
+  throw lastError
 }
 
 export async function userClient(email, password = TEST_PASSWORD) {
@@ -207,6 +249,84 @@ export async function confirmUserEmail(email) {
   if (error) {
     throw new Error(`E-Mail-Bestätigung für ${email}: ${error.message}`)
   }
+}
+
+export async function createUnconfirmedUser(email, password = TEST_PASSWORD) {
+  assertSafeSupabaseWriteTarget(loadE2eEnv())
+  const admin = getAdminClient()
+
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: false,
+  })
+
+  if (error) {
+    throw new Error(`Unbestätigter Testnutzer ${email}: ${error.message}`)
+  }
+
+  return { id: data.user.id, email, password }
+}
+
+export async function generateSignupLink(email, redirectTo = E2E_APP_URL) {
+  assertSafeSupabaseWriteTarget(loadE2eEnv())
+  const admin = getAdminClient()
+  const { data, error } = await admin.auth.admin.generateLink({
+    type: 'invite',
+    email,
+    options: {
+      redirectTo,
+    },
+  })
+
+  if (error) {
+    throw new Error(`Signup-Link für ${email}: ${error.message}`)
+  }
+
+  return data.properties.action_link
+}
+
+export async function generateRecoveryLink(email, redirectTo = `${E2E_APP_URL}/passwort-zuruecksetzen`) {
+  assertSafeSupabaseWriteTarget(loadE2eEnv())
+  const admin = getAdminClient()
+  const { data, error } = await admin.auth.admin.generateLink({
+    type: 'recovery',
+    email,
+    options: {
+      redirectTo,
+    },
+  })
+
+  if (error) {
+    throw new Error(`Recovery-Link für ${email}: ${error.message}`)
+  }
+
+  return data.properties.action_link
+}
+
+export async function countE2eUsersOnDev() {
+  assertSafeSupabaseWriteTarget(loadE2eEnv())
+  const admin = getAdminClient()
+  let total = 0
+  let page = 1
+
+  while (page <= 10) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 })
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    total += data.users.filter((user) => user.email?.startsWith('gk-e2e-')).length
+
+    if (data.users.length < 200) {
+      break
+    }
+
+    page += 1
+  }
+
+  return total
 }
 
 export async function cleanupE2eUsers(users) {

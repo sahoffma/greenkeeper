@@ -43,8 +43,10 @@ Der Onboarding-Flow ist auf Dev vollständig verifiziert (RPC, Browser-E2E, Rout
 
 ## Benutzerverwaltung
 
-- Registrierung
-- Login
+- Öffentliche Willkommensseite (`/`) mit Weiterleitung für angemeldete Nutzer
+- Registrierung (`/register`) mit Passwort-Bestätigung
+- Login (`/login`) und Passwort vergessen / zurücksetzen
+- E-Mail-Bestätigung (`/email-bestaetigen`) vor Garten-Onboarding
 - Onboarding-Prozess mit atomarem Abschluss über `complete_onboarding`
 - Pflegegruppen-Datenmodell (`care_groups`, `care_group_areas`)
 - Onboarding-Abschlussstatus (`profiles.onboarding_completed_at`)

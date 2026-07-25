@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import layoutStyles from './onboardingScreen.module.css'
 import themeStyles from './onboardingTheme.module.css'
 import styles from './OnboardingWelcomePage.module.css'
@@ -11,23 +11,20 @@ export function OnboardingWelcomePage() {
       <main className={`${layoutStyles.screen} ${themeStyles.screen}`}>
         <div className={`${layoutStyles.content} ${themeStyles.content} ${styles.content}`}>
           <div className={styles.brandBlock}>
-            {/* TODO: Logo als sauberes SVG nachzeichnen */}
             <div className={styles.logoMark} aria-hidden="true" />
             <p className={styles.wordmark}>Greenkeeper</p>
           </div>
 
           <h1 className={themeStyles.title}>
-            Willkommen
+            Lass uns deinen
             <br />
-            bei Greenkeeper
+            Garten einrichten
           </h1>
 
           <hr className={styles.divider} />
 
           <p className={styles.statement}>
-            Für einen Rasen,
-            <br />
-            auf den du stolz bist.
+            In wenigen Schritten legst du deine Rasenflächen an — ruhig, Schritt für Schritt.
           </p>
         </div>
 
@@ -39,10 +36,6 @@ export function OnboardingWelcomePage() {
           >
             Garten einrichten
           </button>
-
-          <Link to="/login" className={styles.secondaryLink}>
-            Ich habe bereits ein Konto
-          </Link>
         </div>
       </main>
     </div>

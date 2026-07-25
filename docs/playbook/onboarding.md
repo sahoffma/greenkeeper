@@ -26,9 +26,23 @@ Greenkeeper soll **ohne unnötige Hürden** nutzbar sein. Onboarding führt den 
 
 ## Ablauf (Ist-Stand)
 
+### Vor dem Onboarding — Authentifizierung
+
 | Schritt | Route | Inhalt |
 |---------|-------|--------|
-| 1 – Willkommen | `/onboarding` | Einstieg, Claim, „Garten einrichten“ |
+| Willkommen | `/` | Claim, „Garten einrichten“, Link zum Login |
+| Registrierung | `/register` | E-Mail, Passwort, Bestätigung |
+| Login | `/login` | Anmeldung, Passwort vergessen |
+| E-Mail bestätigen | `/email-bestaetigen` | Hinweis, erneut senden, Spam-Hinweis |
+| Passwort zurücksetzen | `/passwort-zuruecksetzen` | Neues Passwort nach Recovery-Link |
+
+Details und Guards: [GA-009](../architecture/ga-009.md).
+
+### Garten-Onboarding
+
+| Schritt | Route | Inhalt |
+|---------|-------|--------|
+| 1 – Einstieg | `/onboarding` | Kurzer Einstieg, „Garten einrichten“ |
 | 2 – Anzahl | `/onboarding/2` | **Einmalig:** 1, 2, 3 oder mehr als 3 Rasenflächen |
 | 2b – Pflegepräferenz | `/onboarding/2/care` | Nur bei 2–20 Flächen: gemeinsam vs. einzeln pflegen |
 | 3 – Größe | `/onboarding/3?areas=single\|multiple&…` | Größe (single); Größe je Fläche (multiple); **Abschluss mit „Los geht’s“** |
@@ -114,11 +128,13 @@ Entwurfsidee: [GK-013](../ideas/gk-013.md)
 
 ---
 
-## Schritt 1 – Willkommen
+## Schritt 1 – Onboarding-Einstieg
 
-- Premium, ruhige Gestaltung (Cormorant + Inter, warmes Off-White)
-- Primäraktion: **Garten einrichten**
-- Sekundärlink: Login für bestehende Nutzer
+- Ruhige Fortsetzung nach Registrierung/Login
+- Primäraktion: **Garten einrichten** → `/onboarding/2`
+- Kein Login-Link (Nutzer ist bereits angemeldet)
+
+Die öffentliche Willkommensseite liegt unter `/` — siehe Authentifizierungsreise oben.
 
 ---
 
@@ -133,9 +149,8 @@ Entwurfsidee: [GK-013](../ideas/gk-013.md)
 ## Offene Punkte
 
 - Freundliche Erinnerung bei fehlender Flächengröße nach Onboarding – siehe [GK-014](../ideas/gk-014.md)
-- Onboarding nur mit Session / Route-Guards — siehe Folgearbeit
 - Umbenennung von Rasenflächen nach dem Onboarding
 - Sichtbare Verwaltung von Pflegegruppen (Zusammenführen/Trennen)
-- Home-Experience: Startseite (`/`) zeigt noch Dummy-Daten statt gespeicherter Flächen
+- Free-/Pro-Abgrenzung — siehe [GK-015](../ideas/gk-015.md) (noch keine Umsetzung)
 
 Neue Onboarding-Ideen → [ideas/](../ideas/index.md). Getroffene Entscheidungen → [decisions/](../decisions/index.md).

@@ -105,11 +105,15 @@ ALLOW_SUPABASE_WRITE_TESTS=true node scripts/verify-chronological-bootstrap.mjs
 
 Details: [docs/database-bootstrap.md](docs/database-bootstrap.md)
 
-Browser-E2E (Onboarding, Guards, Startseite — nur Dev):
+Browser-E2E (Authentifizierung, Onboarding, Guards, Startseite — nur Dev):
 
 ```bash
 npm run test:e2e:all
 ```
+
+E2E-Auth: Sichtbare UI-Flows plus kontrollierte Dev-Admin-Hilfen für E-Mail-Bestätigung und Recovery-Links (siehe `e2e/auth-journey.spec.mjs`).
+
+Monetarisierung: [GK-015](docs/ideas/gk-015.md) dokumentiert die offene Free-/Pro-Strategie — **keine Billing-Umsetzung**.
 
 Voraussetzung: `.env.local` mit Dev-Ref, `ALLOW_SUPABASE_WRITE_TESTS=true`, gültige Supabase-Keys.
 
