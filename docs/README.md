@@ -6,6 +6,26 @@ Diese Dokumentation ist **Bestandteil des Projekts** und wird versioniert im Rep
 
 ---
 
+## Manifest
+
+Das [Greenkeeper Manifest](./MANIFEST.md) beschreibt den **Zweck**, die **Werte**, die **Vision** und die **Leitprinzipien** von Greenkeeper. Es ist die **höchste fachliche Referenz** des Projekts.
+
+---
+
+## Project Handbook
+
+Zentrale Referenz für **Rollen**, **Entwicklungsworkflow**, **Dokumentationsregeln** und **Definition of Done**: [PROJECT-HANDBOOK.md](./PROJECT-HANDBOOK.md)
+
+---
+
+## Greenkeeper Architect
+
+Fachliche Spezifikation des langfristigen KI-Entwicklungspartners — Rolle, Arbeitsweise und Qualitätsmaßstäbe: [GREENKEEPER-ARCHITECT.md](./GREENKEEPER-ARCHITECT.md)
+
+*(Keine GPT-Instruction; künftige GPT-Konfiguration wird aus Manifest, Handbook und Architect-Spezifikation abgeleitet.)*
+
+---
+
 ## Bereiche
 
 | Verzeichnis | Zweck |
@@ -22,13 +42,19 @@ Diese Dokumentation ist **Bestandteil des Projekts** und wird versioniert im Rep
 
 | Dokument | Zweck |
 |----------|--------|
+| [Greenkeeper Manifest](./MANIFEST.md) | Zweck, Werte, Vision und Leitprinzipien — höchste fachliche Referenz |
+| [Project Handbook](./PROJECT-HANDBOOK.md) | Rollen, Workflow, Dokumentationsregeln, Definition of Done |
+| [Greenkeeper Architect](./GREENKEEPER-ARCHITECT.md) | Rolle und Arbeitsweise des KI-Entwicklungspartners |
 | [Fachliches Datenmodell](./greenkeeper-data-model.md) | Maßnahmen, Geräte, Beziehungen; Entitäten und Abläufe |
 | [Model-Index](./model/index.md) | Fachliche Modellentscheidungen (**GM-**) |
 | [Produkt-Governance](./product-governance.md) | Offizielle Produktdatenbank, Review, technischer Governance-Workflow |
+| [Datenbank-Bootstrap](./database-bootstrap.md) | Verbindlicher Neuaufbau: schema.sql + Migrationen chronologisch |
 | [Migrations-Audit](./MIGRATION-AUDIT.md) | Bestandsaufnahme vor Konsolidierung (2026-07-22) |
 | [Konsolidierungsbericht](./CONSOLIDATION-REPORT.md) | Änderungen aus GM-Umbenennung und Status-Vereinheitlichung |
 | [GM-Migrationsbericht](./MIGRATION-GM.md) | GM-Auslagerung nach `docs/model/` |
 | [Standardisierungsbericht](./STANDARDIZATION-REPORT.md) | Einheitlicher Dokumentkopf und Verlinkungsregeln |
+| [Manifest-Bericht](./MANIFEST-REPORT.md) | Einführung des Greenkeeper Manifests |
+| [Architect-Bericht](./GREENKEEPER-ARCHITECT-REPORT.md) | Einführung der Greenkeeper-Architect-Spezifikation |
 
 ---
 
@@ -87,7 +113,7 @@ Alle Dokumente sollen – **soweit fachlich sinnvoll** – auf zusammengehörige
 | **GA** | GP, GK, GM, DL, Fachmodell |
 | **GM** | GP, GA, GK, DL, Fachmodell |
 | **DL** | GP, GK, GA, GM, Playbook |
-| **GP / CM** | GK, GA, GM, DL, Fachmodell |
+| **GP / CM** | GK, GA, GM, DL, Fachmodell, [Manifest](./MANIFEST.md) |
 
 **Regeln:**
 

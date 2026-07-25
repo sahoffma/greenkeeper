@@ -114,8 +114,24 @@ Tabelle `product_domain_events` – Vorbereitung Event-Engine:
 
 ## Migrationen (manuell ausführen)
 
-1. `20250722_product_governance.sql` – Phase 1
-2. `20250723_product_governance_v2.sql` – V2-Erweiterung
+**Verbindlicher Neuaufbau:** siehe [database-bootstrap.md](./database-bootstrap.md).
+
+Kurzform — nach `schema.sql` alle Migrationen in **Dateiname-Reihenfolge**:
+
+1. `20250717` … `20250721` — Produktfelder
+2. `20250722_product_governance.sql` — Phase 1
+3. `20250723_product_governance_v2.sql` — V2-Erweiterung
+4. `20250724`, `20250725` — Maßnahmen, Onboarding/Pflegegruppen
+5. `20250726`, `20250727` — idempotente Legacy-Korrekturen (No-Op auf frischem Neuaufbau)
+
+**Keine Sonderreihenfolge mehr nötig**, sofern `schema.sql` die Governance-Enums enthält (Stand ab 2026-07-25).
+
+**Historische Fallstricke** (nur bei altem `schema.sql` ohne Enum-Baseline):
+
+| Fehler | Korrektur |
+|--------|-----------|
+| `COALESCE types text and app_user_role cannot be matched` | `20250726` (Legacy) oder Baseline-Fix |
+| `unsafe use of new value "legacy_imported"` (55P04) | `20250727` (Legacy) oder Baseline-Fix |
 
 ## Risiken
 

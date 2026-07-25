@@ -2,7 +2,9 @@
 
 Das Playbook ist die **verbindliche Produkt-Bibel** von Greenkeeper. Es enthält ausschließlich **gültige Regeln und Prinzipien** – keine Ideensammlung, keine technischen Detail-Spezifikationen und keine Roadmap-Termine.
 
-Neue Funktionen, UX-Entscheidungen, Cursor-Prompts und fachliche Abstimmungen sollen mit diesem Playbook abgeglichen werden.
+Fachliche Leitlinien auf höchster Ebene: [Greenkeeper Manifest](../MANIFEST.md).
+
+Neue Funktionen, UX-Entscheidungen, Cursor-Prompts und fachliche Abstimmungen sollen mit dem Manifest und diesem Playbook abgeglichen werden.
 
 ---
 
@@ -10,7 +12,8 @@ Neue Funktionen, UX-Entscheidungen, Cursor-Prompts und fachliche Abstimmungen so
 
 | Dokument | Zweck |
 |----------|--------|
-| [Vision](./vision.md) | Langfristige Produktvision und Grundhaltung |
+| [Manifest](../MANIFEST.md) | Zweck, Werte, Vision, Leitprinzipien — höchste fachliche Referenz |
+| [Vision](./vision.md) | Langfristige Produktvision und Grundhaltung (ergänzt das Manifest) |
 | [Onboarding](./onboarding.md) | Regeln und Ablauf der Ersteinrichtung |
 | [UX-Prinzipien](./ux-principles.md) | Verbindliche Leitlinien für Produkt und UX (GP-001 ff.) |
 | [Design System](./design-system.md) | Farben, Typografie, Komponenten, Töne |

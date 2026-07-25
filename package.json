@@ -9,6 +9,10 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:onboarding": "playwright test e2e/onboarding.spec.mjs",
+    "test:e2e:guards": "playwright test e2e/guards-and-home.spec.mjs",
+    "test:e2e:all": "playwright test e2e/",
     "screenshot:home": "node scripts/capture-home-screenshot.mjs",
     "import:spring-start": "npx tsx scripts/import-icl-spring-start.ts"
   },
@@ -21,11 +25,13 @@
     "react-router-dom": "^6.28.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/node": "^26.1.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
     "playwright": "^1.61.1",
+    "pg": "^8.16.3",
     "typescript": "~5.6.2",
     "vite": "^5.4.10",
     "vitest": "^3.2.4"

@@ -1,12 +1,13 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { AuthLoadingScreen } from '../components/AuthLoadingScreen'
 import { useAuth } from '../contexts/AuthContext'
 import styles from './LoginPage.module.css'
 
 type AuthMode = 'login' | 'register'
 
 export function LoginPage() {
-  const { session, signIn, signUp } = useAuth()
+  const { session, bootstrapping, onboardingCompleted, signIn, signUp } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const redirectPath =
@@ -29,7 +30,15 @@ export function LoginPage() {
     setMessage(null)
   }, [mode])
 
+  if (bootstrapping) {
+    return <AuthLoadingScreen />
+  }
+
   if (session) {
+    if (!onboardingCompleted) {
+      return <Navigate to="/onboarding" replace />
+    }
+
     return <Navigate to={redirectPath} replace />
   }
 
@@ -68,7 +77,7 @@ export function LoginPage() {
         return
       }
 
-      navigate(redirectPath, { replace: true })
+      navigate('/onboarding', { replace: true })
     } finally {
       setSubmitting(false)
     }

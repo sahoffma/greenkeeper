@@ -16,6 +16,8 @@ Neue Entscheidung: [Template](./templates/ga-template.md) · [README](./README.m
 | [GA-006](./ga-006.md) | Datenmodell orientiert sich an Greenkeeper-Arbeit | ✅ Umgesetzt | Hoch |
 | [GA-007](./ga-007.md) | Konkrete Maßnahmen statt Sammelkategorien | ✅ Umgesetzt | Hoch |
 | [GA-008](./ga-008.md) | Mehrere fachliche Referenzen pro Maßnahme | 📋 Geplant | Mittel |
+| [GA-009](./ga-009.md) | Atomarer Onboarding-Abschluss per RPC | ✅ Umgesetzt | Hoch |
+| [GA-010](./ga-010.md) | Getrennte Supabase-Umgebungen für Dev und Production | ✅ Umgesetzt | Hoch |
 
 ---
 

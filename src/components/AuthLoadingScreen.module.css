@@ -1,0 +1,12 @@
+.screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+}
+
+.message {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+}

@@ -48,6 +48,21 @@ flowchart LR
 | **Maßnahme** | Ein Journal-Eintrag: *Was* wurde *wann* auf *welcher Fläche* getan? |
 | **Produkt** | Dünger, Bodenhilfsstoff, Pflanzenschutzmittel, Topdress-Material … (Governance-Workflow) |
 | **Gerät** | Maschine, Anbaugerät oder Handwerkzeug, das bei einer Maßnahme eine Rolle spielt |
+| **Pflegegruppe** | Welche Rasenflächen im Alltag gemeinsam angesprochen werden (internes Modell) |
+
+---
+
+## Pflegegruppen (Multi-Lawn)
+
+Rasenflächen bleiben **eigenständige** Einheiten (Stammdaten, Historie, Maßnahmen je Fläche).
+
+Gemeinsame Pflege wird über **Pflegegruppen** abgebildet:
+
+- Eine Pflegegruppe gehört einem Nutzer.
+- Eine Rasenfläche gehört in der aktuellen Ausbaustufe **genau einer** Pflegegruppe an.
+- Die Onboarding-Eingaben `together` / `separate` sind **kein** dauerhaftes Domänenmodell — sie werden beim Abschluss in Pflegegruppen übersetzt.
+
+Siehe [GM-007](./model/gm-007.md), [DL-007](./decisions/dl-007.md).
 
 ---
 

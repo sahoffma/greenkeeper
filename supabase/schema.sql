@@ -1,8 +1,10 @@
 -- =============================================================================
--- Greenkeeper – MVP PostgreSQL-Schema für Supabase
+-- Greenkeeper – PostgreSQL-Baseline für Supabase
 -- =============================================================================
 --
--- Ausführung: Supabase Dashboard → SQL Editor → New query → Run
+-- Diese Datei ist der **Baseline-Snapshot** für Neuaufbau und Supabase SQL Editor.
+-- Anschließend alle Dateien in supabase/migrations/ in **Dateiname-Reihenfolge**
+-- (chronologisch) ausführen — siehe docs/database-bootstrap.md.
 --
 -- Tabellen: profiles, areas, activities, fertilization_details,
 --           area_health_scores, daily_briefings, nutrient_budgets, products
@@ -40,6 +42,33 @@ create type public.activity_type as enum (
 create type public.health_score_source as enum (
   'manual',
   'calculated'
+);
+
+-- Governance-Enums (Phase 1/V2); vollständige Tabellen via Migration 20250722 ff.
+create type public.app_user_role as enum (
+  'user',
+  'reviewer',
+  'admin'
+);
+
+create type public.product_verification_status as enum (
+  'draft',
+  'pending_review',
+  'verified',
+  'incomplete',
+  'disputed',
+  'archived',
+  'legacy_imported'
+);
+
+create type public.product_source_type as enum (
+  'manufacturer',
+  'datasheet',
+  'retailer',
+  'user_submission',
+  'ai_research',
+  'internal',
+  'other'
 );
 
 -- ---------------------------------------------------------------------------
@@ -156,12 +185,13 @@ create table public.profiles (
   avatar_url    text,
   locale        text not null default 'de-DE',
   timezone      text not null default 'Europe/Berlin',
-  role          text not null default 'user',
+  role          public.app_user_role not null default 'user'::public.app_user_role,
   reputation_score numeric(5, 2) not null default 100,
   is_blacklisted boolean not null default false,
   blacklisted_at timestamptz,
   blacklist_reason text,
   soft_deleted_at timestamptz,
+  onboarding_completed_at timestamptz,
   created_at    timestamptz not null default timezone('utc', now()),
   updated_at    timestamptz not null default timezone('utc', now())
 );
@@ -188,6 +218,36 @@ comment on table public.areas is 'Verwaltete Rasenflächen eines Benutzers.';
 create index idx_areas_user_id on public.areas (user_id);
 create index idx_areas_user_active on public.areas (user_id, sort_order)
   where archived_at is null;
+
+create table public.care_groups (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null references public.profiles (id) on delete cascade,
+  name          text not null,
+  sort_order    integer not null default 0,
+  archived_at   timestamptz,
+  created_at    timestamptz not null default timezone('utc', now()),
+  updated_at    timestamptz not null default timezone('utc', now())
+);
+
+comment on table public.care_groups is
+  'Pflegegruppen: welche Rasenflächen im Alltag gemeinsam angesprochen werden.';
+
+create index idx_care_groups_user_id on public.care_groups (user_id);
+create index idx_care_groups_user_active on public.care_groups (user_id, sort_order)
+  where archived_at is null;
+
+create table public.care_group_areas (
+  care_group_id uuid not null references public.care_groups (id) on delete cascade,
+  area_id       uuid not null references public.areas (id) on delete cascade,
+  created_at    timestamptz not null default timezone('utc', now()),
+  primary key (care_group_id, area_id),
+  constraint care_group_areas_area_id_unique unique (area_id)
+);
+
+comment on table public.care_group_areas is
+  'Zuordnung zwischen Pflegegruppen und Rasenflächen. Pro Fläche genau eine Zuordnung.';
+
+create index idx_care_group_areas_group_id on public.care_group_areas (care_group_id);
 
 create table public.activities (
   id            uuid primary key default gen_random_uuid(),
@@ -330,7 +390,7 @@ create table public.products (
   datasheet_url         text,
   source_name           text,
   source_checked_at     timestamptz,
-  verification_status   text not null default 'verified',
+  verification_status   public.product_verification_status not null default 'verified'::public.product_verification_status,
   verified_at           timestamptz,
   verified_by           uuid references public.profiles (id) on delete set null,
   last_reviewed_at      timestamptz,
@@ -338,7 +398,7 @@ create table public.products (
   confidence_score      numeric,
   field_confidence      jsonb not null default '{}'::jsonb,
   sources               jsonb not null default '[]'::jsonb,
-  primary_source_type   text,
+  primary_source_type   public.product_source_type,
   primary_source_url    text,
   has_open_change_request boolean not null default false,
   soft_deleted_at       timestamptz,
@@ -400,6 +460,10 @@ create trigger set_areas_updated_at
   before update on public.areas
   for each row execute function public.set_updated_at();
 
+create trigger set_care_groups_updated_at
+  before update on public.care_groups
+  for each row execute function public.set_updated_at();
+
 create trigger validate_activities_area_user
   before insert or update on public.activities
   for each row execute function public.validate_activity_area_user();
@@ -443,6 +507,8 @@ create trigger on_auth_user_created
 
 alter table public.profiles enable row level security;
 alter table public.areas enable row level security;
+alter table public.care_groups enable row level security;
+alter table public.care_group_areas enable row level security;
 alter table public.activities enable row level security;
 alter table public.fertilization_details enable row level security;
 alter table public.measure_details enable row level security;
@@ -476,6 +542,70 @@ create policy "areas_update_own"
 create policy "areas_delete_own"
   on public.areas for delete
   using ((select auth.uid()) = user_id);
+
+create or replace function public.user_owns_care_group(p_care_group_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.care_groups cg
+    where cg.id = p_care_group_id
+      and cg.user_id = (select auth.uid())
+  );
+$$;
+
+create policy "care_groups_select_own"
+  on public.care_groups for select
+  using ((select auth.uid()) = user_id);
+
+create policy "care_groups_insert_own"
+  on public.care_groups for insert
+  with check ((select auth.uid()) = user_id);
+
+create policy "care_groups_update_own"
+  on public.care_groups for update
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
+create policy "care_groups_delete_own"
+  on public.care_groups for delete
+  using ((select auth.uid()) = user_id);
+
+create policy "care_group_areas_select_own"
+  on public.care_group_areas for select
+  using (
+    public.user_owns_care_group(care_group_id)
+    and public.user_owns_area(area_id)
+  );
+
+create policy "care_group_areas_insert_own"
+  on public.care_group_areas for insert
+  with check (
+    public.user_owns_care_group(care_group_id)
+    and public.user_owns_area(area_id)
+  );
+
+create policy "care_group_areas_update_own"
+  on public.care_group_areas for update
+  using (
+    public.user_owns_care_group(care_group_id)
+    and public.user_owns_area(area_id)
+  )
+  with check (
+    public.user_owns_care_group(care_group_id)
+    and public.user_owns_area(area_id)
+  );
+
+create policy "care_group_areas_delete_own"
+  on public.care_group_areas for delete
+  using (
+    public.user_owns_care_group(care_group_id)
+    and public.user_owns_area(area_id)
+  );
 
 create policy "activities_select_own"
   on public.activities for select
@@ -530,11 +660,12 @@ create policy "products_select_authenticated"
   to authenticated
   using (
     soft_deleted_at is null
-    and verification_status <> 'archived'
+    and verification_status <> 'archived'::public.product_verification_status
   );
 
 -- Governance-Tabellen: product_submissions, product_change_requests,
 -- product_versions, product_review_events – siehe Migration 20250722.
+-- Onboarding / Pflegegruppen – siehe Migration 20250725_onboarding_care_groups.sql
 
 -- ---------------------------------------------------------------------------
 -- Seed: Beispielprodukte

@@ -1,9 +1,12 @@
 # Greenkeeper Vision
 
+> **Leitdokument:** Das [Greenkeeper Manifest](../MANIFEST.md) ist die höchste fachliche Referenz für Zweck, Werte und Leitprinzipien. Dieses Dokument ergänzt das Manifest mit vertiefender Produktvision und Umsetzungskontext.
+
 Dieses Dokument beschreibt die **langfristige Vision** von Greenkeeper – unabhängig von technischer Umsetzung, Roadmap-Prioritäten und aktuellem Ist-Stand.
 
 Verwandte Dokumente (ohne inhaltliche Bindung an Umsetzungsstand):
 
+- [Greenkeeper Manifest](../MANIFEST.md) — höchste fachliche Referenz
 - [UX-Prinzipien](./ux-principles.md)
 - [Conversation Model](./conversation-model.md)
 - [Ideen-Index](../ideas/index.md)

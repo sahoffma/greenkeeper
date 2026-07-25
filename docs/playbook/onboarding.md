@@ -8,6 +8,9 @@ Verwandte Dokumente:
 - [Design System](./design-system.md)
 - [Entscheidung DL-001](../decisions/dl-001.md) – optionale Flächengröße
 - [Entscheidung DL-004](../decisions/dl-004.md) – Anzahl Flächen vs. gemeinsame Pflege
+- [Entscheidung DL-005](../decisions/dl-005.md) – Pflegepräferenz bei mehreren Flächen
+- [Entscheidung DL-006](../decisions/dl-006.md) – Mehrflächen-Anzahl, Namen, Größe je Fläche
+- [Entscheidung DL-007](../decisions/dl-007.md) – Pflegegruppen, atomarer Abschluss
 
 ---
 
@@ -26,11 +29,30 @@ Greenkeeper soll **ohne unnötige Hürden** nutzbar sein. Onboarding führt den 
 | Schritt | Route | Inhalt |
 |---------|-------|--------|
 | 1 – Willkommen | `/onboarding` | Einstieg, Claim, „Garten einrichten“ |
-| 2 – Rasenflächen | `/onboarding/2` | Eine oder mehrere Rasenflächen wählen |
-| 3 – Größe | `/onboarding/3?areas=single\|multiple` | Größe der Fläche(n); `multiple` noch Platzhalter |
-| 4 – Folgeschritt | `/onboarding/4` | Weiterer Onboarding-Schritt (in Umsetzung) |
+| 2 – Anzahl | `/onboarding/2` | **Einmalig:** 1, 2, 3 oder mehr als 3 Rasenflächen |
+| 2b – Pflegepräferenz | `/onboarding/2/care` | Nur bei 2–20 Flächen: gemeinsam vs. einzeln pflegen |
+| 3 – Größe | `/onboarding/3?areas=single\|multiple&…` | Größe (single); Größe je Fläche (multiple); **Abschluss mit „Los geht’s“** |
+| 4 – Legacy | `/onboarding/4` | Nur noch Abwärtskompatibilität für alte URLs (Speichern → Startseite) |
 
-Query-Parameter transportieren den Zwischenstand (`areas`, optional `size`), bis persistente Onboarding-Speicherung implementiert ist.
+Die frühere Route `/onboarding/2/count` leitet auf den passenden Schritt weiter (Abwärtskompatibilität).
+
+Query-Parameter transportieren den **laufenden** Onboarding-State (`areas`, `count`, `care`, `index`, `name1…`, optional `size` / `size1…`). Nach erfolgreichem Abschluss werden die Flächen in Supabase gespeichert und der Nutzer gelangt zur Startseite (`/`).
+
+---
+
+## Schritt 2 – Anzahl Rasenflächen (gemeinsamer Auswahl-Schritt)
+
+Headline: **„Wie viele Rasenflächen hat dein Garten?“**
+
+Direkte Auswahl:
+
+- **1 Rasenfläche** → Größeneingabe (Einzelfläche)
+- **2**, **3 Rasenflächen** → Pflegefrage
+- **Mehr als 3** → Eingabe **4–20**, danach Pflegefrage
+
+Die frühere Unterscheidung „Eine Rasenfläche“ / „Mehrere Rasenflächen“ und der separate spätere Anzahl-Schritt entfallen.
+
+Siehe [DL-004](../decisions/dl-004.md), [DL-006](../decisions/dl-006.md).
 
 ---
 
@@ -54,38 +76,39 @@ Query-Parameter transportieren den Zwischenstand (`areas`, optional `size`), bis
 ### Weiter-Button
 
 - Aktiv nur bei gültiger positiver Ganzzahl
-- Navigiert zu Schritt 4 mit `size` in der URL
+- Auf dem **letzten Schritt** heißt der Button **„Los geht’s“** (statt „Weiter“)
+- Speichert atomar über **`complete_onboarding`** (Flächen, Pflegegruppen, Abschlussstatus) und navigiert zur **Startseite** (`/`)
 
 ### Später eingeben
 
 - Dezenter Textlink **„Später eingeben“** unter dem Button
-- Gleicher nächster Schritt wie „Weiter“, **ohne** gespeicherte Größe
+- Auf dem letzten Schritt ebenfalls **Abschluss** — ohne gespeicherte Größe für diese Fläche
 - Flächengröße = `null` / unbekannt → später unter **Meine Flächen** ergänzbar
 - **Keine** Warnung, kein Hinweis auf „unvollständiges“ Onboarding
+
+### Speicherfehler
+
+- Ruhige Meldung: **„Das hat gerade nicht geklappt. Bitte versuche es noch einmal.“**
+- Eingaben bleiben erhalten; erneuter Versuch über denselben Button
 
 Siehe [DL-001](../decisions/dl-001.md).
 
 ---
 
-## Schritt 2 – Anzahl Rasenflächen
+## Mehrere Rasenflächen – Produktlogik (DL-004, DL-005, DL-006)
 
-- Zwei vertikale Auswahlkarten: **eine** vs. **mehrere** Rasenflächen
-- Klare visuelle Hierarchie, Karten interaktiv (Hover/Active)
-- Navigation per Query-Parameter `areas=single|multiple`
+1. Nutzer wählt **einmalig** die Anzahl: **1**, **2**, **3** oder **mehr als 3** (4–20) — [DL-006](../decisions/dl-006.md)
+2. Bei **1 Fläche** → direkt freiwillige Größenangabe ([DL-001](../decisions/dl-001.md))
+3. Bei **2–20 Flächen** → **„Wie pflegst du deine Rasenflächen?“** ([DL-005](../decisions/dl-005.md))
+   - **Meistens gemeinsam** (`together`)
+   - **Lieber einzeln** (`separate`)
+   - Hinweis: **Du kannst das später jederzeit ändern.**
+4. **Automatische Namen** — `Rasenfläche 1`, `Rasenfläche 2`, … (keine Namenseingabe; Umbenennung nach Onboarding geplant)
+5. **Größe je Fläche** — nacheinander, freiwillig, mit Orientierung „Rasenfläche X von Y“ und **Später eingeben** pro Fläche
+6. **Abschluss** — auf dem letzten Größen-Screen mit **„Los geht’s“** direkt zur Startseite (`/`); keine sichtbare Zusammenfassung — [DL-007](../decisions/dl-007.md)
+7. Jede Rasenfläche bleibt **fachlich eigenständig**. `together` / `separate` sind **Onboarding-Eingaben** und werden in **Pflegegruppen** übersetzt (internes Modell, keine sichtbare UX).
 
-Siehe [DL-004](../decisions/dl-004.md): Die **Anzahl** der Flächen und die Frage nach **gleicher Pflege** sind getrennte Sachverhalte.
-
----
-
-## Mehrere Rasenflächen – Produktlogik (DL-004)
-
-1. Nutzer wählt zunächst **eine oder mehrere** Rasenflächen (Schritt 2).
-2. Bei **mehreren** Flächen werden die Flächen **einzeln erfasst** (Onboarding noch in Umsetzung für `areas=multiple`).
-3. **Erst danach** folgt die Frage: **„Pflegst du alle Rasenflächen gleich?“**
-4. **Ja** → ein gemeinsamer Pflegeplan für alle erfassten Flächen
-5. **Nein** → getrennte Pflegepläne pro Fläche bzw. Pflegekontext
-
-**Begründung:** Mehrere räumlich getrennte Flächen können identisch gepflegt werden. Die bloße Anzahl darf nicht automatisch mehrere Pflegepläne erzeugen.
+**Begründung:** Mehrere räumlich getrennte Flächen können identisch gepflegt werden. Die Anzahl wird nur einmal abgefragt — ohne Wiederholung.
 
 Entwurfsidee: [GK-013](../ideas/gk-013.md)
 
@@ -109,9 +132,10 @@ Entwurfsidee: [GK-013](../ideas/gk-013.md)
 
 ## Offene Punkte
 
-- Onboarding für **mehrere** Rasenflächen (Schritt 3 `multiple`) – siehe [DL-004](../decisions/dl-004.md), [GK-013](../ideas/gk-013.md)
 - Freundliche Erinnerung bei fehlender Flächengröße nach Onboarding – siehe [GK-014](../ideas/gk-014.md)
-- Persistente Speicherung statt Query-Parameter
-- Abschluss und Übergang in Home-Experience nach Schritt 4
+- Onboarding nur mit Session / Route-Guards — siehe Folgearbeit
+- Umbenennung von Rasenflächen nach dem Onboarding
+- Sichtbare Verwaltung von Pflegegruppen (Zusammenführen/Trennen)
+- Home-Experience: Startseite (`/`) zeigt noch Dummy-Daten statt gespeicherter Flächen
 
 Neue Onboarding-Ideen → [ideas/](../ideas/index.md). Getroffene Entscheidungen → [decisions/](../decisions/index.md).

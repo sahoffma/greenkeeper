@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -7,25 +8,53 @@ import {
   type ReactNode,
 } from 'react'
 import type { AuthError, Session, User } from '@supabase/supabase-js'
+import { fetchUserProfileState, isOnboardingCompleted } from '../lib/profile'
 import { supabase } from '../lib/supabase'
 
 interface AuthContextValue {
   session: Session | null
   user: User | null
-  loading: boolean
+  bootstrapping: boolean
+  onboardingCompleted: boolean
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>
   signUp: (email: string, password: string) => Promise<{
     error: AuthError | null
     needsEmailConfirmation: boolean
   }>
   signOut: () => Promise<void>
+  refreshProfile: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [profileLoading, setProfileLoading] = useState(false)
+  const [onboardingCompleted, setOnboardingCompleted] = useState(false)
+
+  const loadProfile = useCallback(async (userId: string) => {
+    setProfileLoading(true)
+
+    try {
+      const profile = await fetchUserProfileState(userId)
+      setOnboardingCompleted(isOnboardingCompleted(profile))
+    } catch (error) {
+      console.error('Profil konnte nicht geladen werden:', error)
+      setOnboardingCompleted(false)
+    } finally {
+      setProfileLoading(false)
+    }
+  }, [])
+
+  const refreshProfile = useCallback(async () => {
+    if (!session?.user.id) {
+      setOnboardingCompleted(false)
+      return
+    }
+
+    await loadProfile(session.user.id)
+  }, [loadProfile, session?.user.id])
 
   useEffect(() => {
     let mounted = true
@@ -42,7 +71,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       setSession(data.session)
-      setLoading(false)
+      setAuthLoading(false)
+
+      if (data.session?.user.id) {
+        await loadProfile(data.session.user.id)
+      } else {
+        setOnboardingCompleted(false)
+        setProfileLoading(false)
+      }
     }
 
     void loadSession()
@@ -51,20 +87,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession)
-      setLoading(false)
+      setAuthLoading(false)
+
+      if (nextSession?.user.id) {
+        void loadProfile(nextSession.user.id)
+      } else {
+        setOnboardingCompleted(false)
+        setProfileLoading(false)
+      }
     })
 
     return () => {
       mounted = false
       subscription.unsubscribe()
     }
-  }, [])
+  }, [loadProfile])
+
+  const bootstrapping = authLoading || (session !== null && profileLoading)
 
   const value = useMemo<AuthContextValue>(
     () => ({
       session,
       user: session?.user ?? null,
-      loading,
+      bootstrapping,
+      onboardingCompleted,
       async signIn(email, password) {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         return { error }
@@ -79,8 +125,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async signOut() {
         await supabase.auth.signOut()
       },
+      refreshProfile,
     }),
-    [session, loading],
+    [session, bootstrapping, onboardingCompleted, refreshProfile],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

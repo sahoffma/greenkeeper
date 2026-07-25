@@ -1,8 +1,9 @@
-import type { DummyLawnArea } from '../../data/homeDummyData'
+import { Link } from 'react-router-dom'
+import type { Area } from '../../types/area'
 import styles from './LawnCarouselSection.module.css'
 
 interface LawnCarouselSectionProps {
-  lawnAreas: DummyLawnArea[]
+  lawnAreas: Area[]
 }
 
 function getTrackClassName(count: number): string {
@@ -17,6 +18,10 @@ function getTrackClassName(count: number): string {
   return styles.trackScroll
 }
 
+function getImageVariant(index: number): 'main' | 'side' {
+  return index % 2 === 0 ? 'main' : 'side'
+}
+
 export function LawnCarouselSection({ lawnAreas }: LawnCarouselSectionProps) {
   if (lawnAreas.length === 0) {
     return null
@@ -27,37 +32,39 @@ export function LawnCarouselSection({ lawnAreas }: LawnCarouselSectionProps) {
   return (
     <section className={styles.section} aria-label="Rasenflächen">
       <div className={trackClassName}>
-        {lawnAreas.map((area) => (
+        {lawnAreas.map((area, index) => (
           <article key={area.id} className={styles.card}>
-            <div
-              className={`${styles.image} ${styles[`image--${area.imageVariant}`]}`}
-              role="img"
-              aria-label={`Foto ${area.name}`}
-            />
+            <Link to={`/area/${area.id}`} className={styles.cardLink}>
+              <div
+                className={`${styles.image} ${styles[`image--${getImageVariant(index)}`]}`}
+                role="img"
+                aria-label={`Rasenfläche ${area.name}`}
+              />
 
-            <div className={styles.content}>
-              <div className={styles.meta}>
-                <h3 className={styles.name}>{area.name}</h3>
-                <p className={styles.lastActivity}>{area.lastActivity}</p>
+              <div className={styles.content}>
+                <div className={styles.meta}>
+                  <h3 className={styles.name}>{area.name}</h3>
+                  <p className={styles.detail}>{area.sizeLabel}</p>
+                </div>
+
+                <span
+                  className={styles.micButton}
+                  aria-hidden="true"
+                  onClick={(event) => event.preventDefault()}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path
+                      d="M12 14.5a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5.5a3 3 0 0 0 3 3Z"
+                      fill="currentColor"
+                    />
+                    <path
+                      d="M19 11.5a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V21H9a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-2.58A7 7 0 0 0 19 11.5Z"
+                      fill="currentColor"
+                    />
+                  </svg>
+                </span>
               </div>
-
-              <button
-                type="button"
-                className={styles.micButton}
-                aria-label={`Spracheingabe für ${area.name}`}
-              >
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                  <path
-                    d="M12 14.5a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5.5a3 3 0 0 0 3 3Z"
-                    fill="currentColor"
-                  />
-                  <path
-                    d="M19 11.5a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V21H9a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-2.58A7 7 0 0 0 19 11.5Z"
-                    fill="currentColor"
-                  />
-                </svg>
-              </button>
-            </div>
+            </Link>
           </article>
         ))}
       </div>

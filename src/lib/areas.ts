@@ -60,6 +60,31 @@ export function mapAreaRow(row: AreaRow): Area {
   }
 }
 
+export interface CreateAreaInput {
+  name: string
+  sizeSqm: number | null
+  sortOrder: number
+}
+
+export async function createAreas(userId: string, areas: CreateAreaInput[]): Promise<void> {
+  if (areas.length === 0) {
+    throw new Error('Es wurden keine Rasenflächen übergeben.')
+  }
+
+  const rows = areas.map((area) => ({
+    user_id: userId,
+    name: area.name,
+    size_sqm: area.sizeSqm,
+    sort_order: area.sortOrder,
+  }))
+
+  const { error } = await supabase.from('areas').insert(rows)
+
+  if (error) {
+    throw new Error(getErrorMessage(error, 'Flächen konnten nicht gespeichert werden.'))
+  }
+}
+
 export async function fetchAreas(): Promise<Area[]> {
   const { data, error } = await supabase
     .from('areas')
