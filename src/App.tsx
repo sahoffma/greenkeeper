@@ -1,4 +1,5 @@
 import { Routes, Route } from 'react-router-dom'
+import { AuthRecoveryRedirect } from './components/AuthRecoveryRedirect'
 import { EmailConfirmationRoute } from './components/EmailConfirmationRoute'
 import { GuestRoute } from './components/GuestRoute'
 import { OnboardingRoute } from './components/OnboardingRoute'
@@ -28,7 +29,9 @@ import { NewActivityPage } from './pages/NewActivityPage'
 
 export default function App() {
   return (
-    <Routes>
+    <>
+      <AuthRecoveryRedirect />
+      <Routes>
       <Route path="/" element={<RootPage />} />
       <Route
         path="/login"
@@ -158,5 +161,6 @@ export default function App() {
         <Route path="more" element={<MorePage />} />
       </Route>
     </Routes>
+    </>
   )
 }

@@ -9,6 +9,12 @@ import {
 } from 'react'
 import type { AuthError, Session, User } from '@supabase/supabase-js'
 import { emailConfirmRedirectUrl, isEmailConfirmed, passwordResetRedirectUrl } from '../lib/authState'
+import {
+  clearPasswordRecoveryPending,
+  isPasswordRecoveryPending,
+  isRecoveryHash,
+  markPasswordRecoveryPending,
+} from '../lib/authCallback'
 import { fetchUserProfileState, isOnboardingCompleted } from '../lib/profile'
 import { supabase } from '../lib/supabase'
 
@@ -28,6 +34,8 @@ interface AuthContextValue {
   requestPasswordReset: (email: string) => Promise<{ error: AuthError | null }>
   updatePassword: (password: string) => Promise<{ error: AuthError | null }>
   refreshProfile: () => Promise<void>
+  passwordRecoveryPending: boolean
+  clearPasswordRecovery: () => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -37,6 +45,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authLoading, setAuthLoading] = useState(true)
   const [profileLoading, setProfileLoading] = useState(false)
   const [onboardingCompleted, setOnboardingCompleted] = useState(false)
+  const [passwordRecoveryPending, setPasswordRecoveryPending] = useState(
+    () => isPasswordRecoveryPending() || isRecoveryHash(),
+  )
 
   const user = session?.user ?? null
   const emailConfirmed = isEmailConfirmed(user)
@@ -67,6 +78,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true
 
+    if (isRecoveryHash()) {
+      markPasswordRecoveryPending()
+      setPasswordRecoveryPending(true)
+    }
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        markPasswordRecoveryPending()
+        setPasswordRecoveryPending(true)
+      }
+
+      setSession(nextSession)
+      setAuthLoading(false)
+
+      if (nextSession?.user.id) {
+        void loadProfile(nextSession.user.id)
+      } else {
+        setOnboardingCompleted(false)
+        setProfileLoading(false)
+      }
+    })
+
     async function loadSession() {
       const { data, error } = await supabase.auth.getSession()
 
@@ -91,25 +126,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     void loadSession()
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession)
-      setAuthLoading(false)
-
-      if (nextSession?.user.id) {
-        void loadProfile(nextSession.user.id)
-      } else {
-        setOnboardingCompleted(false)
-        setProfileLoading(false)
-      }
-    })
-
     return () => {
       mounted = false
       subscription.unsubscribe()
     }
   }, [loadProfile])
+
+  const clearPasswordRecovery = useCallback(() => {
+    clearPasswordRecoveryPending()
+    setPasswordRecoveryPending(false)
+  }, [])
 
   const bootstrapping = authLoading || (session !== null && profileLoading)
 
@@ -161,11 +187,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       async updatePassword(password) {
         const { error } = await supabase.auth.updateUser({ password })
+
+        if (!error) {
+          clearPasswordRecoveryPending()
+          setPasswordRecoveryPending(false)
+        }
+
         return { error }
       },
       refreshProfile,
+      passwordRecoveryPending,
+      clearPasswordRecovery,
     }),
-    [session, user, bootstrapping, emailConfirmed, onboardingCompleted, refreshProfile],
+    [session, user, bootstrapping, emailConfirmed, onboardingCompleted, refreshProfile, passwordRecoveryPending, clearPasswordRecovery],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

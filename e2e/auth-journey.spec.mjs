@@ -140,13 +140,24 @@ test('13 – Passwort-Zurücksetzen mit gültigem Link', async ({ page }) => {
   const user = trackUser(await createConfirmedUser('reset-valid'))
   const link = await generateRecoveryLink(user.email)
   await page.goto(link)
-  await expect(page.getByRole('heading', { name: 'Neues Passwort festlegen' })).toBeVisible({
+  await expect(page).toHaveURL(/\/passwort-zuruecksetzen/, { timeout: 20_000 })
+  await expect(page.getByRole('heading', { name: 'Neues Passwort' })).toBeVisible({
     timeout: 20_000,
   })
   await page.getByRole('textbox', { name: 'Neues Passwort' }).fill('NeuesPasswort123!')
   await page.getByRole('textbox', { name: 'Passwort bestätigen' }).fill('NeuesPasswort123!')
   await page.getByRole('button', { name: 'Passwort speichern' }).click()
   await page.waitForURL(/\/(login|onboarding|$)/, { timeout: 20_000 })
+})
+
+test('13b – Recovery-Link auf Startseite leitet zur Reset-Seite', async ({ page }) => {
+  const user = trackUser(await createConfirmedUser('reset-root'))
+  const link = await generateRecoveryLink(user.email, `${process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:5173'}/`)
+  await page.goto(link)
+  await expect(page).toHaveURL(/\/passwort-zuruecksetzen/, { timeout: 20_000 })
+  await expect(page.getByRole('heading', { name: 'Neues Passwort' })).toBeVisible({
+    timeout: 20_000,
+  })
 })
 
 test('14 – Ungültiger Rücksetzlink', async ({ page }) => {

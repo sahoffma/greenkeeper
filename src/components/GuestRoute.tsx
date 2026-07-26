@@ -2,6 +2,7 @@ import { Navigate, useLocation } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { isEmailConfirmed } from '../lib/authState'
+import { PASSWORD_RESET_PATH } from '../lib/authCallback'
 import { AuthLoadingScreen } from './AuthLoadingScreen'
 
 interface GuestRouteProps {
@@ -9,7 +10,7 @@ interface GuestRouteProps {
 }
 
 export function GuestRoute({ children }: GuestRouteProps) {
-  const { session, user, bootstrapping, onboardingCompleted } = useAuth()
+  const { session, user, bootstrapping, onboardingCompleted, passwordRecoveryPending } = useAuth()
   const location = useLocation()
   const redirectPath =
     typeof location.state === 'object' &&
@@ -24,6 +25,10 @@ export function GuestRoute({ children }: GuestRouteProps) {
   }
 
   if (session) {
+    if (passwordRecoveryPending) {
+      return <Navigate to={PASSWORD_RESET_PATH} replace />
+    }
+
     if (!isEmailConfirmed(user)) {
       return <Navigate to="/email-bestaetigen" replace />
     }

@@ -1,13 +1,53 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { AuthPasswordField } from '../components/auth/AuthPasswordField'
 import { useAuth } from '../contexts/AuthContext'
 import { mapAuthError, validatePasswordConfirmation } from '../lib/authMessages'
 import { resolveAuthenticatedDestination } from '../lib/authState'
+import { markPasswordRecoveryPending } from '../lib/authCallback'
 import { supabase } from '../lib/supabase'
-import styles from './AuthPage.module.css'
+import layoutStyles from './onboarding/onboardingScreen.module.css'
+import themeStyles from './onboarding/onboardingTheme.module.css'
+import welcomeStyles from './onboarding/OnboardingWelcomePage.module.css'
+import styles from './ResetPasswordPage.module.css'
+
+function AuthShell({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string
+  subtitle?: string
+  children: ReactNode
+}) {
+  return (
+    <div className={`app-shell ${themeStyles.shell}`}>
+      <main className={`${layoutStyles.screen} ${themeStyles.screen} ${styles.screen}`}>
+        <header className={styles.header}>
+          <div className={`${welcomeStyles.brandBlock} ${styles.brandBlock}`}>
+            <div className={welcomeStyles.logoMark} aria-hidden="true" />
+            <p className={welcomeStyles.wordmark}>Greenkeeper</p>
+          </div>
+
+          <h1 className={`${themeStyles.title} ${styles.title}`}>{title}</h1>
+
+          {subtitle && <p className={styles.subtitle}>{subtitle}</p>}
+        </header>
+
+        {children}
+      </main>
+    </div>
+  )
+}
 
 export function ResetPasswordPage() {
-  const { session, updatePassword, onboardingCompleted, emailConfirmed } = useAuth()
+  const {
+    session,
+    updatePassword,
+    onboardingCompleted,
+    emailConfirmed,
+    clearPasswordRecovery,
+  } = useAuth()
   const navigate = useNavigate()
   const [password, setPassword] = useState('')
   const [passwordConfirmation, setPasswordConfirmation] = useState('')
@@ -21,6 +61,27 @@ export function ResetPasswordPage() {
     let mounted = true
 
     async function verifyRecoverySession() {
+      const searchParams = new URLSearchParams(window.location.search)
+      const code = searchParams.get('code')
+
+      if (code) {
+        markPasswordRecoveryPending()
+
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+
+        if (!mounted) {
+          return
+        }
+
+        if (exchangeError) {
+          setLinkValid(false)
+          setCheckingLink(false)
+          return
+        }
+
+        window.history.replaceState(null, '', window.location.pathname)
+      }
+
       const { data, error: sessionError } = await supabase.auth.getSession()
 
       if (!mounted) {
@@ -37,16 +98,20 @@ export function ResetPasswordPage() {
       setCheckingLink(false)
     }
 
-    void verifyRecoverySession()
-
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (event === 'PASSWORD_RECOVERY' || nextSession) {
+        if (event === 'PASSWORD_RECOVERY') {
+          markPasswordRecoveryPending()
+        }
+
         setLinkValid(Boolean(nextSession))
         setCheckingLink(false)
       }
     })
+
+    void verifyRecoverySession()
 
     return () => {
       mounted = false
@@ -80,6 +145,7 @@ export function ResetPasswordPage() {
         return
       }
 
+      clearPasswordRecovery()
       setMessage('Dein Passwort wurde gespeichert.')
 
       if (session && emailConfirmed) {
@@ -95,85 +161,62 @@ export function ResetPasswordPage() {
 
   if (checkingLink) {
     return (
-      <div className="app-shell">
-        <main className={`page page--home ${styles.page}`}>
-          <p className={styles.bodyText}>Link wird geprüft …</p>
-        </main>
-      </div>
+      <AuthShell title="Neues Passwort">
+        <section className={styles.card}>
+          <p className={styles.loadingText}>Link wird geprüft …</p>
+        </section>
+      </AuthShell>
     )
   }
 
   if (!linkValid) {
     return (
-      <div className="app-shell">
-        <main className={`page page--home ${styles.page}`}>
-          <header className="page-header">
-            <h1 className="page-title">Link ungültig</h1>
-          </header>
-
-          <section className={`surface-card ${styles.card}`}>
-            <p className={styles.bodyText}>
-              Der Link ist ungültig oder abgelaufen. Bitte fordere einen neuen Link an.
-            </p>
-            <p className={styles.switch}>
-              <Link to="/passwort-vergessen" className={styles.switchLink}>
-                Neuen Link anfordern
-              </Link>
-            </p>
-          </section>
-        </main>
-      </div>
+      <AuthShell
+        title="Link ungültig"
+        subtitle="Der Link ist ungültig oder abgelaufen. Bitte fordere einen neuen Link an."
+      >
+        <section className={styles.card}>
+          <p className={`${welcomeStyles.loginHint} ${styles.loginHint}`}>
+            <Link to="/passwort-vergessen" className={welcomeStyles.loginLink}>
+              Neuen Link anfordern
+            </Link>
+          </p>
+        </section>
+      </AuthShell>
     )
   }
 
   return (
-    <div className="app-shell">
-      <main className={`page page--home ${styles.page}`}>
-        <header className="page-header">
-          <h1 className="page-title">Neues Passwort festlegen</h1>
-        </header>
+    <AuthShell
+      title="Neues Passwort"
+      subtitle="Lege ein neues Passwort für dein Greenkeeper-Konto fest."
+    >
+      <section className={styles.card} aria-labelledby="reset-heading">
+        <h2 id="reset-heading" className="visually-hidden">
+          Passwort zurücksetzen
+        </h2>
 
-        <section className={`surface-card ${styles.card}`} aria-labelledby="reset-heading">
-          <h2 id="reset-heading" className={styles.cardTitle}>
-            Wähle ein neues Passwort
-          </h2>
+        <form className={styles.form} onSubmit={handleSubmit} noValidate>
+          <AuthPasswordField label="Neues Passwort" value={password} onChange={setPassword} />
 
-          <form className={styles.form} onSubmit={handleSubmit}>
-            <label className={styles.field}>
-              <span className={styles.label}>Neues Passwort</span>
-              <input
-                className={styles.input}
-                type="password"
-                autoComplete="new-password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
-            </label>
+          <AuthPasswordField
+            label="Passwort bestätigen"
+            value={passwordConfirmation}
+            onChange={setPasswordConfirmation}
+          />
 
-            <label className={styles.field}>
-              <span className={styles.label}>Passwort bestätigen</span>
-              <input
-                className={styles.input}
-                type="password"
-                autoComplete="new-password"
-                required
-                minLength={6}
-                value={passwordConfirmation}
-                onChange={(event) => setPasswordConfirmation(event.target.value)}
-              />
-            </label>
+          {error && <p className={styles.error}>{error}</p>}
+          {message && <p className={styles.message}>{message}</p>}
 
-            {error && <p className={styles.error}>{error}</p>}
-            {message && <p className={styles.message}>{message}</p>}
-
-            <button className={styles.submit} type="submit" disabled={submitting}>
-              {submitting ? 'Bitte warten …' : 'Passwort speichern'}
-            </button>
-          </form>
-        </section>
-      </main>
-    </div>
+          <button
+            className={layoutStyles.primaryButton}
+            type="submit"
+            disabled={submitting}
+          >
+            {submitting ? 'Bitte warten …' : 'Passwort speichern'}
+          </button>
+        </form>
+      </section>
+    </AuthShell>
   )
 }
