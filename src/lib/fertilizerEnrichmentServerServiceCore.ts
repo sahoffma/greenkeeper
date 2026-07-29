@@ -15,7 +15,6 @@ import type {
   StartFertilizerEnrichmentRequest,
 } from '../types/fertilizerEnrichmentOrchestration'
 import {
-  accessContextsMatch,
   assertPublicFertilizerEnrichmentJobShape,
   type FertilizerEnrichmentJobRecord,
   type FertilizerEnrichmentJobRepository,
@@ -50,6 +49,7 @@ export class FertilizerEnrichmentServerApiError extends Error {
 export interface FertilizerEnrichmentServerServiceDependencies {
   repository: FertilizerEnrichmentJobRepository
   resolveOrchestrationDependencies: () => OrchestrateFertilizerEnrichmentDependencies
+  resolveExpiresAt: (job: FertilizerEnrichmentJob, now: string) => string
   now?: () => string
   createJobId?: () => string
   createOrchestrationRunId?: () => string
@@ -360,6 +360,17 @@ function cloneJob(job: FertilizerEnrichmentJob): FertilizerEnrichmentJob {
   return snapshot
 }
 
+function applyExpiresAt(
+  job: FertilizerEnrichmentJob,
+  resolveExpiresAt: (job: FertilizerEnrichmentJob, now: string) => string,
+  timestamp: string,
+): FertilizerEnrichmentJob {
+  return {
+    ...job,
+    expiresAt: resolveExpiresAt(job, timestamp),
+  }
+}
+
 function toPublicJob(record: FertilizerEnrichmentJobRecord): FertilizerEnrichmentJob {
   return cloneJob(record.job)
 }
@@ -370,14 +381,10 @@ async function loadAuthorizedRecord(
   accessContext: FertilizerEnrichmentAccessContext,
 ): Promise<FertilizerEnrichmentJobRecord> {
   const normalizedJobId = assertNonEmptyString(jobId, 'jobId', 512)
-  const record = await repository.getByJobId(normalizedJobId)
+  const record = await repository.getByJobId(normalizedJobId, accessContext)
 
   if (!record) {
     throw apiError('job_not_found', 'Enrichment job was not found.', 404)
-  }
-
-  if (!accessContextsMatch(record.job.accessContext, accessContext)) {
-    throw apiError('unauthorized', 'Access to this enrichment job is not authorized.', 403)
   }
 
   return record
@@ -512,29 +519,35 @@ export function createFertilizerEnrichmentServerService(
         const jobId = createJobId()
         const orchestrationRunId = createOrchestrationRunId()
 
-        const initialJob: FertilizerEnrichmentJob = {
-          jobId,
-          orchestrationRunId,
-          idempotencyKey,
-          accessContext,
-          objectCategory: input.objectCategory,
-          identityFingerprint: assertNonEmptyString(
-            input.identity.identityFingerprint,
-            'input.identity.identityFingerprint',
-            512,
-          ),
-          createdAt: timestamp,
-          updatedAt: timestamp,
-          result: createRecognizedPlaceholderResult(orchestrationRunId, timestamp, input),
-        }
+        const initialJob = applyExpiresAt(
+          {
+            jobId,
+            orchestrationRunId,
+            idempotencyKey,
+            accessContext,
+            objectCategory: input.objectCategory,
+            identityFingerprint: assertNonEmptyString(
+              input.identity.identityFingerprint,
+              'input.identity.identityFingerprint',
+              512,
+            ),
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            result: createRecognizedPlaceholderResult(orchestrationRunId, timestamp, input),
+          },
+          dependencies.resolveExpiresAt,
+          timestamp,
+        )
 
         const initialRecord: FertilizerEnrichmentJobRecord = {
           job: initialJob,
           orchestrationInput: structuredClone(input),
           lastSourceProvisionIdempotencyKey: null,
+          recordSchemaVersion: 1,
+          revision: 1,
         }
 
-        await dependencies.repository.save(initialRecord)
+        const savedInitial = await dependencies.repository.save(initialRecord)
 
         const result = await runOrchestrationForJob(
           dependencies,
@@ -544,13 +557,17 @@ export function createFertilizerEnrichmentServerService(
         )
 
         const completedRecord: FertilizerEnrichmentJobRecord = {
-          ...initialRecord,
-          job: {
-            ...initialJob,
-            orchestrationRunId: result.orchestrationRunId,
-            updatedAt: now(),
-            result,
-          },
+          ...savedInitial,
+          job: applyExpiresAt(
+            {
+              ...initialJob,
+              orchestrationRunId: result.orchestrationRunId,
+              updatedAt: now(),
+              result,
+            },
+            dependencies.resolveExpiresAt,
+            now(),
+          ),
           orchestrationInput: structuredClone(input),
         }
 
@@ -685,12 +702,16 @@ export function createFertilizerEnrichmentServerService(
           ...record,
           orchestrationInput: continuedInput,
           lastSourceProvisionIdempotencyKey: idempotencyKey,
-          job: {
-            ...record.job,
-            orchestrationRunId: result.orchestrationRunId,
-            updatedAt: timestamp,
-            result,
-          },
+          job: applyExpiresAt(
+            {
+              ...record.job,
+              orchestrationRunId: result.orchestrationRunId,
+              updatedAt: timestamp,
+              result,
+            },
+            dependencies.resolveExpiresAt,
+            timestamp,
+          ),
         }
 
         const saved = await dependencies.repository.update(updatedRecord)
@@ -728,11 +749,15 @@ export function createFertilizerEnrichmentServerService(
         const timestamp = now()
         const updatedRecord: FertilizerEnrichmentJobRecord = {
           ...record,
-          job: {
-            ...record.job,
-            updatedAt: timestamp,
-            result: buildCancelledOrchestrationResult(record.job.result, timestamp),
-          },
+          job: applyExpiresAt(
+            {
+              ...record.job,
+              updatedAt: timestamp,
+              result: buildCancelledOrchestrationResult(record.job.result, timestamp),
+            },
+            dependencies.resolveExpiresAt,
+            timestamp,
+          ),
         }
 
         const saved = await dependencies.repository.update(updatedRecord)
@@ -747,6 +772,10 @@ export function createFertilizerEnrichmentServerService(
 export type FertilizerEnrichmentServerService = ReturnType<
   typeof createFertilizerEnrichmentServerService
 >
+
+export function createTestResolveExpiresAt(expiresAt: string) {
+  return (_job: FertilizerEnrichmentJob, _now: string) => expiresAt
+}
 
 export function createTestOrchestrationDependencies(
   adapters: FertilizerSourceAdapter[],

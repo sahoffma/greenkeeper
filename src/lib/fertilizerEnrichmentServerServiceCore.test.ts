@@ -18,12 +18,14 @@ import * as orchestrationCore from './fertilizerEnrichmentOrchestrationCore'
 import {
   createFertilizerEnrichmentServerService,
   createTestOrchestrationDependencies,
+  createTestResolveExpiresAt,
   FertilizerEnrichmentServerApiError,
   type FertilizerEnrichmentServerRequestContext,
 } from './fertilizerEnrichmentServerServiceCore'
 import type { FertilizerSourceAdapter } from './fertilizerEnrichmentOrchestrationCore'
 
 const FIXED_NOW = '2026-07-29T10:00:00.000Z'
+const TEST_EXPIRES_AT = '2026-08-05T10:00:00.000Z'
 const ACCESS: FertilizerEnrichmentAccessContext = { kind: 'session', sessionId: 'session-1' }
 const OTHER_ACCESS: FertilizerEnrichmentAccessContext = { kind: 'session', sessionId: 'session-2' }
 const REQUEST_CTX: FertilizerEnrichmentServerRequestContext = {
@@ -136,6 +138,7 @@ function createService(
     createJobId: () => 'job-1',
     createOrchestrationRunId: () => 'orch-run',
     createNormalizationRunId: () => 'norm-run',
+    resolveExpiresAt: createTestResolveExpiresAt(TEST_EXPIRES_AT),
   })
 
   return { service, repository, orchestrationSpy }
@@ -154,6 +157,7 @@ function needsInputRecord(
       identityFingerprint: 'icl-spring-start-15-0-26',
       createdAt: FIXED_NOW,
       updatedAt: FIXED_NOW,
+      expiresAt: TEST_EXPIRES_AT,
       result: {
         orchestrationRunId: 'orch-run',
         startedAt: FIXED_NOW,
@@ -169,6 +173,8 @@ function needsInputRecord(
     },
     orchestrationInput: buildInput(),
     lastSourceProvisionIdempotencyKey: null,
+    recordSchemaVersion: 1,
+    revision: 1,
     ...overrides,
   }
 }
@@ -189,7 +195,7 @@ describe('fertilizerEnrichmentServerServiceCore', () => {
 
     expect(orchestrationSpy).toHaveBeenCalledTimes(1)
     expect(job.jobId).toBe('job-1')
-    expect(await repository.getByJobId('job-1')).not.toBeNull()
+    expect(await repository.getByJobId('job-1', ACCESS)).not.toBeNull()
     expect(job.result.status).toBe('intake_ready')
   })
 
@@ -245,6 +251,7 @@ describe('fertilizerEnrichmentServerServiceCore', () => {
       now: () => FIXED_NOW,
       createJobId: () => 'job-2',
       createOrchestrationRunId: () => 'orch-run-2',
+      resolveExpiresAt: createTestResolveExpiresAt(TEST_EXPIRES_AT),
     })
 
     orchestrationSpy.mockClear()
@@ -351,6 +358,7 @@ describe('fertilizerEnrichmentServerServiceCore', () => {
       resolveOrchestrationDependencies: () => createTestOrchestrationDependencies([]),
       now: () => FIXED_NOW,
       createJobId: () => 'job-contract',
+      resolveExpiresAt: createTestResolveExpiresAt(TEST_EXPIRES_AT),
     })
 
     await expect(
@@ -373,6 +381,7 @@ describe('fertilizerEnrichmentServerServiceCore', () => {
       resolveOrchestrationDependencies: () => createTestOrchestrationDependencies([]),
       now: () => FIXED_NOW,
       createJobId: () => 'job-unexpected',
+      resolveExpiresAt: createTestResolveExpiresAt(TEST_EXPIRES_AT),
     })
 
     await expect(
@@ -404,7 +413,7 @@ describe('fertilizerEnrichmentServerServiceCore', () => {
     expect(job.result.status).toBe('needs_input')
   })
 
-  it('G-2: status for foreign job returns unauthorized', async () => {
+  it('G-2: status for foreign job returns not found without existence leak', async () => {
     const repository = createInMemoryFertilizerEnrichmentJobRepository()
     await repository.save(needsInputRecord())
     const { service } = createService([], { repository })
@@ -414,7 +423,7 @@ describe('fertilizerEnrichmentServerServiceCore', () => {
         { jobId: 'job-1', accessContext: OTHER_ACCESS },
         { sessionId: 'session-2', requestId: 'req-2' },
       ),
-    ).rejects.toMatchObject({ apiError: { code: 'unauthorized' }, httpStatus: 403 })
+    ).rejects.toMatchObject({ apiError: { code: 'job_not_found' }, httpStatus: 404 })
   })
 
   it('G-3: status for missing job returns not found', async () => {
@@ -471,7 +480,7 @@ describe('fertilizerEnrichmentServerServiceCore', () => {
 
     expect(orchestrationSpy).toHaveBeenCalledTimes(1)
     expect(job.jobId).toBe('job-1')
-    const stored = await repository.getByJobId('job-1')
+    const stored = await repository.getByJobId('job-1', ACCESS)
     expect(stored?.orchestrationInput.userProvidedSources).toEqual([
       { kind: 'product_document', referenceId: 'doc-1', label: null, productVariantReference: null },
     ])
@@ -508,7 +517,7 @@ describe('fertilizerEnrichmentServerServiceCore', () => {
     )
 
     expect(orchestrationSpy).toHaveBeenCalledTimes(1)
-    const stored = await repository.getByJobId('job-1')
+    const stored = await repository.getByJobId('job-1', ACCESS)
     expect(stored?.orchestrationInput.sourceHints?.[0]?.adapterType).toBe('packaging')
     expect(serializedPublicJobHasNoInternalLeakage({ job })).toBe(true)
   })
@@ -630,7 +639,7 @@ describe('fertilizerEnrichmentServerServiceCore', () => {
     ).rejects.toMatchObject({ apiError: { code: 'orchestration_not_cancellable' } })
   })
 
-  it('A-7: additional source on foreign job is unauthorized', async () => {
+  it('A-7: additional source on foreign job is not found', async () => {
     const repository = createInMemoryFertilizerEnrichmentJobRepository()
     await repository.save(needsInputRecord())
     const { service } = createService([], { repository })
@@ -645,7 +654,7 @@ describe('fertilizerEnrichmentServerServiceCore', () => {
         },
         { sessionId: 'session-2', requestId: 'req-2' },
       ),
-    ).rejects.toMatchObject({ apiError: { code: 'unauthorized' } })
+    ).rejects.toMatchObject({ apiError: { code: 'job_not_found' } })
   })
 
   it('A-8: identity fingerprint remains unchanged on continuation', async () => {
@@ -676,7 +685,7 @@ describe('fertilizerEnrichmentServerServiceCore', () => {
     )
 
     expect(job.identityFingerprint).toBe('icl-spring-start-15-0-26')
-    const stored = await repository.getByJobId('job-1')
+    const stored = await repository.getByJobId('job-1', ACCESS)
     expect(stored?.orchestrationInput.identity.identityFingerprint).toBe('icl-spring-start-15-0-26')
     expect(serializedPublicJobHasNoInternalLeakage({ job })).toBe(true)
   })
@@ -715,7 +724,7 @@ describe('fertilizerEnrichmentServerServiceCore', () => {
       REQUEST_CTX,
     )
 
-    const stored = await repository.getByJobId('job-1')
+    const stored = await repository.getByJobId('job-1', ACCESS)
     expect(stored?.orchestrationInput.userProvidedSources).toEqual([
       expect.objectContaining({ kind: 'packaging_back_photo', referenceId: 'pack-old' }),
       { kind: 'product_document', referenceId: 'doc-6', label: null, productVariantReference: null },
@@ -794,7 +803,7 @@ describe('fertilizerEnrichmentServerServiceCore', () => {
     ).rejects.toMatchObject({ apiError: { code: 'orchestration_not_cancellable' } })
   })
 
-  it('C-4: cancel on foreign job is unauthorized', async () => {
+  it('C-4: cancel on foreign job is not found', async () => {
     const repository = createInMemoryFertilizerEnrichmentJobRepository()
     await repository.save(needsInputRecord())
     const { service } = createService([], { repository })
@@ -804,7 +813,7 @@ describe('fertilizerEnrichmentServerServiceCore', () => {
         { jobId: 'job-1', accessContext: OTHER_ACCESS },
         { sessionId: 'session-2', requestId: 'req-2' },
       ),
-    ).rejects.toMatchObject({ apiError: { code: 'unauthorized' } })
+    ).rejects.toMatchObject({ apiError: { code: 'job_not_found' } })
   })
 
   it('C-5: cancel on missing job returns not found', async () => {
@@ -906,7 +915,7 @@ describe('fertilizerEnrichmentServerServiceCore', () => {
     it('L-6: internal record keeps orchestrationInput and provision idempotency server-side', async () => {
       const repository = createInMemoryFertilizerEnrichmentJobRepository()
       await repository.save(needsInputRecord())
-      const stored = await repository.getByJobId('job-1')
+      const stored = await repository.getByJobId('job-1', ACCESS)
 
       expect(stored?.orchestrationInput.identity.identityFingerprint).toBe('icl-spring-start-15-0-26')
       expect(stored).toHaveProperty('lastSourceProvisionIdempotencyKey')

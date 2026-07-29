@@ -9,10 +9,35 @@ export interface FertilizerEnrichmentJobRecord {
   job: FertilizerEnrichmentJob
   orchestrationInput: FertilizerEnrichmentOrchestrationInput
   lastSourceProvisionIdempotencyKey?: string | null
+  recordSchemaVersion: number
+  revision: number
+}
+
+export const FERTILIZER_ENRICHMENT_JOB_REPOSITORY_ERROR_CODES = [
+  'revision_conflict',
+  'invalid_stored_record',
+  'persistence_unavailable',
+  'idempotency_conflict',
+] as const
+
+export type FertilizerEnrichmentJobRepositoryErrorCode =
+  (typeof FERTILIZER_ENRICHMENT_JOB_REPOSITORY_ERROR_CODES)[number]
+
+export class FertilizerEnrichmentJobRepositoryError extends Error {
+  readonly code: FertilizerEnrichmentJobRepositoryErrorCode
+
+  constructor(code: FertilizerEnrichmentJobRepositoryErrorCode, message: string) {
+    super(message)
+    this.name = 'FertilizerEnrichmentJobRepositoryError'
+    this.code = code
+  }
 }
 
 export interface FertilizerEnrichmentJobRepository {
-  getByJobId(jobId: string): Promise<FertilizerEnrichmentJobRecord | null>
+  getByJobId(
+    jobId: string,
+    accessContext: FertilizerEnrichmentAccessContext,
+  ): Promise<FertilizerEnrichmentJobRecord | null>
   findByIdempotencyKey(
     idempotencyKey: string,
     accessContext: FertilizerEnrichmentAccessContext,
@@ -42,6 +67,14 @@ function cloneRecord(record: FertilizerEnrichmentJobRecord): FertilizerEnrichmen
   return structuredClone(record)
 }
 
+function normalizeRecord(record: FertilizerEnrichmentJobRecord): FertilizerEnrichmentJobRecord {
+  return {
+    ...cloneRecord(record),
+    recordSchemaVersion: record.recordSchemaVersion ?? 1,
+    revision: record.revision ?? 1,
+  }
+}
+
 export function createInMemoryFertilizerEnrichmentJobRepository(
   initialState?: Partial<InMemoryFertilizerEnrichmentJobRepositoryState>,
 ): FertilizerEnrichmentJobRepository & {
@@ -54,9 +87,13 @@ export function createInMemoryFertilizerEnrichmentJobRepository(
 
   return {
     state,
-    async getByJobId(jobId) {
+    async getByJobId(jobId, accessContext) {
       const record = state.byJobId.get(jobId)
-      return record ? cloneRecord(record) : null
+      if (!record || !accessContextsMatch(record.job.accessContext, accessContext)) {
+        return null
+      }
+
+      return cloneRecord(record)
     },
     async findByIdempotencyKey(idempotencyKey, accessContext) {
       const jobId = state.byIdempotencyKey.get(idempotencyLookupKey(idempotencyKey, accessContext))
@@ -68,7 +105,7 @@ export function createInMemoryFertilizerEnrichmentJobRepository(
       return record ? cloneRecord(record) : null
     },
     async save(record) {
-      const snapshot = cloneRecord(record)
+      const snapshot = normalizeRecord(record)
       state.byJobId.set(snapshot.job.jobId, snapshot)
       state.byIdempotencyKey.set(
         idempotencyLookupKey(snapshot.job.idempotencyKey, snapshot.job.accessContext),
@@ -79,10 +116,23 @@ export function createInMemoryFertilizerEnrichmentJobRepository(
     async update(record) {
       const existing = state.byJobId.get(record.job.jobId)
       if (!existing) {
-        throw new Error(`Job "${record.job.jobId}" was not found for update.`)
+        throw new FertilizerEnrichmentJobRepositoryError(
+          'invalid_stored_record',
+          `Job "${record.job.jobId}" was not found for update.`,
+        )
       }
 
-      const snapshot = cloneRecord(record)
+      if (existing.revision !== record.revision) {
+        throw new FertilizerEnrichmentJobRepositoryError(
+          'revision_conflict',
+          `Job "${record.job.jobId}" revision conflict.`,
+        )
+      }
+
+      const snapshot = normalizeRecord({
+        ...record,
+        revision: record.revision + 1,
+      })
       state.byJobId.set(snapshot.job.jobId, snapshot)
       state.byIdempotencyKey.set(
         idempotencyLookupKey(snapshot.job.idempotencyKey, snapshot.job.accessContext),
@@ -142,6 +192,8 @@ export const INTERNAL_FERTILIZER_ENRICHMENT_JOB_LEAKAGE_KEYS = [
   'orchestrationInput',
   'lastOrchestrationInput',
   'lastSourceProvisionIdempotencyKey',
+  'recordSchemaVersion',
+  'revision',
 ] as const
 
 export function assertPublicFertilizerEnrichmentJobShape(job: FertilizerEnrichmentJob): void {

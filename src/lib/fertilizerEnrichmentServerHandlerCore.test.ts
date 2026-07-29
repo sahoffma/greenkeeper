@@ -7,11 +7,13 @@ import { createFertilizerEnrichmentHttpHandlers } from './fertilizerEnrichmentSe
 import {
   createFertilizerEnrichmentServerService,
   createTestOrchestrationDependencies,
+  createTestResolveExpiresAt,
 } from './fertilizerEnrichmentServerServiceCore'
 import type { FertilizerSourceAdapter } from './fertilizerEnrichmentOrchestrationCore'
 
 const ACCESS = { kind: 'session' as const, sessionId: 'session-1' }
 const FIXED_NOW = '2026-07-29T10:00:00.000Z'
+const TEST_EXPIRES_AT = '2026-08-05T10:00:00.000Z'
 
 function emptyTimeoutState() {
   return {
@@ -31,6 +33,7 @@ function buildHandlers(adapters: FertilizerSourceAdapter[] = [], enabled = true)
     resolveOrchestrationDependencies: () => createTestOrchestrationDependencies(adapters),
     createJobId: () => 'job-handler-1',
     createOrchestrationRunId: () => 'orch-handler-1',
+    resolveExpiresAt: createTestResolveExpiresAt(TEST_EXPIRES_AT),
   })
 
   return createFertilizerEnrichmentHttpHandlers({
@@ -59,6 +62,8 @@ describe('fertilizerEnrichmentServerHandlerCore', () => {
           },
           allowedInputChannels: ['capture_flow'],
         },
+        recordSchemaVersion: 1,
+        revision: 1,
       }),
     })
 
@@ -117,6 +122,8 @@ describe('fertilizerEnrichmentServerHandlerCore', () => {
           },
           allowedInputChannels: ['capture_flow'],
         },
+        recordSchemaVersion: 1,
+        revision: 1,
       }),
     })
 
@@ -130,6 +137,7 @@ describe('fertilizerEnrichmentServerHandlerCore', () => {
       repository,
       resolveOrchestrationDependencies: () => createTestOrchestrationDependencies([]),
       createJobId: () => 'job-status-1',
+      resolveExpiresAt: createTestResolveExpiresAt(TEST_EXPIRES_AT),
     })
     const handlers = createFertilizerEnrichmentHttpHandlers({
       service,
@@ -177,6 +185,7 @@ describe('fertilizerEnrichmentServerHandlerCore', () => {
         identityFingerprint: 'fp-cancel',
         createdAt: '2026-07-29T10:00:00.000Z',
         updatedAt: '2026-07-29T10:00:00.000Z',
+        expiresAt: TEST_EXPIRES_AT,
         result: {
           orchestrationRunId: 'orch-cancel-handler',
           startedAt: '2026-07-29T10:00:00.000Z',
@@ -203,11 +212,14 @@ describe('fertilizerEnrichmentServerHandlerCore', () => {
         allowedInputChannels: ['capture_flow'],
       },
       lastSourceProvisionIdempotencyKey: null,
+      recordSchemaVersion: 1,
+      revision: 1,
     })
 
     const service = createFertilizerEnrichmentServerService({
       repository,
       resolveOrchestrationDependencies: () => createTestOrchestrationDependencies([]),
+      resolveExpiresAt: createTestResolveExpiresAt(TEST_EXPIRES_AT),
     })
     const handlers = createFertilizerEnrichmentHttpHandlers({
       service,
@@ -284,6 +296,7 @@ describe('fertilizerEnrichmentServerHandlerCore', () => {
         repository,
         resolveOrchestrationDependencies: () => createTestOrchestrationDependencies([]),
         createJobId: () => 'job-leak-status',
+        resolveExpiresAt: createTestResolveExpiresAt(TEST_EXPIRES_AT),
       })
       const handlers = createFertilizerEnrichmentHttpHandlers({
         service,
@@ -331,6 +344,7 @@ describe('fertilizerEnrichmentServerHandlerCore', () => {
           identityFingerprint: 'fp-leak-additional',
           createdAt: FIXED_NOW,
           updatedAt: FIXED_NOW,
+          expiresAt: TEST_EXPIRES_AT,
           result: {
             orchestrationRunId: 'orch-leak-additional',
             startedAt: FIXED_NOW,
@@ -356,12 +370,15 @@ describe('fertilizerEnrichmentServerHandlerCore', () => {
           },
           allowedInputChannels: ['capture_flow'],
         },
+        recordSchemaVersion: 1,
+        revision: 1,
       })
 
       const service = createFertilizerEnrichmentServerService({
         repository,
         resolveOrchestrationDependencies: () => createTestOrchestrationDependencies([]),
         createOrchestrationRunId: () => 'orch-leak-additional-2',
+        resolveExpiresAt: createTestResolveExpiresAt(TEST_EXPIRES_AT),
       })
       const handlers = createFertilizerEnrichmentHttpHandlers({
         service,
@@ -394,6 +411,7 @@ describe('fertilizerEnrichmentServerHandlerCore', () => {
           identityFingerprint: 'fp-leak-cancel',
           createdAt: FIXED_NOW,
           updatedAt: FIXED_NOW,
+          expiresAt: TEST_EXPIRES_AT,
           result: {
             orchestrationRunId: 'orch-leak-cancel',
             startedAt: FIXED_NOW,
@@ -419,11 +437,14 @@ describe('fertilizerEnrichmentServerHandlerCore', () => {
           },
           allowedInputChannels: ['capture_flow'],
         },
+        recordSchemaVersion: 1,
+        revision: 1,
       })
 
       const service = createFertilizerEnrichmentServerService({
         repository,
         resolveOrchestrationDependencies: () => createTestOrchestrationDependencies([]),
+        resolveExpiresAt: createTestResolveExpiresAt(TEST_EXPIRES_AT),
       })
       const handlers = createFertilizerEnrichmentHttpHandlers({
         service,

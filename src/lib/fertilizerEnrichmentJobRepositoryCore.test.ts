@@ -15,6 +15,7 @@ import {
 } from './fertilizerEnrichmentJobRepositoryCore'
 
 const FIXED_NOW = '2026-07-29T10:00:00.000Z'
+const TEST_EXPIRES_AT = '2026-08-05T10:00:00.000Z'
 
 function emptyTimeoutState(): FertilizerEnrichmentTimeoutState {
   return {
@@ -72,16 +73,21 @@ function buildJob(
     identityFingerprint: 'fp-1',
     createdAt: FIXED_NOW,
     updatedAt: FIXED_NOW,
+    expiresAt: TEST_EXPIRES_AT,
     result: orchestrationBase(),
     ...overrides,
   }
 }
+
+const SESSION_ACCESS: FertilizerEnrichmentAccessContext = { kind: 'session', sessionId: 'session-1' }
 
 function buildRecord(overrides: Partial<FertilizerEnrichmentJobRecord> = {}): FertilizerEnrichmentJobRecord {
   return {
     job: buildJob(),
     orchestrationInput: buildInput(),
     lastSourceProvisionIdempotencyKey: 'source-idem-1',
+    recordSchemaVersion: 1,
+    revision: 1,
     ...overrides,
   }
 }
@@ -92,7 +98,7 @@ describe('fertilizerEnrichmentJobRepositoryCore', () => {
     const record = buildRecord()
 
     await repository.save(record)
-    const loaded = await repository.getByJobId('job-1')
+    const loaded = await repository.getByJobId('job-1', SESSION_ACCESS)
 
     expect(loaded?.job).toEqual(record.job)
     expect(loaded?.orchestrationInput).toEqual(record.orchestrationInput)
@@ -102,12 +108,10 @@ describe('fertilizerEnrichmentJobRepositoryCore', () => {
   it('RR-2: public job in record does not expose internal record fields', async () => {
     const repository = createInMemoryFertilizerEnrichmentJobRepository()
     await repository.save(buildRecord())
-    const loaded = await repository.getByJobId('job-1')
+    const loaded = await repository.getByJobId('job-1', SESSION_ACCESS)
 
     expect(() => assertPublicFertilizerEnrichmentJobShape(loaded!.job)).not.toThrow()
-    expect(Object.keys(loaded!.job).sort()).toEqual(
-      [...PUBLIC_FERTILIZER_ENRICHMENT_JOB_KEYS].sort().filter((key) => key !== 'expiresAt'),
-    )
+    expect(Object.keys(loaded!.job).sort()).toEqual([...PUBLIC_FERTILIZER_ENRICHMENT_JOB_KEYS].sort())
     expect(loaded!.job).not.toHaveProperty('orchestrationInput')
     expect(loaded!.job).not.toHaveProperty('lastOrchestrationInput')
     expect(loaded!.job).not.toHaveProperty('lastSourceProvisionIdempotencyKey')
@@ -157,7 +161,7 @@ describe('fertilizerEnrichmentJobRepositoryCore', () => {
     })
 
     await repository.update(updated)
-    const loaded = await repository.getByJobId('job-1')
+    const loaded = await repository.getByJobId('job-1', SESSION_ACCESS)
 
     expect(loaded?.job.result.status).toBe('cancelled')
     expect(loaded?.lastSourceProvisionIdempotencyKey).toBe('source-idem-2')
@@ -172,7 +176,7 @@ describe('fertilizerEnrichmentJobRepositoryCore', () => {
     record.job.jobId = 'mutated'
     record.orchestrationInput.sourceHints = []
 
-    const loaded = await repository.getByJobId('job-1')
+    const loaded = await repository.getByJobId('job-1', SESSION_ACCESS)
     expect(loaded?.job.jobId).toBe('job-1')
     expect(loaded?.orchestrationInput.sourceHints).toHaveLength(1)
     expect(snapshot.job.jobId).toBe('job-1')
@@ -192,5 +196,38 @@ describe('fertilizerEnrichmentJobRepositoryCore', () => {
         { kind: 'authenticated_user', userId: 'user-2' },
       ),
     ).toBe(false)
+  })
+
+  it('RR-6: getByJobId is access-scoped and returns null for foreign access', async () => {
+    const repository = createInMemoryFertilizerEnrichmentJobRepository()
+    await repository.save(buildRecord())
+
+    const loaded = await repository.getByJobId('job-1', {
+      kind: 'session',
+      sessionId: 'session-2',
+    })
+
+    expect(loaded).toBeNull()
+  })
+
+  it('RR-7: update increments revision on success', async () => {
+    const repository = createInMemoryFertilizerEnrichmentJobRepository()
+    const saved = await repository.save(buildRecord())
+
+    const updated = await repository.update({
+      ...saved,
+      lastSourceProvisionIdempotencyKey: 'source-idem-2',
+    })
+
+    expect(updated.revision).toBe(2)
+  })
+
+  it('RT-5: in-memory repository stores provided expiresAt without recomputing', async () => {
+    const repository = createInMemoryFertilizerEnrichmentJobRepository()
+    await repository.save(buildRecord())
+
+    const loaded = await repository.getByJobId('job-1', SESSION_ACCESS)
+
+    expect(loaded?.job.expiresAt).toBe(TEST_EXPIRES_AT)
   })
 })
