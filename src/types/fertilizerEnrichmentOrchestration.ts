@@ -146,6 +146,7 @@ export type FertilizerSourceAdapterSourceType =
   | 'product_profile'
   | 'web_page'
   | 'pdf_document'
+  | 'text_document'
   | 'catalog_entry'
   | 'packaging_image'
   | 'user_upload'
@@ -336,6 +337,8 @@ export interface FertilizerEnrichmentSourceHint {
   catalogEntryId?: string | null
   manufacturerCode?: string | null
   hintType?: 'recognition' | 'user' | 'catalog' | null
+  /** Explicit adapter assignment — required for adapter-specific source selection. */
+  adapterType?: FertilizerSourceAdapterType | null
 }
 
 export interface FertilizerEnrichmentOrchestrationReferences {

@@ -60,6 +60,8 @@ function mapAdapterSourceType(sourceType: FertilizerSourceAdapterSourceType): Fe
       return 'manufacturer_page'
     case 'pdf_document':
       return 'product_document'
+    case 'text_document':
+      return 'product_document'
     case 'catalog_entry':
       return 'catalog'
     case 'packaging_image':
