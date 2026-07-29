@@ -42,6 +42,44 @@ export type FertilizerEnrichmentConflictType =
   | 'nutrient_value_conflict'
   | 'source_version_conflict'
 
+export const FERTILIZER_ENRICHMENT_CONFLICT_TYPES = [
+  'identity_conflict',
+  'variant_conflict',
+  'product_form_conflict',
+  'npk_conflict',
+  'declaration_basis_conflict',
+  'nutrient_value_conflict',
+  'source_version_conflict',
+] as const satisfies readonly FertilizerEnrichmentConflictType[]
+
+export type FertilizerConflictResolutionStatus =
+  | 'unresolved'
+  | 'resolved_by_authoritative_source'
+  | 'resolved_by_variant_match'
+  | 'resolved_by_newer_official_version'
+  | 'requires_user_input'
+  | 'not_resolvable'
+
+export const FERTILIZER_CONFLICT_RESOLUTION_STATUSES = [
+  'unresolved',
+  'resolved_by_authoritative_source',
+  'resolved_by_variant_match',
+  'resolved_by_newer_official_version',
+  'requires_user_input',
+  'not_resolvable',
+] as const satisfies readonly FertilizerConflictResolutionStatus[]
+
+/** Structured participant value in a source conflict — not free-form text. */
+export type FertilizerEnrichmentConflictFieldValue = number | string | boolean | null
+
+export interface FertilizerEnrichmentConflictValue {
+  sourceId: string
+  value: FertilizerEnrichmentConflictFieldValue
+  declarationBasis?: string | null
+  productVariantReference?: string | null
+  sourceVersion?: string | null
+}
+
 export type FertilizerEnrichmentConflictStatus =
   | 'none'
   | 'blocking_resolvable'
@@ -124,12 +162,19 @@ export interface FertilizerEnrichmentDeclarationEvaluation {
 }
 
 export interface FertilizerEnrichmentConflict {
+  conflictId?: string
   type: FertilizerEnrichmentConflictType
   fieldPath: string
   blocking: boolean
   resolvable: boolean
+  /** Provenance IDs of participating sources — Phase 1b name retained for builder compatibility. */
   participantProvenanceIds: string[]
+  values?: FertilizerEnrichmentConflictValue[]
+  resolutionStatus?: FertilizerConflictResolutionStatus
   suggestedInputAction?: FertilizerSuggestedInputAction
+  reasonCode?: string
+  description?: string | null
+  /** Legacy alias — prefer `reasonCode` in Phase 2 contexts. */
   code?: string
 }
 
