@@ -21,6 +21,7 @@ Neue Entscheidung: [Template](./templates/ga-template.md) · [README](./README.m
 | [GA-011](./ga-011.md) | Pflegegruppen-Verwaltung per RPC mit RLS und automatischer Bereinigung | ✅ Umgesetzt | Hoch |
 | [GA-012](./ga-012.md) | Berechneter Bestand aus Bewegungen | 📋 Geplant | Hoch |
 | [GA-013](./ga-013.md) | KI-gestützte Düngererkennung — Architektur (Stufe 1 Product Profiles) | ✅ Stufe 1 umgesetzt | Hoch |
+| [GA-014](./ga-014.md) | Product Enrichment Engine | 📋 Geplant | Hoch |
 
 ---
 

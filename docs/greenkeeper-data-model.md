@@ -262,7 +262,7 @@ Der **verfügbare Restbestand** wird **nicht direkt gepflegt**, sondern aus Bewe
 
 ### Product Profile (GA-013 Stufe 1)
 
-Neben dem **Recognition Candidate** (persönliche Erkennung aus einem Foto) führt Greenkeeper ein **Product Profile** als fachliches Produktwissen ein ([GA-013](./architecture/ga-013.md)).
+Neben dem **Recognition Candidate** (persönliche Erkennung aus einem Foto) führt Greenkeeper ein **Product Profile** als fachliches Produktwissen ein ([GA-013](./architecture/ga-013.md)). Die **Product Enrichment Engine** ([GA-014](./architecture/ga-014.md)) baut aus Identität aufnahmefähige Profile auf — objektartspezifische Readiness-Regeln; für Dünger verbindlich spezifiziert in [GM-009](./model/gm-009.md).
 
 | Aspekt | Regel |
 |--------|--------|

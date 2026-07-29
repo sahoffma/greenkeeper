@@ -16,6 +16,7 @@ Neue Modellentscheidung: [Template](./gm-template.md) · [README](./README.md) �
 | [GM-006](./gm-006.md) | Orientierung an Greenkeeper-Arbeitsweise | Datenstruktur folgt der Praxis, nicht der Datenbank. |
 | [GM-007](./gm-007.md) | Pflegegruppen als dauerhaftes Modell für gemeinsame Pflege | Rasenflächen eigenständig; gemeinsame Pflege über Pflegegruppen und Zuordnungen. |
 | [GM-008](./gm-008.md) | Vier Ebenen für Dünger: Katalog, Bestand, Bewegungen, Anwendung | Persönlicher Bestand aus nachvollziehbaren Bewegungen; Journal-Düngung erzeugt Bewegung automatisch. |
+| [GM-009](./gm-009.md) | Fertilizer Readiness Rules — Dünger-Aufnahmeprüfung | Verbindliche Spezifikation der Aufnahmefähigkeit (DL-016/DL-014); nur Dünger. |
 
 ---
 
