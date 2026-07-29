@@ -230,4 +230,19 @@ describe('fertilizerEnrichmentJobRepositoryCore', () => {
 
     expect(loaded?.job.expiresAt).toBe(TEST_EXPIRES_AT)
   })
+
+  it('IM-1: save throws idempotency_conflict for duplicate start idempotency key', async () => {
+    const repository = createInMemoryFertilizerEnrichmentJobRepository()
+    await repository.save(buildRecord())
+
+    await expect(
+      repository.save({
+        ...buildRecord(),
+        job: {
+          ...buildJob(),
+          jobId: 'job-2',
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'idempotency_conflict' })
+  })
 })

@@ -105,12 +105,20 @@ export function createInMemoryFertilizerEnrichmentJobRepository(
       return record ? cloneRecord(record) : null
     },
     async save(record) {
+      const lookupKey = idempotencyLookupKey(
+        record.job.idempotencyKey,
+        record.job.accessContext,
+      )
+      if (state.byIdempotencyKey.has(lookupKey)) {
+        throw new FertilizerEnrichmentJobRepositoryError(
+          'idempotency_conflict',
+          'Enrichment job start idempotency conflict.',
+        )
+      }
+
       const snapshot = normalizeRecord(record)
       state.byJobId.set(snapshot.job.jobId, snapshot)
-      state.byIdempotencyKey.set(
-        idempotencyLookupKey(snapshot.job.idempotencyKey, snapshot.job.accessContext),
-        snapshot.job.jobId,
-      )
+      state.byIdempotencyKey.set(lookupKey, snapshot.job.jobId)
       return cloneRecord(snapshot)
     },
     async update(record) {

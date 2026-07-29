@@ -11,8 +11,10 @@ import type {
 import {
   assertPublicFertilizerEnrichmentJobShape,
   createInMemoryFertilizerEnrichmentJobRepository,
+  FertilizerEnrichmentJobRepositoryError,
   serializedPublicJobHasNoInternalLeakage,
   type FertilizerEnrichmentJobRecord,
+  type FertilizerEnrichmentJobRepository,
 } from './fertilizerEnrichmentJobRepositoryCore'
 import * as orchestrationCore from './fertilizerEnrichmentOrchestrationCore'
 import {
@@ -20,6 +22,7 @@ import {
   createTestOrchestrationDependencies,
   createTestResolveExpiresAt,
   FertilizerEnrichmentServerApiError,
+  mapFertilizerEnrichmentRepositoryError,
   type FertilizerEnrichmentServerRequestContext,
 } from './fertilizerEnrichmentServerServiceCore'
 import type { FertilizerSourceAdapter } from './fertilizerEnrichmentOrchestrationCore'
@@ -117,7 +120,7 @@ function fakeAdapter(
 function createService(
   adapters: FertilizerSourceAdapter[],
   overrides: {
-    repository?: ReturnType<typeof createInMemoryFertilizerEnrichmentJobRepository>
+    repository?: FertilizerEnrichmentJobRepository
     orchestrationSpy?: ReturnType<typeof vi.spyOn>
   } = {},
 ) {
@@ -920,6 +923,989 @@ describe('fertilizerEnrichmentServerServiceCore', () => {
       expect(stored?.orchestrationInput.identity.identityFingerprint).toBe('icl-spring-start-15-0-26')
       expect(stored).toHaveProperty('lastSourceProvisionIdempotencyKey')
       expect(stored?.job.result.status).toBe('needs_input')
+    })
+  })
+
+  describe('Phase 4d — start idempotency', () => {
+    function compatibleStoredRecord(
+      overrides: Partial<FertilizerEnrichmentJobRecord> = {},
+    ): FertilizerEnrichmentJobRecord {
+      return needsInputRecord({
+        job: {
+          ...needsInputRecord().job,
+          idempotencyKey: 'idem-start',
+          expiresAt: TEST_EXPIRES_AT,
+        },
+        orchestrationInput: buildInput(),
+        ...overrides,
+      })
+    }
+
+    it('SI-1: pre-found compatible job returns without orchestration or save', async () => {
+      const repository = createInMemoryFertilizerEnrichmentJobRepository()
+      await repository.save(compatibleStoredRecord())
+      const { service, orchestrationSpy } = createService([], { repository })
+
+      orchestrationSpy.mockClear()
+      const job = await service.startFertilizerEnrichment(
+        { input: buildInput(), accessContext: ACCESS, idempotencyKey: 'idem-start' },
+        REQUEST_CTX,
+      )
+
+      expect(job.jobId).toBe('job-1')
+      expect(orchestrationSpy).not.toHaveBeenCalled()
+    })
+
+    it('SI-2: pre-found incompatible job throws idempotency_conflict', async () => {
+      const repository = createInMemoryFertilizerEnrichmentJobRepository()
+      await repository.save(compatibleStoredRecord())
+      const { service, orchestrationSpy } = createService([], { repository })
+
+      await expect(
+        service.startFertilizerEnrichment(
+          {
+            input: buildInput({
+              identity: {
+                ...buildInput().identity,
+                identityFingerprint: 'different-fingerprint',
+              },
+            }),
+            accessContext: ACCESS,
+            idempotencyKey: 'idem-start',
+          },
+          REQUEST_CTX,
+        ),
+      ).rejects.toMatchObject({ apiError: { code: 'idempotency_conflict' }, httpStatus: 409 })
+
+      expect(orchestrationSpy).not.toHaveBeenCalled()
+    })
+
+    it('SI-3: save idempotency_conflict resolves via single lookup without re-orchestration', async () => {
+      const racedRecord = compatibleStoredRecord()
+      let findCalls = 0
+      const inner = createInMemoryFertilizerEnrichmentJobRepository()
+      const repository: FertilizerEnrichmentJobRepository = {
+        ...inner,
+        async findByIdempotencyKey(idempotencyKey, accessContext) {
+          findCalls += 1
+          if (findCalls === 1) {
+            return null
+          }
+
+          return inner.findByIdempotencyKey(idempotencyKey, accessContext)
+        },
+        async save() {
+          await inner.save(racedRecord)
+          throw new FertilizerEnrichmentJobRepositoryError(
+            'idempotency_conflict',
+            'Enrichment job start idempotency conflict.',
+          )
+        },
+      }
+
+      const { service, orchestrationSpy } = createService([], { repository })
+
+      orchestrationSpy.mockClear()
+      const job = await service.startFertilizerEnrichment(
+        { input: buildInput(), accessContext: ACCESS, idempotencyKey: 'idem-start' },
+        REQUEST_CTX,
+      )
+
+      expect(job.jobId).toBe('job-1')
+      expect(findCalls).toBe(2)
+      expect(orchestrationSpy).not.toHaveBeenCalled()
+    })
+
+    it('SI-4: save conflict with incompatible raced record throws idempotency_conflict', async () => {
+      const racedRecord = compatibleStoredRecord({
+        orchestrationInput: buildInput({
+          identity: {
+            ...buildInput().identity,
+            identityFingerprint: 'stored-other-fingerprint',
+          },
+        }),
+        job: {
+          ...needsInputRecord().job,
+          idempotencyKey: 'idem-start',
+          identityFingerprint: 'stored-other-fingerprint',
+          expiresAt: TEST_EXPIRES_AT,
+        },
+      })
+      let findCalls = 0
+      const inner = createInMemoryFertilizerEnrichmentJobRepository()
+      const repository: FertilizerEnrichmentJobRepository = {
+        ...inner,
+        async findByIdempotencyKey(_idempotencyKey, _accessContext) {
+          findCalls += 1
+          if (findCalls === 1) {
+            return null
+          }
+
+          return racedRecord
+        },
+        async save() {
+          throw new FertilizerEnrichmentJobRepositoryError(
+            'idempotency_conflict',
+            'Enrichment job start idempotency conflict.',
+          )
+        },
+        getByJobId: inner.getByJobId.bind(inner),
+        update: inner.update.bind(inner),
+      }
+
+      const { service } = createService([], { repository })
+
+      await expect(
+        service.startFertilizerEnrichment(
+          { input: buildInput(), accessContext: ACCESS, idempotencyKey: 'idem-start' },
+          REQUEST_CTX,
+        ),
+      ).rejects.toMatchObject({ apiError: { code: 'idempotency_conflict' } })
+    })
+
+    it('SI-5: save conflict without reloadable record throws idempotency_conflict', async () => {
+      let findCalls = 0
+      const inner = createInMemoryFertilizerEnrichmentJobRepository()
+      const repository: FertilizerEnrichmentJobRepository = {
+        ...inner,
+        async findByIdempotencyKey() {
+          findCalls += 1
+          return null
+        },
+        async save() {
+          throw new FertilizerEnrichmentJobRepositoryError(
+            'idempotency_conflict',
+            'Enrichment job start idempotency conflict.',
+          )
+        },
+        getByJobId: inner.getByJobId.bind(inner),
+        update: inner.update.bind(inner),
+      }
+
+      const { service } = createService([], { repository })
+
+      await expect(
+        service.startFertilizerEnrichment(
+          { input: buildInput(), accessContext: ACCESS, idempotencyKey: 'idem-missing' },
+          REQUEST_CTX,
+        ),
+      ).rejects.toMatchObject({ apiError: { code: 'idempotency_conflict' } })
+
+      expect(findCalls).toBe(2)
+    })
+
+    it('SI-6: compatible start reuses job despite later added sources on stored record', async () => {
+      const repository = createInMemoryFertilizerEnrichmentJobRepository()
+      await repository.save(
+        compatibleStoredRecord({
+          orchestrationInput: buildInput({
+            userProvidedSources: [{ kind: 'product_document', referenceId: 'doc-1' }],
+            sourceHints: [{ referenceId: 'doc-1', adapterType: 'user_document', hintType: 'user' }],
+          }),
+        }),
+      )
+      const { service, orchestrationSpy } = createService([], { repository })
+
+      orchestrationSpy.mockClear()
+      const job = await service.startFertilizerEnrichment(
+        { input: buildInput(), accessContext: ACCESS, idempotencyKey: 'idem-start' },
+        REQUEST_CTX,
+      )
+
+      expect(job.jobId).toBe('job-1')
+      expect(orchestrationSpy).not.toHaveBeenCalled()
+    })
+
+    it('SI-7: different identityFingerprint throws idempotency_conflict', async () => {
+      const repository = createInMemoryFertilizerEnrichmentJobRepository()
+      await repository.save(compatibleStoredRecord())
+      const { service, orchestrationSpy } = createService([], { repository })
+
+      await expect(
+        service.startFertilizerEnrichment(
+          {
+            input: buildInput({
+              identity: {
+                ...buildInput().identity,
+                identityFingerprint: 'other-fingerprint',
+              },
+            }),
+            accessContext: ACCESS,
+            idempotencyKey: 'idem-start',
+          },
+          REQUEST_CTX,
+        ),
+      ).rejects.toMatchObject({ apiError: { code: 'idempotency_conflict' }, httpStatus: 409 })
+
+      expect(orchestrationSpy).not.toHaveBeenCalled()
+    })
+
+    it('SI-8: different object category returns unsupported_object_category before reuse', async () => {
+      const repository = createInMemoryFertilizerEnrichmentJobRepository()
+      await repository.save(compatibleStoredRecord())
+      const { service, orchestrationSpy } = createService([], { repository })
+
+      await expect(
+        service.startFertilizerEnrichment(
+          {
+            input: buildInput({ objectCategory: 'tool' as 'fertilizer' }),
+            accessContext: ACCESS,
+            idempotencyKey: 'idem-start',
+          },
+          REQUEST_CTX,
+        ),
+      ).rejects.toMatchObject({
+        apiError: { code: 'unsupported_object_category' },
+        httpStatus: 422,
+      })
+
+      expect(orchestrationSpy).not.toHaveBeenCalled()
+    })
+
+    it('SI-9: different correlationId reuses existing job idempotently', async () => {
+      const repository = createInMemoryFertilizerEnrichmentJobRepository()
+      await repository.save(
+        compatibleStoredRecord({
+          orchestrationInput: buildInput({
+            references: {
+              recognitionCandidateId: 'rec-1',
+              correlationId: 'corr-stored',
+            },
+          }),
+        }),
+      )
+      const { service, orchestrationSpy } = createService([], { repository })
+
+      orchestrationSpy.mockClear()
+      const job = await service.startFertilizerEnrichment(
+        {
+          input: buildInput({
+            references: {
+              recognitionCandidateId: 'rec-1',
+              correlationId: 'corr-new',
+            },
+          }),
+          accessContext: ACCESS,
+          idempotencyKey: 'idem-start',
+        },
+        REQUEST_CTX,
+      )
+
+      expect(job.jobId).toBe('job-1')
+      expect(orchestrationSpy).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('Phase 4d — expiry', () => {
+    const EXPIRED_AT = '2026-07-29T09:00:00.000Z'
+
+    function expiredRecord(): FertilizerEnrichmentJobRecord {
+      return needsInputRecord({
+        job: {
+          ...needsInputRecord().job,
+          expiresAt: EXPIRED_AT,
+        },
+      })
+    }
+
+    it('EX-1: status on expired job throws job_expired', async () => {
+      const repository = createInMemoryFertilizerEnrichmentJobRepository()
+      await repository.save(expiredRecord())
+      const { service } = createService([], { repository })
+
+      await expect(
+        service.getFertilizerEnrichmentStatus(
+          { jobId: 'job-1', accessContext: ACCESS },
+          REQUEST_CTX,
+        ),
+      ).rejects.toMatchObject({ apiError: { code: 'job_expired' }, httpStatus: 410 })
+    })
+
+    it('EX-2: additional source on expired job throws job_expired', async () => {
+      const repository = createInMemoryFertilizerEnrichmentJobRepository()
+      await repository.save(expiredRecord())
+      const { service, orchestrationSpy } = createService([], { repository })
+
+      await expect(
+        service.provideAdditionalFertilizerEnrichmentSource(
+          {
+            jobId: 'job-1',
+            accessContext: ACCESS,
+            idempotencyKey: 'source-expired',
+            additionalSources: [{ kind: 'product_document', referenceId: 'doc-expired' }],
+          },
+          REQUEST_CTX,
+        ),
+      ).rejects.toMatchObject({ apiError: { code: 'job_expired' } })
+
+      expect(orchestrationSpy).not.toHaveBeenCalled()
+    })
+
+    it('EX-3: cancel on expired job throws job_expired', async () => {
+      const repository = createInMemoryFertilizerEnrichmentJobRepository()
+      await repository.save(expiredRecord())
+      const { service } = createService([], { repository })
+
+      await expect(
+        service.cancelFertilizerEnrichment({ jobId: 'job-1', accessContext: ACCESS }, REQUEST_CTX),
+      ).rejects.toMatchObject({ apiError: { code: 'job_expired' } })
+    })
+
+    it('EX-4: idempotent start on expired compatible job throws job_expired', async () => {
+      const repository = createInMemoryFertilizerEnrichmentJobRepository()
+      await repository.save(expiredRecord())
+      const { service, orchestrationSpy } = createService([], { repository })
+
+      await expect(
+        service.startFertilizerEnrichment(
+          { input: buildInput(), accessContext: ACCESS, idempotencyKey: 'idem-1' },
+          REQUEST_CTX,
+        ),
+      ).rejects.toMatchObject({ apiError: { code: 'job_expired' } })
+
+      expect(orchestrationSpy).not.toHaveBeenCalled()
+    })
+
+    it('EX-5: expiresAt equal to now throws job_expired on status', async () => {
+      const repository = createInMemoryFertilizerEnrichmentJobRepository()
+      await repository.save(
+        needsInputRecord({
+          job: {
+            ...needsInputRecord().job,
+            expiresAt: FIXED_NOW,
+          },
+        }),
+      )
+      const { service } = createService([], { repository })
+
+      await expect(
+        service.getFertilizerEnrichmentStatus(
+          { jobId: 'job-1', accessContext: ACCESS },
+          REQUEST_CTX,
+        ),
+      ).rejects.toMatchObject({ apiError: { code: 'job_expired' }, httpStatus: 410 })
+    })
+
+    it('EX-6: future expiresAt allows status without false expiry', async () => {
+      const repository = createInMemoryFertilizerEnrichmentJobRepository()
+      await repository.save(needsInputRecord())
+      const { service } = createService([], { repository })
+
+      const job = await service.getFertilizerEnrichmentStatus(
+        { jobId: 'job-1', accessContext: ACCESS },
+        REQUEST_CTX,
+      )
+
+      expect(job.jobId).toBe('job-1')
+      expect(job.result.status).toBe('needs_input')
+    })
+
+    it('EX-7: invalid expiresAt maps to internal_server_error', async () => {
+      const repository = createInMemoryFertilizerEnrichmentJobRepository()
+      await repository.save(
+        needsInputRecord({
+          job: {
+            ...needsInputRecord().job,
+            expiresAt: 'not-a-timestamp',
+          },
+        }),
+      )
+      const { service } = createService([], { repository })
+
+      await expect(
+        service.getFertilizerEnrichmentStatus(
+          { jobId: 'job-1', accessContext: ACCESS },
+          REQUEST_CTX,
+        ),
+      ).rejects.toMatchObject({ apiError: { code: 'internal_server_error' } })
+    })
+
+    it('EX-8: expiry check does not mutate result status', async () => {
+      const repository = createInMemoryFertilizerEnrichmentJobRepository()
+      const record = expiredRecord()
+      await repository.save(record)
+
+      await expect(
+        createService([], { repository }).service.getFertilizerEnrichmentStatus(
+          { jobId: 'job-1', accessContext: ACCESS },
+          REQUEST_CTX,
+        ),
+      ).rejects.toMatchObject({ apiError: { code: 'job_expired' } })
+
+      const stored = await repository.getByJobId('job-1', ACCESS)
+      expect(stored?.job.result.status).toBe('needs_input')
+    })
+  })
+
+  describe('Phase 4d — additional source concurrency', () => {
+    it('AC-1: revision conflict with same provision key returns current job', async () => {
+      const base = needsInputRecord()
+      const inner = createInMemoryFertilizerEnrichmentJobRepository()
+      await inner.save(base)
+
+      let getCalls = 0
+      const repository: FertilizerEnrichmentJobRepository = {
+        ...inner,
+        async update() {
+          throw new FertilizerEnrichmentJobRepositoryError(
+            'revision_conflict',
+            'Job "job-1" revision conflict.',
+          )
+        },
+        async getByJobId(jobId, accessContext) {
+          getCalls += 1
+          const record = await inner.getByJobId(jobId, accessContext)
+          if (!record || getCalls === 1) {
+            return record
+          }
+
+          return {
+            ...record,
+            lastSourceProvisionIdempotencyKey: 'source-same',
+          }
+        },
+      }
+
+      const { service, orchestrationSpy } = createService(
+        [
+          fakeAdapter(
+            'user_document',
+            adapterResultBase('user_document', {
+              sourceType: 'text_document',
+              sourceCategory: 'user_provided',
+              status: 'partial',
+            }),
+          ),
+        ],
+        { repository },
+      )
+
+      orchestrationSpy.mockClear()
+      const job = await service.provideAdditionalFertilizerEnrichmentSource(
+        {
+          jobId: 'job-1',
+          accessContext: ACCESS,
+          idempotencyKey: 'source-same',
+          additionalSources: [{ kind: 'product_document', referenceId: 'doc-new' }],
+        },
+        REQUEST_CTX,
+      )
+
+      expect(orchestrationSpy).toHaveBeenCalledTimes(1)
+      expect(job.jobId).toBe('job-1')
+    })
+
+    it('AC-2: revision conflict with source already present returns current job', async () => {
+      const base = needsInputRecord({
+        orchestrationInput: buildInput({
+          userProvidedSources: [{ kind: 'product_document', referenceId: 'doc-existing' }],
+          sourceHints: [{ referenceId: 'doc-existing', adapterType: 'user_document', hintType: 'user' }],
+        }),
+      })
+      const inner = createInMemoryFertilizerEnrichmentJobRepository()
+      await inner.save(base)
+
+      const repository: FertilizerEnrichmentJobRepository = {
+        ...inner,
+        async update() {
+          throw new FertilizerEnrichmentJobRepositoryError(
+            'revision_conflict',
+            'Job "job-1" revision conflict.',
+          )
+        },
+      }
+
+      const { service, orchestrationSpy } = createService([], { repository })
+
+      orchestrationSpy.mockClear()
+      const job = await service.provideAdditionalFertilizerEnrichmentSource(
+        {
+          jobId: 'job-1',
+          accessContext: ACCESS,
+          idempotencyKey: 'source-dup-reload',
+          additionalSources: [{ kind: 'product_document', referenceId: 'doc-existing' }],
+        },
+        REQUEST_CTX,
+      )
+
+      expect(orchestrationSpy).not.toHaveBeenCalled()
+      expect(job.jobId).toBe('job-1')
+    })
+
+    it('AC-3: revision conflict with competing change throws revision_conflict', async () => {
+      const inner = createInMemoryFertilizerEnrichmentJobRepository()
+      await inner.save(needsInputRecord())
+
+      const repository: FertilizerEnrichmentJobRepository = {
+        ...inner,
+        async update() {
+          throw new FertilizerEnrichmentJobRepositoryError(
+            'revision_conflict',
+            'Job "job-1" revision conflict.',
+          )
+        },
+      }
+
+      const { service } = createService(
+        [
+          fakeAdapter(
+            'user_document',
+            adapterResultBase('user_document', {
+              sourceType: 'text_document',
+              sourceCategory: 'user_provided',
+              status: 'partial',
+            }),
+          ),
+        ],
+        { repository },
+      )
+
+      await expect(
+        service.provideAdditionalFertilizerEnrichmentSource(
+          {
+            jobId: 'job-1',
+            accessContext: ACCESS,
+            idempotencyKey: 'source-compete',
+            additionalSources: [{ kind: 'product_document', referenceId: 'doc-compete' }],
+          },
+          REQUEST_CTX,
+        ),
+      ).rejects.toMatchObject({ apiError: { code: 'revision_conflict' }, httpStatus: 409 })
+    })
+
+    it('AC-4: parallel cancel wins and returns revision_conflict on additional source reload', async () => {
+      const inner = createInMemoryFertilizerEnrichmentJobRepository()
+      await inner.save(needsInputRecord())
+
+      let getCalls = 0
+      let updateCalls = 0
+      const repository: FertilizerEnrichmentJobRepository = {
+        ...inner,
+        async update() {
+          updateCalls += 1
+          throw new FertilizerEnrichmentJobRepositoryError(
+            'revision_conflict',
+            'Job "job-1" revision conflict.',
+          )
+        },
+        async getByJobId(jobId, accessContext) {
+          getCalls += 1
+          const record = await inner.getByJobId(jobId, accessContext)
+          if (!record || getCalls === 1) {
+            return record
+          }
+
+          return {
+            ...record,
+            job: {
+              ...record.job,
+              result: {
+                ...record.job.result,
+                status: 'cancelled',
+                cancellation: {
+                  reason: 'user_cancelled',
+                  cancelledAt: FIXED_NOW,
+                  cancelledBy: 'user',
+                },
+              },
+            },
+          }
+        },
+      }
+
+      const { service, orchestrationSpy } = createService(
+        [
+          fakeAdapter(
+            'user_document',
+            adapterResultBase('user_document', {
+              sourceType: 'text_document',
+              sourceCategory: 'user_provided',
+              status: 'partial',
+            }),
+          ),
+        ],
+        { repository },
+      )
+
+      orchestrationSpy.mockClear()
+      await expect(
+        service.provideAdditionalFertilizerEnrichmentSource(
+          {
+            jobId: 'job-1',
+            accessContext: ACCESS,
+            idempotencyKey: 'source-after-cancel',
+            additionalSources: [{ kind: 'product_document', referenceId: 'doc-cancel' }],
+          },
+          REQUEST_CTX,
+        ),
+      ).rejects.toMatchObject({
+        apiError: {
+          code: 'revision_conflict',
+          message: expect.not.stringContaining('Job "job-1" revision conflict.'),
+        },
+        httpStatus: 409,
+      })
+
+      expect(orchestrationSpy).toHaveBeenCalledTimes(1)
+      expect(updateCalls).toBe(1)
+    })
+
+    it('AC-5: parallel intake_ready terminal state returns revision_conflict after revision conflict', async () => {
+      const inner = createInMemoryFertilizerEnrichmentJobRepository()
+      await inner.save(needsInputRecord())
+
+      let getCalls = 0
+      let updateCalls = 0
+      const repository: FertilizerEnrichmentJobRepository = {
+        ...inner,
+        async update() {
+          updateCalls += 1
+          throw new FertilizerEnrichmentJobRepositoryError(
+            'revision_conflict',
+            'Job "job-1" revision conflict.',
+          )
+        },
+        async getByJobId(jobId, accessContext) {
+          getCalls += 1
+          const record = await inner.getByJobId(jobId, accessContext)
+          if (!record || getCalls === 1) {
+            return record
+          }
+
+          return {
+            ...record,
+            job: {
+              ...record.job,
+              result: {
+                ...record.job.result,
+                status: 'intake_ready',
+                pipelineResult: {
+                  status: 'ready',
+                  specificationVersion: 'fertilizer-enrichment-v1',
+                  evaluatedAt: FIXED_NOW,
+                  normalizationResult: {
+                    status: 'success',
+                    specificationVersion: 'fertilizer-declaration-normalization-v1',
+                    evaluatedAt: FIXED_NOW,
+                    normalizedDeclaration: {},
+                  },
+                  readinessInput: {},
+                  productProfileDraft: {},
+                },
+              },
+            },
+          } as unknown as FertilizerEnrichmentJobRecord
+        },
+      }
+
+      const { service, orchestrationSpy } = createService(
+        [
+          fakeAdapter(
+            'user_document',
+            adapterResultBase('user_document', {
+              sourceType: 'text_document',
+              sourceCategory: 'user_provided',
+              status: 'partial',
+            }),
+          ),
+        ],
+        { repository },
+      )
+
+      orchestrationSpy.mockClear()
+      await expect(
+        service.provideAdditionalFertilizerEnrichmentSource(
+          {
+            jobId: 'job-1',
+            accessContext: ACCESS,
+            idempotencyKey: 'source-terminal',
+            additionalSources: [{ kind: 'product_document', referenceId: 'doc-terminal' }],
+          },
+          REQUEST_CTX,
+        ),
+      ).rejects.toMatchObject({
+        apiError: {
+          code: 'revision_conflict',
+          message: expect.not.stringContaining('Job "job-1" revision conflict.'),
+        },
+        httpStatus: 409,
+      })
+
+      expect(orchestrationSpy).toHaveBeenCalledTimes(1)
+      expect(updateCalls).toBe(1)
+
+      const stored = await inner.getByJobId('job-1', ACCESS)
+      expect(stored?.job.result.status).toBe('needs_input')
+    })
+
+    it('AC-6: reload failure maps to temporarily_unavailable', async () => {
+      const inner = createInMemoryFertilizerEnrichmentJobRepository()
+      await inner.save(needsInputRecord())
+
+      let getCalls = 0
+      const repository: FertilizerEnrichmentJobRepository = {
+        ...inner,
+        async update() {
+          throw new FertilizerEnrichmentJobRepositoryError(
+            'revision_conflict',
+            'Job "job-1" revision conflict.',
+          )
+        },
+        async getByJobId(jobId, accessContext) {
+          getCalls += 1
+          if (getCalls === 1) {
+            return inner.getByJobId(jobId, accessContext)
+          }
+
+          return null
+        },
+      }
+
+      const { service } = createService(
+        [
+          fakeAdapter(
+            'user_document',
+            adapterResultBase('user_document', {
+              sourceType: 'text_document',
+              sourceCategory: 'user_provided',
+              status: 'partial',
+            }),
+          ),
+        ],
+        { repository },
+      )
+
+      await expect(
+        service.provideAdditionalFertilizerEnrichmentSource(
+          {
+            jobId: 'job-1',
+            accessContext: ACCESS,
+            idempotencyKey: 'source-reload-fail',
+            additionalSources: [{ kind: 'product_document', referenceId: 'doc-reload' }],
+          },
+          REQUEST_CTX,
+        ),
+      ).rejects.toMatchObject({ apiError: { code: 'temporarily_unavailable' }, httpStatus: 503 })
+    })
+  })
+
+  describe('Phase 4d — cancel concurrency', () => {
+    it('CC-1: revision conflict with cancelled reload is idempotent', async () => {
+      const inner = createInMemoryFertilizerEnrichmentJobRepository()
+      await inner.save(needsInputRecord())
+
+      const repository: FertilizerEnrichmentJobRepository = {
+        ...inner,
+        async update() {
+          throw new FertilizerEnrichmentJobRepositoryError(
+            'revision_conflict',
+            'Job "job-1" revision conflict.',
+          )
+        },
+        async getByJobId(jobId, accessContext) {
+          const record = await inner.getByJobId(jobId, accessContext)
+          if (!record) {
+            return null
+          }
+
+          return {
+            ...record,
+            job: {
+              ...record.job,
+              result: {
+                ...record.job.result,
+                status: 'cancelled',
+                cancellation: {
+                  reason: 'user_cancelled',
+                  cancelledAt: FIXED_NOW,
+                  cancelledBy: 'user',
+                },
+              },
+            },
+          }
+        },
+      }
+
+      const { service } = createService([], { repository })
+      const job = await service.cancelFertilizerEnrichment(
+        { jobId: 'job-1', accessContext: ACCESS },
+        REQUEST_CTX,
+      )
+
+      expect(job.result.status).toBe('cancelled')
+    })
+
+    it('CC-2: revision conflict with intake_ready reload is not cancellable', async () => {
+      const inner = createInMemoryFertilizerEnrichmentJobRepository()
+      await inner.save(needsInputRecord())
+
+      const repository: FertilizerEnrichmentJobRepository = {
+        ...inner,
+        async update() {
+          throw new FertilizerEnrichmentJobRepositoryError(
+            'revision_conflict',
+            'Job "job-1" revision conflict.',
+          )
+        },
+        async getByJobId(jobId, accessContext) {
+          const record = await inner.getByJobId(jobId, accessContext)
+          if (!record) {
+            return null
+          }
+
+          return {
+            ...record,
+            job: {
+              ...record.job,
+              result: {
+                ...record.job.result,
+                status: 'intake_ready',
+                pipelineResult: {
+                  status: 'ready',
+                  specificationVersion: 'fertilizer-enrichment-v1',
+                  evaluatedAt: FIXED_NOW,
+                  normalizationResult: {
+                    status: 'success',
+                    specificationVersion: 'fertilizer-declaration-normalization-v1',
+                    evaluatedAt: FIXED_NOW,
+                    normalizedDeclaration: {},
+                  },
+                  readinessInput: {},
+                  productProfileDraft: {},
+                },
+              },
+            },
+          } as unknown as FertilizerEnrichmentJobRecord
+        },
+      }
+
+      const { service } = createService([], { repository })
+
+      await expect(
+        service.cancelFertilizerEnrichment({ jobId: 'job-1', accessContext: ACCESS }, REQUEST_CTX),
+      ).rejects.toMatchObject({ apiError: { code: 'orchestration_not_cancellable' } })
+    })
+
+    it('CC-3: revision conflict with still-continuable job throws revision_conflict', async () => {
+      const inner = createInMemoryFertilizerEnrichmentJobRepository()
+      await inner.save(needsInputRecord())
+
+      const repository: FertilizerEnrichmentJobRepository = {
+        ...inner,
+        async update() {
+          throw new FertilizerEnrichmentJobRepositoryError(
+            'revision_conflict',
+            'Job "job-1" revision conflict.',
+          )
+        },
+      }
+
+      const { service } = createService([], { repository })
+
+      await expect(
+        service.cancelFertilizerEnrichment({ jobId: 'job-1', accessContext: ACCESS }, REQUEST_CTX),
+      ).rejects.toMatchObject({ apiError: { code: 'revision_conflict' } })
+    })
+
+    it('CC-4: revision conflict reload failure maps to temporarily_unavailable', async () => {
+      const inner = createInMemoryFertilizerEnrichmentJobRepository()
+      await inner.save(needsInputRecord())
+
+      let getCalls = 0
+      const repository: FertilizerEnrichmentJobRepository = {
+        ...inner,
+        async update() {
+          throw new FertilizerEnrichmentJobRepositoryError(
+            'revision_conflict',
+            'Job "job-1" revision conflict.',
+          )
+        },
+        async getByJobId(jobId, accessContext) {
+          getCalls += 1
+          if (getCalls === 1) {
+            return inner.getByJobId(jobId, accessContext)
+          }
+
+          return null
+        },
+      }
+
+      const { service } = createService([], { repository })
+
+      await expect(
+        service.cancelFertilizerEnrichment({ jobId: 'job-1', accessContext: ACCESS }, REQUEST_CTX),
+      ).rejects.toMatchObject({
+        apiError: {
+          code: 'temporarily_unavailable',
+          message: expect.not.stringContaining('Sensitive'),
+        },
+        httpStatus: 503,
+      })
+    })
+  })
+
+  describe('Phase 4d — repository error mapping', () => {
+    it('RE-1: persistence_unavailable maps to temporarily_unavailable', () => {
+      const mapped = mapFertilizerEnrichmentRepositoryError(
+        new FertilizerEnrichmentJobRepositoryError(
+          'persistence_unavailable',
+          'Sensitive database failure',
+        ),
+      )
+
+      expect(mapped.apiError.code).toBe('temporarily_unavailable')
+      expect(mapped.httpStatus).toBe(503)
+      expect(mapped.apiError.message).not.toContain('Sensitive')
+    })
+
+    it('RE-2: invalid_stored_record maps to internal_server_error', () => {
+      const mapped = mapFertilizerEnrichmentRepositoryError(
+        new FertilizerEnrichmentJobRepositoryError(
+          'invalid_stored_record',
+          'Stored record corrupt',
+        ),
+      )
+
+      expect(mapped.apiError.code).toBe('internal_server_error')
+      expect(mapped.httpStatus).toBe(500)
+    })
+
+    it('RE-3: unknown repository errors are not surfaced through mapper branches', async () => {
+      const repository: FertilizerEnrichmentJobRepository = {
+        async getByJobId() {
+          throw new FertilizerEnrichmentJobRepositoryError(
+            'persistence_unavailable',
+            'db://connection refused',
+          )
+        },
+        async findByIdempotencyKey() {
+          return null
+        },
+        async save() {
+          throw new Error('should not be called')
+        },
+        async update() {
+          throw new Error('should not be called')
+        },
+      }
+
+      const service = createFertilizerEnrichmentServerService({
+        repository,
+        resolveOrchestrationDependencies: () => createTestOrchestrationDependencies([]),
+        resolveExpiresAt: createTestResolveExpiresAt(TEST_EXPIRES_AT),
+      })
+
+      await expect(
+        service.getFertilizerEnrichmentStatus(
+          { jobId: 'job-1', accessContext: ACCESS },
+          REQUEST_CTX,
+        ),
+      ).rejects.toMatchObject({
+        apiError: {
+          code: 'temporarily_unavailable',
+          message: expect.not.stringContaining('db://'),
+        },
+      })
     })
   })
 })

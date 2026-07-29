@@ -16,9 +16,15 @@ import type {
 } from '../types/fertilizerEnrichmentOrchestration'
 import {
   assertPublicFertilizerEnrichmentJobShape,
+  FertilizerEnrichmentJobRepositoryError,
   type FertilizerEnrichmentJobRecord,
   type FertilizerEnrichmentJobRepository,
 } from './fertilizerEnrichmentJobRepositoryCore'
+import {
+  assertFertilizerEnrichmentJobNotExpired,
+  FertilizerEnrichmentJobExpiryError,
+} from './fertilizerEnrichmentJobExpiryCore'
+import { assertCompatibleFertilizerEnrichmentStart } from './fertilizerEnrichmentStartCompatibilityCore'
 import {
   FertilizerEnrichmentOrchestrationContractError,
   orchestrateFertilizerEnrichment,
@@ -449,6 +455,222 @@ function buildCancelledOrchestrationResult(
   }
 }
 
+export function mapFertilizerEnrichmentRepositoryError(
+  error: FertilizerEnrichmentJobRepositoryError,
+): FertilizerEnrichmentServerApiError {
+  switch (error.code) {
+    case 'persistence_unavailable':
+      return apiError(
+        'temporarily_unavailable',
+        'Fertilizer enrichment persistence is temporarily unavailable.',
+        503,
+      )
+    case 'invalid_stored_record':
+      return apiError(
+        'internal_server_error',
+        FERTILIZER_ENRICHMENT_SERVER_UNEXPECTED_FAILURE_MESSAGE,
+        500,
+      )
+    case 'idempotency_conflict':
+      return apiError(
+        'idempotency_conflict',
+        'Enrichment job idempotency conflict.',
+        409,
+      )
+    case 'revision_conflict':
+      return apiError(
+        'revision_conflict',
+        'Enrichment job was updated concurrently.',
+        409,
+      )
+  }
+}
+
+function assertJobNotExpiredForOperation(job: FertilizerEnrichmentJob, timestamp: string): void {
+  try {
+    assertFertilizerEnrichmentJobNotExpired(job, timestamp)
+  } catch (error) {
+    if (error instanceof FertilizerEnrichmentJobExpiryError) {
+      if (error.kind === 'expired') {
+        throw apiError('job_expired', 'Enrichment job has expired.', 410)
+      }
+
+      throw apiError(
+        'internal_server_error',
+        FERTILIZER_ENRICHMENT_SERVER_UNEXPECTED_FAILURE_MESSAGE,
+        500,
+      )
+    }
+
+    throw error
+  }
+}
+
+function resolveExistingIdempotentStart(
+  record: FertilizerEnrichmentJobRecord,
+  input: FertilizerEnrichmentOrchestrationInput,
+  accessContext: FertilizerEnrichmentAccessContext,
+  timestamp: string,
+): FertilizerEnrichmentJob {
+  try {
+    assertCompatibleFertilizerEnrichmentStart(record, input, accessContext)
+  } catch {
+    throw apiError('idempotency_conflict', 'Enrichment job idempotency conflict.', 409)
+  }
+
+  assertJobNotExpiredForOperation(record.job, timestamp)
+  return toPublicJob(record)
+}
+
+async function reloadAuthorizedRecordOrUnavailable(
+  repository: FertilizerEnrichmentJobRepository,
+  jobId: string,
+  accessContext: FertilizerEnrichmentAccessContext,
+): Promise<FertilizerEnrichmentJobRecord> {
+  const record = await repository.getByJobId(jobId, accessContext)
+  if (!record) {
+    throw apiError(
+      'temporarily_unavailable',
+      'Fertilizer enrichment persistence is temporarily unavailable.',
+      503,
+    )
+  }
+
+  return record
+}
+
+function mapRepositoryError(error: unknown): FertilizerEnrichmentServerApiError {
+  if (error instanceof FertilizerEnrichmentJobRepositoryError) {
+    return mapFertilizerEnrichmentRepositoryError(error)
+  }
+
+  return mapUnexpectedError(error)
+}
+
+function rejectTerminalAdditionalSource(record: FertilizerEnrichmentJobRecord): void {
+  if (record.job.result.status === 'intake_ready') {
+    throw apiError(
+      'orchestration_not_cancellable',
+      'Additional sources cannot be provided after intake is ready.',
+      409,
+    )
+  }
+
+  if (
+    record.job.result.status === 'failed' &&
+    record.job.result.failureReason === 'domain_not_ready'
+  ) {
+    throw apiError(
+      'orchestration_not_cancellable',
+      'Additional sources cannot continue a domain-not-ready failure.',
+      409,
+    )
+  }
+
+  throw apiError(
+    'orchestration_not_cancellable',
+    'Additional sources cannot be provided for a terminal enrichment job.',
+    409,
+  )
+}
+
+function assertAdditionalSourceContinuable(record: FertilizerEnrichmentJobRecord): void {
+  if (TERMINAL_ORCHESTRATION_STATUSES.has(record.job.result.status)) {
+    rejectTerminalAdditionalSource(record)
+  }
+
+  if (record.job.result.status !== 'needs_input') {
+    throw apiError(
+      'orchestration_not_cancellable',
+      'Additional sources are only supported while enrichment needs input.',
+      409,
+    )
+  }
+}
+
+function additionalSourceAlreadyApplied(
+  record: FertilizerEnrichmentJobRecord,
+  idempotencyKey: string,
+  additionalSources: FertilizerUserProvidedSourceRef[],
+): boolean {
+  if (record.lastSourceProvisionIdempotencyKey === idempotencyKey) {
+    return true
+  }
+
+  const existingSources = record.orchestrationInput.userProvidedSources ?? []
+  const { added } = mergeUniqueSources(existingSources, additionalSources)
+  return added.length === 0
+}
+
+async function handleAdditionalSourceRevisionConflict(
+  repository: FertilizerEnrichmentJobRepository,
+  record: FertilizerEnrichmentJobRecord,
+  accessContext: FertilizerEnrichmentAccessContext,
+  idempotencyKey: string,
+  additionalSources: FertilizerUserProvidedSourceRef[],
+  timestamp: string,
+): Promise<FertilizerEnrichmentJob> {
+  const reloaded = await reloadAuthorizedRecordOrUnavailable(
+    repository,
+    record.job.jobId,
+    accessContext,
+  )
+  assertJobNotExpiredForOperation(reloaded.job, timestamp)
+
+  if (additionalSourceAlreadyApplied(reloaded, idempotencyKey, additionalSources)) {
+    return toPublicJob(reloaded)
+  }
+
+  throw apiError('revision_conflict', 'Enrichment job was updated concurrently.', 409)
+}
+
+async function handleCancelRevisionConflict(
+  repository: FertilizerEnrichmentJobRepository,
+  record: FertilizerEnrichmentJobRecord,
+  accessContext: FertilizerEnrichmentAccessContext,
+  timestamp: string,
+): Promise<FertilizerEnrichmentJob> {
+  const reloaded = await reloadAuthorizedRecordOrUnavailable(
+    repository,
+    record.job.jobId,
+    accessContext,
+  )
+  assertJobNotExpiredForOperation(reloaded.job, timestamp)
+
+  if (reloaded.job.result.status === 'cancelled') {
+    return toPublicJob(reloaded)
+  }
+
+  if (TERMINAL_ORCHESTRATION_STATUSES.has(reloaded.job.result.status)) {
+    throw apiError(
+      'orchestration_not_cancellable',
+      'This enrichment job can no longer be cancelled.',
+      409,
+    )
+  }
+
+  throw apiError('revision_conflict', 'Enrichment job was updated concurrently.', 409)
+}
+
+async function handleStartUpdateRevisionConflict(
+  repository: FertilizerEnrichmentJobRepository,
+  jobId: string,
+  accessContext: FertilizerEnrichmentAccessContext,
+  input: FertilizerEnrichmentOrchestrationInput,
+  timestamp: string,
+): Promise<FertilizerEnrichmentJob> {
+  const reloaded = await reloadAuthorizedRecordOrUnavailable(repository, jobId, accessContext)
+
+  try {
+    assertCompatibleFertilizerEnrichmentStart(reloaded, input, accessContext)
+  } catch {
+    throw apiError('revision_conflict', 'Enrichment job was updated concurrently.', 409)
+  }
+
+  assertJobNotExpiredForOperation(reloaded.job, timestamp)
+  return toPublicJob(reloaded)
+}
+
 function mapUnexpectedError(error: unknown): FertilizerEnrichmentServerApiError {
   if (error instanceof FertilizerEnrichmentServerApiError) {
     return error
@@ -460,6 +682,10 @@ function mapUnexpectedError(error: unknown): FertilizerEnrichmentServerApiError 
       'Only fertilizer enrichment is supported in this phase.',
       422,
     )
+  }
+
+  if (error instanceof FertilizerEnrichmentJobRepositoryError) {
+    return mapFertilizerEnrichmentRepositoryError(error)
   }
 
   return apiError(
@@ -512,7 +738,7 @@ export function createFertilizerEnrichmentServerService(
           accessContext,
         )
         if (existing) {
-          return toPublicJob(existing)
+          return resolveExistingIdempotentStart(existing, input, accessContext, now())
         }
 
         const timestamp = now()
@@ -547,7 +773,27 @@ export function createFertilizerEnrichmentServerService(
           revision: 1,
         }
 
-        const savedInitial = await dependencies.repository.save(initialRecord)
+        let savedInitial: FertilizerEnrichmentJobRecord
+        try {
+          savedInitial = await dependencies.repository.save(initialRecord)
+        } catch (error) {
+          if (
+            error instanceof FertilizerEnrichmentJobRepositoryError &&
+            error.code === 'idempotency_conflict'
+          ) {
+            const raced = await dependencies.repository.findByIdempotencyKey(
+              idempotencyKey,
+              accessContext,
+            )
+            if (!raced) {
+              throw apiError('idempotency_conflict', 'Enrichment job idempotency conflict.', 409)
+            }
+
+            return resolveExistingIdempotentStart(raced, input, accessContext, timestamp)
+          }
+
+          throw mapRepositoryError(error)
+        }
 
         const result = await runOrchestrationForJob(
           dependencies,
@@ -571,7 +817,26 @@ export function createFertilizerEnrichmentServerService(
           orchestrationInput: structuredClone(input),
         }
 
-        const saved = await dependencies.repository.update(completedRecord)
+        let saved: FertilizerEnrichmentJobRecord
+        try {
+          saved = await dependencies.repository.update(completedRecord)
+        } catch (error) {
+          if (
+            error instanceof FertilizerEnrichmentJobRepositoryError &&
+            error.code === 'revision_conflict'
+          ) {
+            return handleStartUpdateRevisionConflict(
+              dependencies.repository,
+              jobId,
+              accessContext,
+              input,
+              now(),
+            )
+          }
+
+          throw mapRepositoryError(error)
+        }
+
         return toPublicJob(saved)
       } catch (error) {
         throw mapUnexpectedError(error)
@@ -590,6 +855,7 @@ export function createFertilizerEnrichmentServerService(
           request.jobId,
           accessContext,
         )
+        assertJobNotExpiredForOperation(record.job, now())
         return toPublicJob(record)
       } catch (error) {
         throw mapUnexpectedError(error)
@@ -618,45 +884,13 @@ export function createFertilizerEnrichmentServerService(
           request.jobId,
           accessContext,
         )
+        assertJobNotExpiredForOperation(record.job, now())
 
         if (record.lastSourceProvisionIdempotencyKey === idempotencyKey) {
           return toPublicJob(record)
         }
 
-        if (TERMINAL_ORCHESTRATION_STATUSES.has(record.job.result.status)) {
-          if (record.job.result.status === 'intake_ready') {
-            throw apiError(
-              'orchestration_not_cancellable',
-              'Additional sources cannot be provided after intake is ready.',
-              409,
-            )
-          }
-
-          if (
-            record.job.result.status === 'failed' &&
-            record.job.result.failureReason === 'domain_not_ready'
-          ) {
-            throw apiError(
-              'orchestration_not_cancellable',
-              'Additional sources cannot continue a domain-not-ready failure.',
-              409,
-            )
-          }
-
-          throw apiError(
-            'orchestration_not_cancellable',
-            'Additional sources cannot be provided for a terminal enrichment job.',
-            409,
-          )
-        }
-
-        if (record.job.result.status !== 'needs_input') {
-          throw apiError(
-            'orchestration_not_cancellable',
-            'Additional sources are only supported while enrichment needs input.',
-            409,
-          )
-        }
+        assertAdditionalSourceContinuable(record)
 
         const baseInput = record.orchestrationInput
         if (!baseInput.identity) {
@@ -714,7 +948,27 @@ export function createFertilizerEnrichmentServerService(
           ),
         }
 
-        const saved = await dependencies.repository.update(updatedRecord)
+        let saved: FertilizerEnrichmentJobRecord
+        try {
+          saved = await dependencies.repository.update(updatedRecord)
+        } catch (error) {
+          if (
+            error instanceof FertilizerEnrichmentJobRepositoryError &&
+            error.code === 'revision_conflict'
+          ) {
+            return handleAdditionalSourceRevisionConflict(
+              dependencies.repository,
+              record,
+              accessContext,
+              idempotencyKey,
+              additionalSources,
+              timestamp,
+            )
+          }
+
+          throw mapRepositoryError(error)
+        }
+
         return toPublicJob(saved)
       } catch (error) {
         throw mapUnexpectedError(error)
@@ -733,6 +987,7 @@ export function createFertilizerEnrichmentServerService(
           request.jobId,
           accessContext,
         )
+        assertJobNotExpiredForOperation(record.job, now())
 
         if (record.job.result.status === 'cancelled') {
           return toPublicJob(record)
@@ -760,7 +1015,25 @@ export function createFertilizerEnrichmentServerService(
           ),
         }
 
-        const saved = await dependencies.repository.update(updatedRecord)
+        let saved: FertilizerEnrichmentJobRecord
+        try {
+          saved = await dependencies.repository.update(updatedRecord)
+        } catch (error) {
+          if (
+            error instanceof FertilizerEnrichmentJobRepositoryError &&
+            error.code === 'revision_conflict'
+          ) {
+            return handleCancelRevisionConflict(
+              dependencies.repository,
+              record,
+              accessContext,
+              timestamp,
+            )
+          }
+
+          throw mapRepositoryError(error)
+        }
+
         return toPublicJob(saved)
       } catch (error) {
         throw mapUnexpectedError(error)

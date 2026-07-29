@@ -5,6 +5,7 @@ import {
 import { FERTILIZER_ENRICHMENT_SPECIFICATION_VERSION } from './fertilizerEnrichment'
 import { FERTILIZER_READINESS_SPECIFICATION_VERSION } from './fertilizerReadiness'
 import {
+  FERTILIZER_ENRICHMENT_API_ERROR_CODES,
   FERTILIZER_ENRICHMENT_FAILURE_REASONS,
   FERTILIZER_ENRICHMENT_FAST_PATH_DECISIONS,
   FERTILIZER_ENRICHMENT_ORCHESTRATION_STATUSES,
@@ -509,5 +510,11 @@ describe('fertilizerEnrichmentOrchestration types', () => {
       'updatedAt',
       'result',
     ])
+  })
+
+  it('T-API lists controlled API error codes including Phase 4d codes', () => {
+    expect(FERTILIZER_ENRICHMENT_API_ERROR_CODES).toEqual(
+      expect.arrayContaining(['job_expired', 'idempotency_conflict', 'revision_conflict']),
+    )
   })
 })
