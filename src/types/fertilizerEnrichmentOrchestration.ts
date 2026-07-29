@@ -550,6 +550,8 @@ export const FERTILIZER_ENRICHMENT_API_ERROR_CODES = [
   'unauthorized',
   'idempotency_conflict',
   'orchestration_not_cancellable',
+  'internal_server_error',
+  'temporarily_unavailable',
 ] as const
 
 export type FertilizerEnrichmentApiErrorCode =

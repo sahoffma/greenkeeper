@@ -488,6 +488,9 @@ describe('fertilizerEnrichmentOrchestration types', () => {
       | 'userId'
       | 'sessionId'
       | 'recommendedNextAction'
+      | 'lastOrchestrationInput'
+      | 'lastSourceProvisionIdempotencyKey'
+      | 'orchestrationInput'
 
     type AssertJobHasNoDuplicateStateKeys =
       DuplicateJobStateKey extends keyof FertilizerEnrichmentJob ? never : true
