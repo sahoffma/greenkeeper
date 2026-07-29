@@ -66,4 +66,15 @@ describe('productRecognizeIdentityCore', () => {
     expect(recognition.variant.normalizedValue).toBe('Frühjahr & Neuansaat')
     expect(recognition.variant.rawValue).toBe('Frühjahr & Neuasaat')
   })
+
+  it('behält Bindestrich-Großschreibung in Produktnamen', () => {
+    const recognition = recognitionFromImageAnalysis({
+      ...rasendoktorRawVision,
+      productName: 'Stress-Manager',
+      variant: null,
+      productDescriptor: null,
+    })
+
+    expect(recognition.productName.normalizedValue).toBe('Stress-Manager')
+  })
 })

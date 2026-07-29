@@ -115,6 +115,18 @@ describe('fertilizerInventoryCore', () => {
     expect(a).toBe(b)
   })
 
+  it('Fingerprint bleibt lowercase auch bei Stress-Manager Anzeige', () => {
+    const fingerprint = buildRecognitionIdentityFingerprint({
+      brand: 'Rasendoktor',
+      productLine: 'Professional',
+      productName: 'Stress-Manager',
+      npk: 'NPK 0-0-30',
+    })
+
+    expect(fingerprint).toContain('stress-manager')
+    expect(fingerprint).not.toContain('Stress-Manager')
+  })
+
   it('Bestätigungstexte ohne technische Sprache', () => {
     const lines = formatSaveConfirmationLines({
       purchaseQuantity: 5,

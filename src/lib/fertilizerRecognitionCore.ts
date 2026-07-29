@@ -12,6 +12,11 @@ import {
   planInitialStockQuestion,
   type InitialStockQuestion,
 } from './productRecognizeStockCore'
+import {
+  formatNpkDeclarationDisplay,
+  formatProductDescriptorDisplay,
+  formatRecognitionProvenanceDisplay,
+} from './fertilizerProductDisplay'
 import { createRandomId } from './randomId'
 
 export const RECOGNITION_CLIENT_TIMEOUT_MS = 30_000
@@ -61,17 +66,6 @@ export function resolveIdentityOrigin(result: ProductRecognizeResult): Fertilize
   }
 
   return 'packaging_photo'
-}
-
-export function identityOriginLabel(origin: FertilizerRecognitionIdentityOrigin): string {
-  switch (origin) {
-    case 'greenkeeper_catalog':
-      return 'Greenkeeper-Katalog'
-    case 'official_product_source':
-      return 'Offizielle Produktquelle'
-    case 'packaging_photo':
-      return 'Verpackungsfoto'
-  }
 }
 
 export function buildRecognitionCandidateFromResult(
@@ -134,7 +128,9 @@ export interface RecognizedProductDisplay {
   npk: string | null
   packageSize: string | null
   productForm: string | null
-  identityOriginLabel: string
+  provenanceSourceLabel: string
+  provenanceStatusLabel: string | null
+  provenanceLabel: string
   incompleteOptionalHint: string | null
 }
 
@@ -150,13 +146,14 @@ export function formatRecognizedProductDisplay(
   const titleParts = [brand, line, name].filter(Boolean)
   const title = titleParts.length > 0 ? titleParts.join(' · ') : 'Produkt erkannt'
 
-  const npk =
+  const npkRaw =
     recognition.npk.rawLabel ??
     (recognition.npk.nitrogen != null &&
     recognition.npk.phosphate != null &&
     recognition.npk.potash != null
       ? `${recognition.npk.nitrogen}-${recognition.npk.phosphate}-${recognition.npk.potash}`
       : null)
+  const npk = formatNpkDeclarationDisplay(npkRaw)
 
   const packageSize =
     recognition.packageSize.normalizedValue != null
@@ -170,16 +167,18 @@ export function formatRecognizedProductDisplay(
         ? 'Flüssig'
         : null
 
-  const origin = resolveIdentityOrigin(result)
+  const provenance = formatRecognitionProvenanceDisplay(result)
 
   return {
     title,
     subtitle: line && name ? `${line} — ${name}` : null,
-    descriptor: recognition.productDescriptor.normalizedValue,
+    descriptor: formatProductDescriptorDisplay(recognition.productDescriptor.normalizedValue),
     npk,
     packageSize,
     productForm: formLabel,
-    identityOriginLabel: identityOriginLabel(origin),
+    provenanceSourceLabel: provenance.sourceLabel,
+    provenanceStatusLabel: provenance.statusLabel,
+    provenanceLabel: provenance.combinedLabel,
     incompleteOptionalHint:
       result.dataCompleteness < 0.5
         ? 'Einige optionale Produktdaten fehlen noch — Du kannst trotzdem fortfahren.'

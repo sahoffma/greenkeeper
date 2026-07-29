@@ -11,6 +11,7 @@ import {
   recognitionAllowsAcceptance,
   recognitionNeedsClarification,
 } from '../../lib/fertilizerRecognitionCore'
+import { formatRecognitionResultScreenCopy } from '../../lib/fertilizerProductDisplay'
 import {
   cancelRecognitionFlight,
   getActiveRecognitionFlight,
@@ -402,6 +403,10 @@ export function FertilizerPhotoRecognition({
   }
 
   const display = session.result ? formatRecognizedProductDisplay(session.result) : null
+  const resultCopy =
+    session.result && session.phase === 'result'
+      ? formatRecognitionResultScreenCopy(session.result)
+      : null
 
   if (session.phase === 'select') {
     return (
@@ -473,15 +478,29 @@ export function FertilizerPhotoRecognition({
           Produkt erkannt
         </h2>
         <div className={styles.productCard}>
-          <p className={styles.productTitle}>{display.title}</p>
-          {display.descriptor && <p className={styles.productMeta}>{display.descriptor}</p>}
-          {display.npk && <p className={styles.productMeta}>NPK {display.npk}</p>}
-          {display.packageSize && <p className={styles.productMeta}>{display.packageSize}</p>}
-          {display.productForm && <p className={styles.productMeta}>{display.productForm}</p>}
-          <p className={styles.origin}>Herkunft: {display.identityOriginLabel}</p>
-          {display.incompleteOptionalHint && (
-            <p className={styles.optionalHint}>{display.incompleteOptionalHint}</p>
+          <div className={styles.identityGroup}>
+            <p className={styles.productTitle}>{display.title}</p>
+            {display.descriptor && (
+              <p className={styles.productDescriptor}>{display.descriptor}</p>
+            )}
+          </div>
+          {(display.npk || display.packageSize || display.productForm) && (
+            <div className={styles.productDataGroup}>
+              {display.npk && <p className={styles.productDataItem}>{display.npk}</p>}
+              {display.packageSize && (
+                <p className={styles.productDataItem}>{display.packageSize}</p>
+              )}
+              {display.productForm && (
+                <p className={styles.productDataItem}>{display.productForm}</p>
+              )}
+            </div>
           )}
+          {resultCopy ? (
+            <div className={styles.resultCopy}>
+              <p className={styles.resultCopyLine}>{resultCopy.headline}</p>
+              <p className={styles.resultCopyLine}>{resultCopy.subline}</p>
+            </div>
+          ) : null}
         </div>
         <div className={styles.resultActions}>
           <button type="button" className={styles.primaryButton} onClick={handleAccept}>

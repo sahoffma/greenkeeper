@@ -22,13 +22,21 @@ function collapseWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim()
 }
 
+function titleCaseSegment(segment: string): string {
+  if (!segment) {
+    return segment
+  }
+
+  return segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase()
+}
+
 function titleCaseWords(value: string): string {
   return collapseWhitespace(value)
     .split(' ')
     .map((word) => {
       if (!word) return word
       if (word === '&') return word
-      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+      return word.split('-').map(titleCaseSegment).join('-')
     })
     .join(' ')
 }
