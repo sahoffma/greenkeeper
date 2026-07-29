@@ -65,6 +65,7 @@ function mapAdapterSourceType(sourceType: FertilizerSourceAdapterSourceType): Fe
     case 'catalog_entry':
       return 'catalog'
     case 'packaging_image':
+    case 'packaging_label_text':
       return 'packaging'
     case 'user_upload':
       return 'user_document'

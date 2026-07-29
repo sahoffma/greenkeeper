@@ -149,6 +149,7 @@ export type FertilizerSourceAdapterSourceType =
   | 'text_document'
   | 'catalog_entry'
   | 'packaging_image'
+  | 'packaging_label_text'
   | 'user_upload'
   | 'web_search'
 
@@ -333,6 +334,8 @@ export interface FertilizerUserProvidedSourceRef {
 
 export interface FertilizerEnrichmentSourceHint {
   sourceUrl?: string | null
+  /** Session-scoped reference to a user-provided upload or capture. */
+  referenceId?: string | null
   gtin?: string | null
   catalogEntryId?: string | null
   manufacturerCode?: string | null
