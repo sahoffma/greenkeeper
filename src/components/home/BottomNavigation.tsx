@@ -2,9 +2,10 @@ import { NavLink } from 'react-router-dom'
 import styles from './BottomNavigation.module.css'
 
 const tabs = [
+  { id: 'home', label: 'Home', path: '/', icon: '🏠', end: true },
   { id: 'journal', label: 'Journal', path: '/journal', icon: '📖' },
-  { id: 'home', label: 'Greenkeeper', path: '/', icon: '🌱', featured: true },
-  { id: 'garden', label: 'Garten', path: '/garten', icon: '🌿' },
+  { id: 'greenkeeper', label: 'Greenkeeper', path: '/greenkeeper', icon: '🌱' },
+  { id: 'equipment', label: 'Ausrüstung', path: '/ausruestung', icon: '🧰' },
 ] as const
 
 export function BottomNavigation() {
@@ -15,16 +16,8 @@ export function BottomNavigation() {
           <NavLink
             key={tab.id}
             to={tab.path}
-            end={tab.path === '/'}
-            className={({ isActive }) =>
-              [
-                styles.tab,
-                'featured' in tab && tab.featured ? styles.tabFeatured : '',
-                isActive ? styles.tabActive : '',
-              ]
-                .filter(Boolean)
-                .join(' ')
-            }
+            end={'end' in tab ? tab.end : false}
+            className={({ isActive }) => [styles.tab, isActive ? styles.tabActive : ''].filter(Boolean).join(' ')}
           >
             <span className={styles.icon} aria-hidden="true">
               {tab.icon}

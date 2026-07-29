@@ -1,0 +1,112 @@
+.card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  width: 100%;
+  min-height: 88px;
+  padding: var(--space-md) var(--space-md) var(--space-md) var(--space-sm);
+  border: 1px solid rgba(31, 61, 43, 0.07);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: 0 12px 32px rgba(31, 61, 43, 0.06);
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    border-color 0.16s ease;
+}
+
+@media (hover: hover) {
+  .card:hover {
+    border-color: rgba(31, 61, 43, 0.12);
+  }
+}
+
+.card:active {
+  transform: scale(0.985);
+  box-shadow: 0 6px 18px rgba(31, 61, 43, 0.045);
+}
+
+.iconWrap {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+}
+
+.iconWrap svg {
+  width: 28px;
+  height: 28px;
+}
+
+.card[data-category='duenger'] .iconWrap {
+  background: var(--category-duenger-icon-bg);
+  color: var(--category-duenger-icon-color);
+}
+
+.card[data-category='boden-hilfsstoffe'] .iconWrap {
+  background: var(--category-boden-hilfsstoffe-icon-bg);
+  color: var(--category-boden-hilfsstoffe-icon-color);
+}
+
+.card[data-category='saatgut'] .iconWrap {
+  background: var(--category-saatgut-icon-bg);
+  color: var(--category-saatgut-icon-color);
+}
+
+.card[data-category='bewaesserung'] .iconWrap {
+  background: var(--category-bewaesserung-icon-bg);
+  color: var(--category-bewaesserung-icon-color);
+}
+
+.card[data-category='pflanzenschutz'] .iconWrap {
+  background: var(--category-pflanzenschutz-icon-bg);
+  color: var(--category-pflanzenschutz-icon-color);
+}
+
+.card[data-category='geraete'] .iconWrap {
+  background: var(--category-geraete-icon-bg);
+  color: var(--category-geraete-icon-color);
+}
+
+.copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.04rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  color: #1f3d2b;
+}
+
+.subtitle {
+  margin: 5px 0 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--color-equipment-subtitle);
+}
+
+.chevron {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: rgba(31, 61, 43, 0.3);
+}
+
+.chevron svg {
+  width: 18px;
+  height: 18px;
+}

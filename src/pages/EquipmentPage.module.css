@@ -1,0 +1,22 @@
+.screen {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: min(100%, 720px);
+  margin: 0 auto;
+  padding:
+    max(6px, env(safe-area-inset-top))
+    var(--space-sm)
+    calc(var(--nav-height) + max(8px, env(safe-area-inset-bottom)));
+  background: #faf8f3;
+  min-height: 100dvh;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin: 0;
+  padding: var(--space-md) 0 0;
+  list-style: none;
+}

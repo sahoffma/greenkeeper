@@ -1,0 +1,134 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.title {
+  margin: 0;
+  font-size: 1.18rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.28;
+  color: #1f3d2b;
+}
+
+.privacyHint {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: rgba(31, 61, 43, 0.72);
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-sm);
+}
+
+.actionButton {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  min-height: 88px;
+  padding: var(--space-md);
+  border: 1px solid rgba(47, 107, 79, 0.18);
+  border-radius: var(--radius-md);
+  background: #fff;
+  color: #1f3d2b;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.progressList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.progressItem {
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  background: rgba(47, 107, 79, 0.06);
+  color: rgba(31, 61, 43, 0.55);
+  font-size: 0.95rem;
+}
+
+.progressItemActive {
+  background: rgba(47, 107, 79, 0.12);
+  color: #1f3d2b;
+  font-weight: 600;
+}
+
+.slowHint {
+  margin: 0;
+  font-size: 0.88rem;
+  color: rgba(31, 61, 43, 0.72);
+}
+
+.productCard {
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  background: rgba(47, 107, 79, 0.06);
+}
+
+.productTitle {
+  margin: 0 0 var(--space-xs);
+  font-size: 1rem;
+  font-weight: 650;
+  color: #1f3d2b;
+}
+
+.productMeta,
+.origin,
+.optionalHint,
+.clarifyMessage,
+.errorMessage {
+  margin: 0 0 var(--space-xs);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: rgba(31, 61, 43, 0.82);
+}
+
+.origin {
+  margin-top: var(--space-sm);
+  font-size: 0.82rem;
+  color: rgba(31, 61, 43, 0.62);
+}
+
+.optionalHint {
+  color: rgba(31, 61, 43, 0.62);
+}
+
+.resultActions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.primaryButton,
+.secondaryButton {
+  width: 100%;
+  min-height: 48px;
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primaryButton {
+  border: none;
+  background: #2f6b4f;
+  color: #fff;
+}
+
+.secondaryButton {
+  border: 1px solid rgba(47, 107, 79, 0.22);
+  background: transparent;
+  color: #1f3d2b;
+}

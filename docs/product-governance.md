@@ -138,3 +138,9 @@ Kurzform — nach `schema.sql` alle Migrationen in **Dateiname-Reihenfolge**:
 - Admin-Seed-Skripte benötigen `GOVERNANCE_ADMIN_USER_ID` (Reviewer/Admin-Profil)
 - Legacy-Produkte erscheinen als „Technisch übernommen“ bis Review
 - `importProductWithServiceRole` ist deprecated und leitet auf Governance um
+
+## Persönlicher Bestand (Abgrenzung)
+
+Dieses Dokument regelt **Ebene 1 – Produktkatalog** (globale Produktdaten). Persönliche Gebinde, Bestandsbewegungen und die Kopplung zur Journal-Düngung sind **nicht** Teil des Governance-Schreibpfads; sie folgen [GM-008](./model/gm-008.md) und [GA-012](./architecture/ga-012.md).
+
+**KI-Produkterkennung (GA-013):** Erkannte Produkte werden als **persönlicher Recognition Candidate** übernommen — **ohne** automatischen Eintrag in den offiziellen Katalog. Ein eindeutiger Greenkeeper-Katalogtreffer verwendet das bestehende Produkt; parallele persönliche Kandidaten entstehen dann nicht.

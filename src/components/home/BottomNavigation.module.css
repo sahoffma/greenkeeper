@@ -12,12 +12,12 @@
   width: min(100%, 560px);
   margin: 0 auto;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-items: end;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
   gap: 4px;
   padding: 10px 12px 8px;
   border-radius: 28px;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.96);
   border: 1px solid var(--color-border);
   box-shadow: 0 18px 50px rgba(28, 31, 27, 0.12);
   backdrop-filter: blur(18px);
@@ -33,34 +33,36 @@
   min-height: 56px;
   padding: 8px 4px;
   border-radius: 16px;
+  background: transparent;
   color: var(--color-text-tertiary);
   font-size: 0.72rem;
-  font-weight: 600;
-  transition: color 0.15s ease, background 0.15s ease;
+  font-weight: 500;
+  transition: color 0.15s ease;
 }
 
-.tab:hover {
+.tab:hover:not(.tabActive) {
   color: var(--color-text-secondary);
-}
-
-.tabFeatured {
-  min-height: 62px;
-  margin-top: -6px;
-  color: var(--color-text-secondary);
-}
-
-.tabFeatured .icon {
-  font-size: 1.28rem;
 }
 
 .tabActive {
   color: var(--color-accent);
-  background: var(--color-accent-soft);
+  font-weight: 700;
 }
 
 .icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 1.05rem;
   line-height: 1;
+}
+
+.tab:not(.tabActive) .icon {
+  opacity: 0.72;
+}
+
+.tabActive .icon {
+  opacity: 1;
 }
 
 @media (min-width: 768px) {
@@ -71,9 +73,5 @@
   .tab {
     min-height: 60px;
     font-size: 0.78rem;
-  }
-
-  .tabFeatured {
-    min-height: 66px;
   }
 }

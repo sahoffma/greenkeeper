@@ -18,9 +18,12 @@ Neue Entscheidung: [Template](./templates/ga-template.md) · [README](./README.m
 | [GA-008](./ga-008.md) | Mehrere fachliche Referenzen pro Maßnahme | 📋 Geplant | Mittel |
 | [GA-009](./ga-009.md) | Atomarer Onboarding-Abschluss per RPC | ✅ Umgesetzt | Hoch |
 | [GA-010](./ga-010.md) | Getrennte Supabase-Umgebungen für Dev und Production | ✅ Umgesetzt | Hoch |
+| [GA-011](./ga-011.md) | Pflegegruppen-Verwaltung per RPC mit RLS und automatischer Bereinigung | ✅ Umgesetzt | Hoch |
+| [GA-012](./ga-012.md) | Berechneter Bestand aus Bewegungen | 📋 Geplant | Hoch |
+| [GA-013](./ga-013.md) | KI-gestützte Düngererkennung — Architektur (Stufe 1 Product Profiles) | ✅ Stufe 1 umgesetzt | Hoch |
 
 ---
 
 ## Abstimmung mit Produkt-Governance
 
-Produkte folgen zusätzlich [product-governance.md](../product-governance.md). GA-001 und GA-002 gelten fachlich auch für Produkte; technische Umsetzung ist dort spezifiziert. Fachliche Modellentscheidungen zu Produkten siehe [GM-003](../model/gm-003.md).
+Produkte folgen zusätzlich [product-governance.md](../product-governance.md). GA-001 und GA-002 gelten fachlich auch für Produkte; technische Umsetzung ist dort spezifiziert. Fachliche Modellentscheidungen zu Produkten siehe [GM-003](../model/gm-003.md). Persönlicher Düngerbestand und Bestandsbewegungen: [GM-008](../model/gm-008.md), [GA-012](./ga-012.md).

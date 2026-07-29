@@ -55,9 +55,26 @@ Alle Dateien in **`supabase/migrations/*.sql`** in **Dateiname-Reihenfolge** (le
 20250725_onboarding_care_groups.sql
 20250726_product_governance_role_type_fix.sql
 20250727_product_governance_v2_enum_commit_fix.sql
+20250726_care_group_management.sql
+20250728_create_area_with_care_assignment.sql
+20250729_onboarding_custom_care_groups.sql
+20250730_area_cover_image.sql
+20250731_fertilizer_inventory.sql
+20250801_product_profiles.sql
+20250802_save_fertilizer_capture_replay_product_profile.sql
 ```
 
 **Keine Sonderreihenfolge.** Korrektur-Migrationen `20250726` und `20250727` sind idempotent und dienen bestehenden Datenbanken, die noch die alte `text`-Baseline hatten.
+
+#### Inkrementelle Dev-Migrationen (bestehende Dev-DB)
+
+| Werkzeug | Rolle |
+|----------|--------|
+| `scripts/apply-dev-schema.mjs` | **Nur** frischer Neuaufbau: `schema.sql` + **alle** Migrationen |
+| `scripts/apply-single-migration.mjs` | **Dev-Hilfswerkzeug:** genau **eine** neue Migration |
+| Schema-Verifikation | Verbindlicher Nachweis des angewendeten Stands |
+
+Greenkeeper nutzt **kein** Supabase-CLI-`schema_migrations`-Tracking im Repository. Ein erneuter Vollaufbau auf befüllter Dev-DB schlägt fehl. Inkrementelle Updates: `apply-single-migration.mjs` pro neuer Datei, danach Verifikation (z. B. `node scripts/verify-product-profiles-migration.mjs --migration-state`).
 
 ### Schritt 3 — Verifikation
 
@@ -79,7 +96,9 @@ npm run build
 | Skript | Zweck |
 |--------|--------|
 | `scripts/bootstrapDatabaseCore.mjs` | Gemeinsame Logik: schema + chronologische Migrationen |
-| `scripts/apply-dev-schema.mjs` | Dauerhafter Apply auf Dev (nur `amyounxrsxgujsfutshx`, mit Env-Guard) |
+| `scripts/apply-dev-schema.mjs` | Dauerhafter Apply auf Dev (nur `amyounxrsxgujsfutshx`, mit Env-Guard) — **Vollaufbau** |
+| `scripts/apply-single-migration.mjs` | Inkrementell: **eine** Migration auf bestehende Dev-DB (ohne CLI-Tracking) |
+| `scripts/verify-product-profiles-migration.mjs` | GA-013 Schema-/Integrationsvalidierung auf Dev |
 | `scripts/verify-chronological-bootstrap.mjs` | Vollständiger Neuaufbau-Test in Transaktion + ROLLBACK |
 | `scripts/supabaseEnvGuard.mjs` | Blockiert Production, erfordert `ALLOW_SUPABASE_WRITE_TESTS=true` |
 

@@ -1,5 +1,6 @@
-import { Routes, Route } from 'react-router-dom'
+import { Navigate, Routes, Route } from 'react-router-dom'
 import { AuthRecoveryRedirect } from './components/AuthRecoveryRedirect'
+import { FertilizerCaptureRouteLifecycle } from './components/fertilizer/FertilizerCaptureRouteLifecycle'
 import { EmailConfirmationRoute } from './components/EmailConfirmationRoute'
 import { GuestRoute } from './components/GuestRoute'
 import { OnboardingRoute } from './components/OnboardingRoute'
@@ -9,9 +10,14 @@ import { AreaShell } from './components/AreaShell'
 import { AreasPage } from './pages/AreasPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { EmailConfirmPage } from './pages/EmailConfirmPage'
+import { EquipmentPage } from './pages/EquipmentPage'
+import { EquipmentCategoryPage } from './pages/EquipmentCategoryPage'
+import { FertilizerCapturePage } from './pages/FertilizerCapturePage'
+import { FertilizerCategoryPage } from './pages/FertilizerCategoryPage'
+import { FertilizerProductDetailPage } from './pages/FertilizerProductDetailPage'
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
-import { GardenPage } from './pages/GardenPage'
 import { JournalPage } from './pages/JournalPage'
+import { GreenkeeperPage } from './pages/GreenkeeperPage'
 import { LoginPage } from './pages/LoginPage'
 import { OnboardingLawnAreasPage } from './pages/onboarding/OnboardingLawnAreasPage'
 import { OnboardingMultipleCountPage } from './pages/onboarding/OnboardingMultipleCountPage'
@@ -26,13 +32,16 @@ import { ResetPasswordPage } from './pages/ResetPasswordPage'
 import { RootPage } from './pages/RootPage'
 import { TimelinePage } from './pages/TimelinePage'
 import { NewActivityPage } from './pages/NewActivityPage'
+import { ProductRecognizeSpikePage } from './pages/dev/ProductRecognizeSpikePage'
 
 export default function App() {
   return (
     <>
       <AuthRecoveryRedirect />
+      <FertilizerCaptureRouteLifecycle />
       <Routes>
       <Route path="/" element={<RootPage />} />
+      <Route path="/dev/product-recognize" element={<ProductRecognizeSpikePage />} />
       <Route
         path="/login"
         element={
@@ -130,10 +139,66 @@ export default function App() {
         }
       />
       <Route
+        path="/greenkeeper"
+        element={
+          <ProtectedRoute>
+            <GreenkeeperPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ausruestung"
+        element={
+          <ProtectedRoute>
+            <EquipmentPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ausruestung/duenger"
+        element={
+          <ProtectedRoute>
+            <FertilizerCategoryPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ausruestung/duenger/erfassen"
+        element={
+          <ProtectedRoute>
+            <FertilizerCapturePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ausruestung/duenger/bestand"
+        element={<Navigate to="/ausruestung/duenger" replace />}
+      />
+      <Route
+        path="/ausruestung/duenger/katalog"
+        element={<Navigate to="/ausruestung/duenger" replace />}
+      />
+      <Route
+        path="/ausruestung/duenger/:productId"
+        element={
+          <ProtectedRoute>
+            <FertilizerProductDetailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ausruestung/:categorySlug"
+        element={
+          <ProtectedRoute>
+            <EquipmentCategoryPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/garten"
         element={
           <ProtectedRoute>
-            <GardenPage />
+            <Navigate to="/ausruestung" replace />
           </ProtectedRoute>
         }
       />

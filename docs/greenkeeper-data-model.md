@@ -48,7 +48,7 @@ flowchart LR
 | **Maßnahme** | Ein Journal-Eintrag: *Was* wurde *wann* auf *welcher Fläche* getan? |
 | **Produkt** | Dünger, Bodenhilfsstoff, Pflanzenschutzmittel, Topdress-Material … (Governance-Workflow) |
 | **Gerät** | Maschine, Anbaugerät oder Handwerkzeug, das bei einer Maßnahme eine Rolle spielt |
-| **Pflegegruppe** | Welche Rasenflächen im Alltag gemeinsam angesprochen werden (internes Modell) |
+| **Pflegegruppe** | Welche Rasenflächen gemeinsam betrachtet werden (internes Modell; sichtbar auf Startseite und „Meine Rasenflächen“) |
 
 ---
 
@@ -56,13 +56,15 @@ flowchart LR
 
 Rasenflächen bleiben **eigenständige** Einheiten (Stammdaten, Historie, Maßnahmen je Fläche).
 
-Gemeinsame Pflege wird über **Pflegegruppen** abgebildet:
+Gemeinsame Betrachtung wird über **Pflegegruppen** abgebildet:
 
 - Eine Pflegegruppe gehört einem Nutzer.
-- Eine Rasenfläche gehört in der aktuellen Ausbaustufe **genau einer** Pflegegruppe an.
-- Die Onboarding-Eingaben `together` / `separate` sind **kein** dauerhaftes Domänenmodell — sie werden beim Abschluss in Pflegegruppen übersetzt.
+- Eine Rasenfläche kann **unverbunden** sein oder **höchstens einer** Pflegegruppe angehören.
+- Eine gültige Pflegegruppe enthält **mindestens zwei** Rasenflächen.
+- Die Onboarding-Eingaben `together` / `separate` sind **kein** dauerhaftes Domänenmodell — sie werden beim Abschluss in Pflegegruppen (oder deren Abwesenheit) übersetzt.
+- In Version 1 beeinflussen Gruppen noch **keine** KI-Empfehlungen, Pflegepläne oder Auswertungen.
 
-Siehe [GM-007](./model/gm-007.md), [DL-007](./decisions/dl-007.md).
+Siehe [GM-007](./model/gm-007.md), [DL-007](./decisions/dl-007.md), [DL-008](./decisions/dl-008.md).
 
 ---
 
@@ -241,6 +243,44 @@ Produkte (Dünger, Bodenhilfsstoffe, Pflanzenschutzmittel …) folgen dem **Prod
 
 Details: [product-governance.md](./product-governance.md)
 
+### Dünger: Katalog, Bestand, Bewegungen, Anwendung
+
+Für Dünger gelten **vier getrennte Ebenen** ([GM-008](./model/gm-008.md)):
+
+| Ebene | Zweck |
+|-------|--------|
+| **Produktkatalog** | Globales Produkt (Hersteller, NPK, …) — nur über Governance |
+| **Persönlicher Bestand** | Konkretes Gebinde eines Nutzers (Größe, Kauf, Lagerort, …) |
+| **Bestandsbewegungen** | Jede Mengenänderung (Kauf, Düngung, Verkauf, …) |
+| **Anwendung** | Journal-Maßnahme „Düngen“ auf Fläche oder Gruppe |
+
+Der **verfügbare Restbestand** wird **nicht direkt gepflegt**, sondern aus Bewegungen **berechnet** ([GA-012](./architecture/ga-012.md)). Eine Journal-Düngung erzeugt automatisch eine Bewegung „Düngung“; Verkauf, Geschenk, Entsorgung und Inventur sind reine Lagerbewegungen ohne Journal-Eintrag.
+
+**Ereignisbasierte Verarbeitung** ([DL-009](./decisions/dl-009.md), [CM-011](./playbook/conversation-model.md)): Der Nutzer beschreibt Ereignisse (Kauf, Ausbringung, Verschenken, …); Greenkeeper ordnet zu, ob Journal, Inventar oder beides betroffen ist — ohne Bereichswahl durch den Nutzer.
+
+> Das Journal dokumentiert Arbeiten am Rasen – nicht Arbeiten am Inventar.
+
+### Product Profile (GA-013 Stufe 1)
+
+Neben dem **Recognition Candidate** (persönliche Erkennung aus einem Foto) führt Greenkeeper ein **Product Profile** als fachliches Produktwissen ein ([GA-013](./architecture/ga-013.md)).
+
+| Aspekt | Regel |
+|--------|--------|
+| **Draft** | Aus Verpackungsfoto abgeleitet; `user_id` Pflicht; nur für denselben Nutzer wiederverwendbar |
+| **Verified** | Global; `user_id IS NULL`; für alle Nutzer lesbar |
+| **Gebinde** | Nur in Container/Candidate — **nicht** im Product Profile |
+| **Unique** | Pro Nutzer ein Draft pro Fingerprint; global ein verified Profil pro Fingerprint |
+| **RLS** | Eigene Drafts lesbar; verified global lesbar; direkte Client-Schreibzugriffe gesperrt |
+| **Ensure** | Serverseitig in `save_fertilizer_capture` und via RPC `ensure_product_profile_from_snapshot` |
+| **Idempotenz** | Replay mit gleichem Idempotency-Key liefert dieselbe `product_profile_id` (Folgemigration `20250802`) |
+| **Katalog** | `products.product_profile_id` optional; nur verified/global; DB-Trigger + `ON DELETE RESTRICT` |
+| **Reaktivierung** | Soft-gelöschte Katalogprodukte blockieren keine Profil-Downgrades; Reaktivierung prüft Integrität erneut |
+| **Journal** | Noch nicht angebunden — bewusst Stufe 2+ |
+
+Technische Migrationen: `20250801_product_profiles.sql` (Erstimplementierung), `20250802_save_fertilizer_capture_replay_product_profile.sql` (Replay-Response).
+
+*Umsetzung Stufe 1 auf Dev validiert (2026-07); Journal-Anbindung folgt in späterer Stufe.*
+
 ---
 
 ## Beziehungen Maßnahme ↔ Gerät ↔ Produkt
@@ -276,6 +316,9 @@ Einzelne Einträge: [Model-Index](./model/index.md)
 | [GM-004](./model/gm-004.md) | Unbekannte Produkte lösen den **Product-Learn-Assistenten** aus; der Journal-Eintrag wird danach fortgesetzt. |
 | [GM-005](./model/gm-005.md) | Maßnahmen werden als **konkrete Typen** modelliert (Mähen, Aerifizieren, Topdressen …), nicht als technische Enum-Sammelbegriffe. |
 | [GM-006](./model/gm-006.md) | Greenkeeper orientiert sich an der **Arbeitsweise eines Greenkeepers**. Die Datenstruktur folgt den tatsächlichen Arbeitsabläufen und nicht einer technischen Datenbankstruktur. Ein Greenkeeper spricht von Aerifizieren, Topdressen, Spiken und Lüften – **nicht** von „mechanischen Maßnahmen“. Tabellen, Enums und APIs sind der Praxis unterzuordnen, nicht umgekehrt. |
+| [GM-007](./model/gm-007.md) | **Pflegegruppen** modellieren gemeinsame Betrachtung mehrerer Flächen. |
+| [GM-008](./model/gm-008.md) | **Dünger:** vier Ebenen (Katalog, Bestand, Bewegungen, Anwendung); Restbestand aus Bewegungen berechnet; ereignisbasierte Zuordnung Journal/Inventar. |
+| [DL-009](./decisions/dl-009.md) | **Informationsarchitektur:** Home, Journal, Unterstützung, Ausrüstung; ereignisbasierte Verarbeitung. |
 
 ---
 

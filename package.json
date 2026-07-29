@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:e2e:onboarding": "playwright test e2e/onboarding.spec.mjs",
+    "test:e2e:onboarding": "playwright test e2e/onboarding.spec.mjs e2e/onboarding-custom-grouping.spec.mjs",
     "test:e2e:guards": "playwright test e2e/guards-and-home.spec.mjs",
     "test:e2e:all": "playwright test e2e/",
     "screenshot:home": "node scripts/capture-home-screenshot.mjs",
@@ -22,7 +22,9 @@
     "openai": "^6.47.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.0"
+    "react-router-dom": "^6.28.0",
+    "heic-convert": "^2.1.0",
+    "sharp": "^0.35.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
@@ -30,8 +32,8 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
-    "playwright": "^1.61.1",
     "pg": "^8.16.3",
+    "playwright": "^1.61.1",
     "typescript": "~5.6.2",
     "vite": "^5.4.10",
     "vitest": "^3.2.4"

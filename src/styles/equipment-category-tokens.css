@@ -1,0 +1,33 @@
+/*
+ * Kategorie-Farbwelten für den Bereich Ausrüstung.
+ * Farbe beschreibt Material und Stimmung — nicht Funktion oder Status.
+ * Icon-Hintergründe bleiben ruhig; Iconfarben tragen die Kategorie-Identität.
+ */
+:root {
+  /* Dünger — Moos, Wachstum */
+  --category-duenger-icon-bg: #e7f0eb;
+  --category-duenger-icon-color: #126038;
+
+  /* Boden & Hilfsstoffe — Erde, Sand */
+  --category-boden-hilfsstoffe-icon-bg: #f4efe6;
+  --category-boden-hilfsstoffe-icon-color: #aa692e;
+
+  /* Saatgut — Austrieb, Hoffnung */
+  --category-saatgut-icon-bg: #ecf5ed;
+  --category-saatgut-icon-color: #288a3a;
+
+  /* Bewässerung — Wasser, Frische */
+  --category-bewaesserung-icon-bg: #e9f3f7;
+  --category-bewaesserung-icon-color: #257d98;
+
+  /* Pflanzenschutz — Bernstein, Fürsorge */
+  --category-pflanzenschutz-icon-bg: #f6f0e7;
+  --category-pflanzenschutz-icon-color: #bc6e20;
+
+  /* Geräte — Handwerk, Schiefer */
+  --category-geraete-icon-bg: #eceef2;
+  --category-geraete-icon-color: #2f3f58;
+
+  /* Warme Untertitel-Farbe für Ausrüstungs-Karten */
+  --color-equipment-subtitle: rgba(47, 65, 52, 0.72);
+}
