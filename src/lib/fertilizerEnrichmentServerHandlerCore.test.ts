@@ -8,6 +8,7 @@ import {
   createFertilizerEnrichmentServerService,
   createTestOrchestrationDependencies,
   createTestResolveExpiresAt,
+  FertilizerEnrichmentServerApiError,
 } from './fertilizerEnrichmentServerServiceCore'
 import type { FertilizerSourceAdapter } from './fertilizerEnrichmentOrchestrationCore'
 
@@ -459,5 +460,69 @@ describe('fertilizerEnrichmentServerHandlerCore', () => {
       expect(response.statusCode).toBe(200)
       expect(serializedPublicJobHasNoInternalLeakage(response.body)).toBe(true)
     })
+  })
+
+  describe('Phase 4d — error serialization', () => {
+    const errorCases = [
+      { code: 'job_expired', message: 'Enrichment job has expired.', status: 410 },
+      { code: 'idempotency_conflict', message: 'Enrichment job idempotency conflict.', status: 409 },
+      { code: 'revision_conflict', message: 'Enrichment job was updated concurrently.', status: 409 },
+      {
+        code: 'temporarily_unavailable',
+        message: 'Fertilizer enrichment persistence is temporarily unavailable.',
+        status: 503,
+      },
+      {
+        code: 'internal_server_error',
+        message: 'Fertilizer enrichment server request failed unexpectedly.',
+        status: 500,
+      },
+    ] as const
+
+    for (const errorCase of errorCases) {
+      it(`serializes ${errorCase.code} without internal leakage`, async () => {
+        const handlers = createFertilizerEnrichmentHttpHandlers({
+          service: {
+            startFertilizerEnrichment: async () => {
+              throw new FertilizerEnrichmentServerApiError(
+                { code: errorCase.code, message: errorCase.message },
+                errorCase.status,
+              )
+            },
+            getFertilizerEnrichmentStatus: vi.fn(),
+            provideAdditionalFertilizerEnrichmentSource: vi.fn(),
+            cancelFertilizerEnrichment: vi.fn(),
+          },
+          buildRequestContext: () => ({ sessionId: 'session-1', requestId: 'req-error' }),
+        })
+
+        const response = await handlers.handleStart({
+          httpMethod: 'POST',
+          body: JSON.stringify({
+            idempotencyKey: 'idem-error',
+            accessContext: ACCESS,
+            input: {
+              objectCategory: 'fertilizer',
+              identity: {
+                manufacturer: 'ICL',
+                officialName: 'Spring Start',
+                identityFingerprint: 'fp-error',
+                identityConfidence: 1,
+                hasIdentityAmbiguity: false,
+              },
+              allowedInputChannels: ['capture_flow'],
+            },
+          }),
+        })
+
+        expect(response.statusCode).toBe(errorCase.status)
+        const payload = JSON.parse(response.body)
+        expect(payload.error.code).toBe(errorCase.code)
+        expect(payload.error.message).toBe(errorCase.message)
+        expect(JSON.stringify(payload)).not.toContain('"recordSchemaVersion"')
+        expect(JSON.stringify(payload)).not.toContain('orchestrationInput')
+        expect(JSON.stringify(payload)).not.toContain('Sensitive database')
+      })
+    }
   })
 })
