@@ -13,6 +13,7 @@ import {
   type FertilizerReadinessStatus,
   type FertilizerSuggestedInputAction,
 } from '../types/fertilizerReadiness'
+import { isValidNutrientNumericValue } from './fertilizerNutrientValueCore'
 
 export {
   FERTILIZER_NUTRIENT_MATRIX_KEYS,
@@ -58,11 +59,6 @@ export class FertilizerReadinessContractError extends Error {
 
 function isNonEmptyString(value: string | null | undefined): value is string {
   return typeof value === 'string' && value.trim().length > 0
-}
-
-/** Valid nutrient value: finite number >= 0. Zero is valid; null/undefined/NaN are not. */
-export function isValidNutrientNumericValue(value: number | null | undefined): boolean {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0
 }
 
 function isValidNutrientValue(

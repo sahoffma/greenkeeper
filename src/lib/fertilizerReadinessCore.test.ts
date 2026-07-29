@@ -3,8 +3,8 @@ import {
   evaluateFertilizerReadiness,
   FertilizerReadinessContractError,
   isNutrientMatrixComplete,
-  isValidNutrientNumericValue,
 } from './fertilizerReadinessCore'
+import { isValidNutrientNumericValue } from './fertilizerNutrientValueCore'
 import {
   FERTILIZER_READINESS_SPECIFICATION_VERSION,
   type FertilizerNutrientMatrix,
