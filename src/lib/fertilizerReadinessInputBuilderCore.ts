@@ -4,6 +4,7 @@ import type {
   FertilizerEnrichmentNutrientMatrix,
   FertilizerEnrichmentResult,
 } from '../types/fertilizerEnrichment'
+import type { NormalizedFertilizerEnrichmentResult } from '../types/fertilizerDeclarationNormalization'
 import {
   FERTILIZER_NUTRIENT_MATRIX_KEYS,
   type FertilizerBlockingSourceConflict,
@@ -23,7 +24,7 @@ export { FERTILIZER_NUTRIENT_MATRIX_KEYS }
  * - Any blocking unresolvable → { blocking: true, resolvable: false }
  */
 export function aggregateBlockingSourceConflict(
-  conflicts: FertilizerEnrichmentConflict[],
+  conflicts: Array<Pick<FertilizerEnrichmentConflict, 'blocking' | 'resolvable'>>,
 ): FertilizerBlockingSourceConflict | null {
   const blockingConflicts = conflicts.filter((conflict) => conflict.blocking)
 
@@ -101,7 +102,7 @@ function mapIdentity(identity: FertilizerEnrichmentResult['identity']): Fertiliz
  * Does not normalize, infer 0, resolve conflicts, or call the readiness evaluator.
  */
 export function buildFertilizerReadinessInput(
-  enrichment: FertilizerEnrichmentResult,
+  enrichment: FertilizerEnrichmentResult | NormalizedFertilizerEnrichmentResult,
 ): FertilizerProductProfileReadinessInput {
   const blockingSourceConflict = aggregateBlockingSourceConflict(enrichment.sourceConflicts)
 
