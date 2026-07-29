@@ -18,6 +18,13 @@ Neue Entscheidung: [Template](./templates/dl-template.md) · [README](./README.m
 | [DL-008](./dl-008.md) | Flächengruppenmodell mit optionaler Mitgliedschaft | ✅ Umgesetzt |
 | [DL-009](./dl-009.md) | Informationsarchitektur — vier Verantwortungsbereiche | ✅ Festgelegt |
 | [DL-010](./dl-010.md) | Kontextbezogene Dünger-Erfassung statt Formular | ✅ Festgelegt |
+| [DL-011](./dl-011.md) | Greenkeeper-Erfassungsprinzip: Nutzergeführte Eingangskanäle | ✅ Festgelegt |
+| [DL-012](./dl-012.md) | Dünger-Wissensmodell: Trennung von Product Profile und persönlichem Bestand | ✅ Festgelegt |
+| [DL-013](./dl-013.md) | KI-gestützte Wissensanreicherung als Kernprinzip | ✅ Festgelegt |
+| [DL-014](./dl-014.md) | Produktdeklarationsprinzip für Inhaltsstoffe | ✅ Festgelegt |
+| [DL-015](./dl-015.md) | Qualitätsbarriere für die Produktaufnahme | ✅ Festgelegt |
+| [DL-016](./dl-016.md) | Vollständigkeitsmodell für Product Profiles | ✅ Festgelegt |
+| [DL-017](./dl-017.md) | Persistenzmodell für Dünger-Enrichment-Jobs (HMAC Session-Hash, server-only) | ✅ Festgelegt |
 
 ---
 

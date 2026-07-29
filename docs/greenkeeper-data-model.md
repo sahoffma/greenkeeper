@@ -262,7 +262,7 @@ Der **verfügbare Restbestand** wird **nicht direkt gepflegt**, sondern aus Bewe
 
 ### Product Profile (GA-013 Stufe 1)
 
-Neben dem **Recognition Candidate** (persönliche Erkennung aus einem Foto) führt Greenkeeper ein **Product Profile** als fachliches Produktwissen ein ([GA-013](./architecture/ga-013.md)). Die **Product Enrichment Engine** ([GA-014](./architecture/ga-014.md)) baut aus Identität aufnahmefähige Profile auf — objektartspezifische Readiness-Regeln; für Dünger verbindlich spezifiziert in [GM-009](./model/gm-009.md).
+Neben dem **Recognition Candidate** (persönliche Erkennung aus einem Foto) führt Greenkeeper ein **Product Profile** als fachliches Produktwissen ein ([GA-013](./architecture/ga-013.md)). Die **Product Enrichment Engine** ([GA-014](./architecture/ga-014.md)) baut aus Identität aufnahmefähige Profile auf — objektartspezifische Readiness-Regeln; für Dünger verbindlich spezifiziert in [GM-009](./model/gm-009.md) (fachliche Grundlage [DL-016](./decisions/dl-016.md)). Die fachliche Trennung von **Product Profile** (Produktwissen, nutzerunabhängig) und **persönlichem Bestand** (Besitz, Verbrauch) ist in [DL-012](./decisions/dl-012.md) festgelegt — inkl. Vollständigkeitsstufen *Erfasst* und *Angereichert*. Die automatische Wissensanreicherung durch KI ist Kernprinzip, nicht Zusatzfeature ([DL-013](./decisions/dl-013.md)). Nicht deklarierte Inhaltsstoffe werden als 0 % interpretiert — ohne Zwischenzustände in der Nutzeransicht ([DL-014](./decisions/dl-014.md)). Der persönliche Bestand wird erst befüllt, wenn die Qualitätsbarriere für die Produktaufnahme erfüllt ist — Erkennen → Anreichern → Hinzufügen ([DL-015](./decisions/dl-015.md)).
 
 | Aspekt | Regel |
 |--------|--------|
@@ -278,6 +278,21 @@ Neben dem **Recognition Candidate** (persönliche Erkennung aus einem Foto) füh
 | **Journal** | Noch nicht angebunden — bewusst Stufe 2+ |
 
 Technische Migrationen: `20250801_product_profiles.sql` (Erstimplementierung), `20250802_save_fertilizer_capture_replay_product_profile.sql` (Replay-Response).
+
+### Enrichment-Jobs (GA-014 Phase 4 — spezifiziert)
+
+Technische **Session-/Nutzer-Jobs** für die Dünger-Enrichment-Orchestrierung werden getrennt vom Product Profile und vom persönlichen Bestand persistiert ([GA-014 §14](./architecture/ga-014.md#14-phase-4-persistentes-job-repository-dünger), [DL-017](./decisions/dl-017.md)):
+
+| Aspekt | Regel |
+|--------|--------|
+| **Tabelle (geplant)** | `fertilizer_enrichment_jobs` |
+| **Fachlicher Status** | Nur in `job_json.result` — kein paralleles Statusfeld |
+| **Zugriff** | Server-only (Netlify + Service Role); kein Client-SELECT |
+| **Session-Lookup** | `session_access_hash` (HMAC-SHA-256 serverseitig) — **keine** rohe `session_id` in Spalten oder JSONB; kein Client-Zugriff auf Hash |
+| **Idempotenz** | `(user_id, idempotency_key)` bzw. `(session_access_hash, idempotency_key)` |
+| **Bestand / Save** | Jobs erzeugen **keinen** Bestand — auch nicht bei `intake_ready` |
+
+*Migration und Runtime folgen in Phase 4b–4e — noch nicht umgesetzt.*
 
 *Umsetzung Stufe 1 auf Dev validiert (2026-07); Journal-Anbindung folgt in späterer Stufe.*
 
