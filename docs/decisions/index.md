@@ -25,6 +25,7 @@ Neue Entscheidung: [Template](./templates/dl-template.md) · [README](./README.m
 | [DL-015](./dl-015.md) | Qualitätsbarriere für die Produktaufnahme | ✅ Festgelegt |
 | [DL-016](./dl-016.md) | Vollständigkeitsmodell für Product Profiles | ✅ Festgelegt |
 | [DL-017](./dl-017.md) | Persistenzmodell für Dünger-Enrichment-Jobs (HMAC Session-Hash, server-only) | ✅ Festgelegt |
+| [DL-018](./dl-018.md) | Unveränderliche Dünger-Produktversionen bei geänderter Herstellerdeklaration | ✅ Festgelegt |
 
 ---
 

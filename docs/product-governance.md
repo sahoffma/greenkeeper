@@ -89,6 +89,20 @@ Jede `product_versions`-Zeile enthält:
 - `source_snapshot_ids`
 - Getrennte KI-/Review-Vertrauenswerte
 
+### Dünger: unveränderliche Produktversionen
+
+Für Dünger gilt zusätzlich [DL-018](../decisions/dl-018.md):
+
+- **Produktidentität** (Hersteller, Name, Barcode, …) und **Produktversion** (fachliche Herstellerdeklaration) sind getrennt.
+- Eine gespeicherte Produktversion wird **niemals** rückwirkend auf eine spätere Rezeptur geändert.
+- Rezepturänderung unter gleichem Namen → **neue** Produktversion; bestehende Version bleibt unverändert.
+- Reine Gebindegrößenänderung (z. B. 5 kg → 4 kg bei identischer Deklaration) → **keine** neue Produktversion.
+- Gebindegröße und Restmenge gehören zum **Bestand**, nicht zur Produktversion ([GM-008](./model/gm-008.md)).
+
+Der Governance-Schreibpfad darf eine neue Herstellerdeklaration **nicht** still in ein bestehendes Product Profile schreiben, das eine andere Produktversion repräsentiert. Vor Persistenz muss geprüft werden, ob die normalisierte Deklaration einer bekannten Produktversion entspricht ([GA-014 §11.14.1](./architecture/ga-014.md#11141-produktversion-und-persistenzgrenze-dünger)).
+
+Technischer **Composition Fingerprint** für den Versionsvergleich: fachlich gefordert in DL-018 — **noch nicht** implementiert.
+
 ## Legacy-Strategie
 
 Bestehende Produkte **ohne menschliche Freigabe** (`verified_by IS NULL`):
