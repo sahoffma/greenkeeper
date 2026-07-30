@@ -1,0 +1,227 @@
+import { describe, expect, it, vi } from 'vitest'
+import { createFertilizerEnrichmentNetlifyHandler } from './fertilizerEnrichmentNetlifyFunctionCore'
+import { FertilizerEnrichmentServerConfigurationError } from './fertilizerEnrichmentServerEnvironmentCore'
+import type { FertilizerEnrichmentServerRuntime } from './fertilizerEnrichmentServerCompositionCore'
+import { createFertilizerEnrichmentProductionHttpHandlers } from './fertilizerEnrichmentServerTransportCore'
+import { createFertilizerEnrichmentSessionCookieManager } from './fertilizerEnrichmentSessionCookieCore'
+
+const sessionCookieManager = createFertilizerEnrichmentSessionCookieManager('cookie-signing-secret', {
+  maxAgeSeconds: 3600,
+  secure: false,
+})
+
+function createMockRuntime() {
+  const handlers = {
+    handleStart: vi.fn(async () => ({
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job: { jobId: 'job-1' } }),
+    })),
+    handleStatus: vi.fn(async () => ({
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job: { jobId: 'job-1' } }),
+    })),
+    handleAdditionalSource: vi.fn(async () => ({
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job: { jobId: 'job-1' } }),
+    })),
+    handleCancel: vi.fn(async () => ({
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job: { jobId: 'job-1' } }),
+    })),
+  }
+
+  return {
+    handlers,
+    isCompositionEnabled: () => true,
+    environment: {
+      supabaseUrl: 'https://example.supabase.co',
+      supabaseServiceRoleKey: 'service-role-key',
+      sessionAccessHmacSecret: 'hmac-secret',
+      sessionCookieSigningSecret: 'cookie-signing-secret',
+      sessionCookieSecure: false,
+      sessionMaxAgeSeconds: 72 * 3600,
+      retention: {
+        continuableDays: 7,
+        sessionMaxHours: 72,
+        terminalDays: 30,
+        intakeReadyDays: 14,
+      },
+    },
+  } satisfies FertilizerEnrichmentServerRuntime
+}
+
+describe('fertilizerEnrichmentNetlifyFunctionCore', () => {
+  it('Start entry point accepts POST and delegates to handler', async () => {
+    const runtime = createMockRuntime()
+    const handler = createFertilizerEnrichmentNetlifyHandler('start', () => runtime)
+
+    const response = await handler(
+      {
+        httpMethod: 'POST',
+        body: JSON.stringify({ idempotencyKey: 'idem-1', input: {} }),
+        headers: {},
+      } as never,
+      {} as never,
+    )
+
+    expect(response?.statusCode).toBe(200)
+    expect(runtime.handlers.handleStart).toHaveBeenCalledTimes(1)
+  })
+
+  it('Status entry point delegates to handler', async () => {
+    const runtime = createMockRuntime()
+    const handler = createFertilizerEnrichmentNetlifyHandler('status', () => runtime)
+
+    await handler(
+      {
+        httpMethod: 'POST',
+        body: JSON.stringify({ jobId: 'job-1' }),
+        headers: {},
+      } as never,
+      {} as never,
+    )
+
+    expect(runtime.handlers.handleStatus).toHaveBeenCalledTimes(1)
+  })
+
+  it('Additional Source entry point delegates to handler', async () => {
+    const runtime = createMockRuntime()
+    const handler = createFertilizerEnrichmentNetlifyHandler('additionalSource', () => runtime)
+
+    await handler(
+      {
+        httpMethod: 'POST',
+        body: JSON.stringify({
+          jobId: 'job-1',
+          idempotencyKey: 'source-1',
+          additionalSources: [],
+        }),
+        headers: {},
+      } as never,
+      {} as never,
+    )
+
+    expect(runtime.handlers.handleAdditionalSource).toHaveBeenCalledTimes(1)
+  })
+
+  it('Cancel entry point delegates to handler', async () => {
+    const runtime = createMockRuntime()
+    const handler = createFertilizerEnrichmentNetlifyHandler('cancel', () => runtime)
+
+    await handler(
+      {
+        httpMethod: 'POST',
+        body: JSON.stringify({ jobId: 'job-1' }),
+        headers: {},
+      } as never,
+      {} as never,
+    )
+
+    expect(runtime.handlers.handleCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('TC-5 OPTIONS returns 204 without invoking handler or Set-Cookie', async () => {
+    const runtime = createMockRuntime()
+    const handler = createFertilizerEnrichmentNetlifyHandler('start', () => runtime)
+
+    const response = await handler({ httpMethod: 'OPTIONS' } as never, {} as never)
+
+    expect(response?.statusCode).toBe(204)
+    expect(response?.headers?.['Set-Cookie']).toBeUndefined()
+    expect(runtime.handlers.handleStart).not.toHaveBeenCalled()
+  })
+
+  it('configuration errors map to safe internal_server_error without secrets', async () => {
+    const handler = createFertilizerEnrichmentNetlifyHandler('start', () => {
+      throw new FertilizerEnrichmentServerConfigurationError(
+        'Fertilizer enrichment server configuration is incomplete (SUPABASE_SERVICE_ROLE_KEY).',
+      )
+    })
+
+    const response = await handler({ httpMethod: 'POST', body: '{}' } as never, {} as never)
+    const payload = JSON.parse(String(response?.body))
+
+    expect(response?.statusCode).toBe(500)
+    expect(payload.error.code).toBe('internal_server_error')
+    expect(JSON.stringify(payload)).not.toContain('SUPABASE_SERVICE_ROLE_KEY')
+    expect(JSON.stringify(payload)).not.toContain('service-role-key')
+  })
+
+  it('transport rejects client access context fields before handler delegation', async () => {
+    const service = {
+      startFertilizerEnrichment: vi.fn(),
+      getFertilizerEnrichmentStatus: vi.fn(),
+      provideAdditionalFertilizerEnrichmentSource: vi.fn(),
+      cancelFertilizerEnrichment: vi.fn(),
+    }
+
+    const runtime: FertilizerEnrichmentServerRuntime = {
+      handlers: createFertilizerEnrichmentProductionHttpHandlers({
+        service,
+        accessContextResolver: {
+          authValidator: { validateBearerToken: async () => null },
+          sessionCookieManager,
+        },
+      }),
+      isCompositionEnabled: () => true,
+      environment: createMockRuntime().environment,
+    }
+
+    const handler = createFertilizerEnrichmentNetlifyHandler('start', () => runtime)
+    const response = await handler(
+      {
+        httpMethod: 'POST',
+        body: JSON.stringify({
+          idempotencyKey: 'idem-1',
+          input: {},
+          accessContext: { kind: 'session', sessionId: 'forged' },
+        }),
+        headers: {},
+      } as never,
+      {} as never,
+    )
+
+    expect(response?.statusCode).toBe(400)
+    expect(service.startFertilizerEnrichment).not.toHaveBeenCalled()
+  })
+
+  it('LK-1: responses do not leak secrets or internal record fields', async () => {
+    const runtime = createMockRuntime()
+    runtime.handlers.handleStart.mockResolvedValue({
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        error: {
+          code: 'internal_server_error',
+          message: 'Fertilizer enrichment server request failed unexpectedly.',
+        },
+      }),
+    })
+
+    const handler = createFertilizerEnrichmentNetlifyHandler('start', () => runtime)
+    const response = await handler(
+      {
+        httpMethod: 'POST',
+        body: JSON.stringify({ idempotencyKey: 'idem-1', input: {} }),
+        headers: {
+          authorization: 'Bearer secret-token',
+          cookie: 'session=secret',
+        },
+      } as never,
+      {} as never,
+    )
+
+    const serialized = JSON.stringify(response)
+    expect(serialized).not.toContain('secret-token')
+    expect(serialized).not.toContain('hmac-secret')
+    expect(serialized).not.toContain('cookie-signing-secret')
+    expect(serialized).not.toContain('service-role-key')
+    expect(serialized).not.toContain('recordSchemaVersion')
+    expect(serialized).not.toContain('orchestrationInput')
+    expect(serialized).not.toContain('sessionAccessHash')
+  })
+})
