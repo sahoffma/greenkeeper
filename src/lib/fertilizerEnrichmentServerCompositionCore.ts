@@ -6,6 +6,8 @@ import { createPersistentFertilizerEnrichmentJobRepository } from './fertilizerE
 import { createFertilizerEnrichmentRetentionPolicy } from './fertilizerEnrichmentRetentionPolicyCore'
 import { createDeriveSessionAccessHash } from './fertilizerEnrichmentSessionAccessHashCore'
 import { createFertilizerEnrichmentSessionCookieManager } from './fertilizerEnrichmentSessionCookieCore'
+import { createFertilizerEnrichmentSupabaseSourceStorage } from './fertilizerEnrichmentSupabaseSourceStorageCore'
+import { createFertilizerEnrichmentStoredSourceAdapterDependencies } from './fertilizerEnrichmentStoredSourceResolverCore'
 import {
   loadFertilizerEnrichmentServerEnvironment,
   type FertilizerEnrichmentServerEnvironment,
@@ -77,8 +79,15 @@ export function createFertilizerEnrichmentServerRuntime(
     deriveSessionAccessHash,
   })
   const resolveExpiresAt = createFertilizerEnrichmentRetentionPolicy(environment.retention)
+  const adapterDependencies =
+    overrides.adapterDependencies ??
+    (environment.sourceStorage
+      ? createFertilizerEnrichmentStoredSourceAdapterDependencies(
+          createFertilizerEnrichmentSupabaseSourceStorage(supabase, environment.sourceStorage),
+        )
+      : {})
   const orchestrationDependencies = createFertilizerEnrichmentOrchestrationDependencies(
-    overrides.adapterDependencies,
+    adapterDependencies,
   )
 
   const service = createFertilizerEnrichmentServerService({
@@ -94,6 +103,7 @@ export function createFertilizerEnrichmentServerRuntime(
       authValidator,
       sessionCookieManager,
     },
+    deriveSessionAccessHash,
     isCompositionEnabled: () => true,
   })
 

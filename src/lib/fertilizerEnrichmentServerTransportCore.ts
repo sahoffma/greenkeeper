@@ -14,10 +14,16 @@ import {
   type FertilizerEnrichmentServerRequestContext,
 } from './fertilizerEnrichmentServerServiceCore'
 import type { FertilizerEnrichmentAccessContext } from '../types/fertilizerEnrichmentOrchestration'
+import {
+  buildFertilizerEnrichmentSourceAccessScope,
+  runWithFertilizerEnrichmentSourceAccessScopeAsync,
+} from './fertilizerEnrichmentSourceAccessScopeCore'
+import type { DeriveSessionAccessHash } from './fertilizerEnrichmentSessionAccessHashCore'
 
 export interface FertilizerEnrichmentProductionHttpHandlerDependencies {
   service: FertilizerEnrichmentServerService
   accessContextResolver: FertilizerEnrichmentAccessContextResolverDependencies
+  deriveSessionAccessHash?: DeriveSessionAccessHash
   isCompositionEnabled?: () => boolean
 }
 
@@ -92,6 +98,27 @@ function mapHandlerError(error: unknown): FertilizerEnrichmentHttpResponse {
   }
 }
 
+async function runWithinSourceAccessScope<T>(
+  accessContext: FertilizerEnrichmentAccessContext,
+  deriveSessionAccessHash: DeriveSessionAccessHash | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const scope = buildFertilizerEnrichmentSourceAccessScope({
+    userId: accessContext.kind === 'authenticated_user' ? accessContext.userId : null,
+    sessionId:
+      accessContext.kind === 'session'
+        ? accessContext.sessionId
+        : accessContext.sessionId ?? null,
+    deriveSessionAccessHash,
+  })
+
+  if (!scope) {
+    return fn()
+  }
+
+  return runWithFertilizerEnrichmentSourceAccessScopeAsync(scope, fn)
+}
+
 export function createFertilizerEnrichmentProductionHttpHandlers(
   dependencies: FertilizerEnrichmentProductionHttpHandlerDependencies,
 ) {
@@ -110,7 +137,11 @@ export function createFertilizerEnrichmentProductionHttpHandlers(
         buildRequestContext: () => resolved.requestContext,
       })
 
-      const response = await run(resolved, handlers)
+      const response = await runWithinSourceAccessScope(
+        resolved.accessContext,
+        dependencies.deriveSessionAccessHash,
+        () => run(resolved, handlers),
+      )
       return mergeResponseHeaders(response, resolved.setCookieHeader)
     } catch (error) {
       return mapHandlerError(error)

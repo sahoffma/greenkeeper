@@ -12,6 +12,7 @@ import {
   type FertilizerManufacturerDocumentParseResult,
 } from './fertilizerManufacturerDocumentParserCore'
 import { validateFertilizerManufacturerDocumentSource } from './fertilizerManufacturerDocumentSourceValidatorCore'
+import { parseFertilizerEnrichmentStorageLocator } from './fertilizerEnrichmentStorageLocatorCore'
 import type { FertilizerSourceAdapter, FertilizerSourceAdapterContext } from './fertilizerEnrichmentOrchestrationCore'
 import { rethrowIfContractError } from './fertilizerEnrichmentOrchestrationCore'
 
@@ -95,9 +96,31 @@ export function selectManufacturerProductDocumentSourceHint(
     }
 
     const sourceUrl = hint.sourceUrl?.trim()
-    if (sourceUrl) {
+    const referenceId = hint.referenceId?.trim()
+    if (sourceUrl || referenceId) {
       return hint
     }
+  }
+
+  return null
+}
+
+export function resolveManufacturerProductDocumentReference(
+  input: FertilizerEnrichmentOrchestrationInput,
+): { kind: 'url'; value: string } | { kind: 'reference'; value: string } | null {
+  const hint = selectManufacturerProductDocumentSourceHint(input)
+  if (!hint) {
+    return null
+  }
+
+  const referenceId = hint.referenceId?.trim()
+  if (referenceId) {
+    return { kind: 'reference', value: referenceId }
+  }
+
+  const sourceUrl = hint.sourceUrl?.trim()
+  if (sourceUrl) {
+    return { kind: 'url', value: sourceUrl }
   }
 
   return null
@@ -106,7 +129,12 @@ export function selectManufacturerProductDocumentSourceHint(
 export function resolveManufacturerProductDocumentUrl(
   input: FertilizerEnrichmentOrchestrationInput,
 ): string | null {
-  return selectManufacturerProductDocumentSourceHint(input)?.sourceUrl?.trim() ?? null
+  const reference = resolveManufacturerProductDocumentReference(input)
+  if (!reference || reference.kind !== 'url') {
+    return null
+  }
+
+  return reference.value
 }
 
 export function mapValidatedContentTypeToAdapterSourceType(
@@ -392,35 +420,56 @@ export async function runFertilizerManufacturerProductDocumentAdapter(
 ): Promise<FertilizerSourceAdapterResult> {
   const now = dependencies.now ?? defaultNow
   const retrievedAt = now()
-  const sourceUrl = resolveManufacturerProductDocumentUrl(context.input)
+  const reference = resolveManufacturerProductDocumentReference(context.input)
 
-  if (!sourceUrl) {
+  if (!reference) {
     return buildNoMatchResult('manufacturer-doc:no-reference', null, retrievedAt)
   }
 
-  const validation = validateFertilizerManufacturerDocumentSource(sourceUrl)
-  if (validation.status === 'invalid') {
-    const sourceId = dependencies.createSourceId?.(sourceUrl) ?? createSourceIdFromUrl(sourceUrl)
-    return buildInvalidSourceResult(sourceId, sourceUrl, retrievedAt)
+  let sourceUrl: string
+  let sourceRefForFetch: string
+
+  if (reference.kind === 'reference') {
+    const parsedReference = parseFertilizerEnrichmentStorageLocator(reference.value)
+    if (parsedReference.status === 'invalid') {
+      return buildInvalidSourceResult(
+        dependencies.createSourceId?.(reference.value) ?? createSourceIdFromUrl(reference.value),
+        reference.value,
+        retrievedAt,
+      )
+    }
+
+    sourceUrl = reference.value
+    sourceRefForFetch = reference.value
+  } else {
+    const validation = validateFertilizerManufacturerDocumentSource(reference.value)
+    if (validation.status === 'invalid') {
+      const sourceId =
+        dependencies.createSourceId?.(reference.value) ?? createSourceIdFromUrl(reference.value)
+      return buildInvalidSourceResult(sourceId, reference.value, retrievedAt)
+    }
+
+    sourceUrl = validation.normalizedUrl
+    sourceRefForFetch = validation.normalizedUrl
   }
 
-  const normalizedUrl = validation.normalizedUrl
-  const sourceId = dependencies.createSourceId?.(normalizedUrl) ?? createSourceIdFromUrl(normalizedUrl)
+  const sourceId =
+    dependencies.createSourceId?.(sourceRefForFetch) ?? createSourceIdFromUrl(sourceRefForFetch)
 
   try {
-    const fetchResult = await dependencies.fetchDocument(normalizedUrl, {
+    const fetchResult = await dependencies.fetchDocument(sourceRefForFetch, {
       input: context.input,
       orchestrationRunId: context.orchestrationRunId,
       attempt: context.attempt,
     })
 
     if (!fetchResult.ok) {
-      return mapFetchFailure(sourceId, normalizedUrl, retrievedAt, fetchResult)
+      return mapFetchFailure(sourceId, sourceUrl, retrievedAt, fetchResult)
     }
 
     const validatedSourceType = mapValidatedContentTypeToAdapterSourceType(fetchResult.contentType)
     if (!validatedSourceType) {
-      return buildInvalidSourceResult(sourceId, normalizedUrl, retrievedAt)
+      return buildInvalidSourceResult(sourceId, sourceUrl, retrievedAt)
     }
 
     let documentText: string
@@ -430,7 +479,7 @@ export async function runFertilizerManufacturerProductDocumentAdapter(
       } else if (!dependencies.extractDocumentText) {
         return buildFailedResult(
           sourceId,
-          normalizedUrl,
+          sourceUrl,
           retrievedAt,
           createTechnicalError('invalid_document', false, sourceId),
           false,
@@ -453,7 +502,7 @@ export async function runFertilizerManufacturerProductDocumentAdapter(
       if (error instanceof FertilizerManufacturerDocumentParserError) {
         return buildFailedResult(
           sourceId,
-          normalizedUrl,
+          sourceUrl,
           retrievedAt,
           createTechnicalError('parser_error', false, sourceId),
           false,
@@ -463,7 +512,7 @@ export async function runFertilizerManufacturerProductDocumentAdapter(
 
       return buildFailedResult(
         sourceId,
-        normalizedUrl,
+        sourceUrl,
         retrievedAt,
         createTechnicalError('invalid_document', false, sourceId),
         false,
@@ -478,7 +527,7 @@ export async function runFertilizerManufacturerProductDocumentAdapter(
       rethrowIfContractError(error)
       return buildFailedResult(
         sourceId,
-        normalizedUrl,
+        sourceUrl,
         retrievedAt,
         createTechnicalError('parser_error', false, sourceId),
         false,
@@ -488,7 +537,7 @@ export async function runFertilizerManufacturerProductDocumentAdapter(
 
     return mapFertilizerManufacturerDocumentToAdapterResult(
       sourceId,
-      normalizedUrl,
+      sourceUrl,
       fetchResult.retrievedAt,
       fetchResult,
       parsed,
@@ -498,7 +547,7 @@ export async function runFertilizerManufacturerProductDocumentAdapter(
     rethrowIfContractError(error)
     return buildFailedResult(
       sourceId,
-      normalizedUrl,
+      sourceUrl,
       retrievedAt,
       createTechnicalError('unknown_adapter_error', false, sourceId),
       false,

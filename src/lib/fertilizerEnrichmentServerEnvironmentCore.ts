@@ -7,6 +7,11 @@ export class FertilizerEnrichmentServerConfigurationError extends Error {
   }
 }
 
+export interface FertilizerEnrichmentSourceStorageEnvironment {
+  bucket: string
+  maxTextBytes: number
+}
+
 export interface FertilizerEnrichmentServerEnvironment {
   supabaseUrl: string
   supabaseServiceRoleKey: string
@@ -15,7 +20,14 @@ export interface FertilizerEnrichmentServerEnvironment {
   sessionCookieSecure: boolean
   sessionMaxAgeSeconds: number
   retention: FertilizerEnrichmentRetentionPolicyConfig
+  sourceStorage?: FertilizerEnrichmentSourceStorageEnvironment | null
 }
+
+export const FERTILIZER_ENRICHMENT_SOURCE_STORAGE_BUCKET_ENV =
+  'FERTILIZER_ENRICHMENT_SOURCE_STORAGE_BUCKET'
+
+export const FERTILIZER_ENRICHMENT_SOURCE_STORAGE_MAX_TEXT_BYTES_ENV =
+  'FERTILIZER_ENRICHMENT_SOURCE_STORAGE_MAX_TEXT_BYTES'
 
 export const FERTILIZER_ENRICHMENT_SESSION_ACCESS_HMAC_SECRET_ENV =
   'FERTILIZER_ENRICHMENT_SESSION_ACCESS_HMAC_SECRET'
@@ -78,6 +90,35 @@ function readSessionCookieSecure(env: Record<string, string | undefined>): boole
   return env.CONTEXT?.trim() === 'production'
 }
 
+function loadOptionalSourceStorageEnvironment(
+  env: Record<string, string | undefined>,
+): FertilizerEnrichmentSourceStorageEnvironment | null {
+  const bucket = env[FERTILIZER_ENRICHMENT_SOURCE_STORAGE_BUCKET_ENV]?.trim()
+  const maxTextBytesRaw = env[FERTILIZER_ENRICHMENT_SOURCE_STORAGE_MAX_TEXT_BYTES_ENV]?.trim()
+
+  if (!bucket && !maxTextBytesRaw) {
+    return null
+  }
+
+  if (!bucket || !maxTextBytesRaw) {
+    throw new FertilizerEnrichmentServerConfigurationError(
+      'Fertilizer enrichment source storage configuration is incomplete.',
+    )
+  }
+
+  const maxTextBytes = Number.parseInt(maxTextBytesRaw, 10)
+  if (!Number.isFinite(maxTextBytes) || !Number.isSafeInteger(maxTextBytes) || maxTextBytes <= 0) {
+    throw new FertilizerEnrichmentServerConfigurationError(
+      'Fertilizer enrichment source storage configuration is invalid (max text bytes).',
+    )
+  }
+
+  return {
+    bucket,
+    maxTextBytes,
+  }
+}
+
 export function loadFertilizerEnrichmentServerEnvironment(
   env: Record<string, string | undefined> = process.env,
 ): FertilizerEnrichmentServerEnvironment {
@@ -114,5 +155,6 @@ export function loadFertilizerEnrichmentServerEnvironment(
         FERTILIZER_ENRICHMENT_RETENTION_ENV_KEYS.intakeReadyDays,
       ),
     },
+    sourceStorage: loadOptionalSourceStorageEnvironment(env),
   }
 }
