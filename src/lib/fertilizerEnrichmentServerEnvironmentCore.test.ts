@@ -4,6 +4,8 @@ import {
   FERTILIZER_ENRICHMENT_RETENTION_ENV_KEYS,
   FERTILIZER_ENRICHMENT_SESSION_ACCESS_HMAC_SECRET_ENV,
   FERTILIZER_ENRICHMENT_SESSION_COOKIE_SIGNING_SECRET_ENV,
+  FERTILIZER_ENRICHMENT_SOURCE_STORAGE_BUCKET_ENV,
+  FERTILIZER_ENRICHMENT_SOURCE_STORAGE_MAX_TEXT_BYTES_ENV,
   FertilizerEnrichmentServerConfigurationError,
   loadFertilizerEnrichmentServerEnvironment,
 } from './fertilizerEnrichmentServerEnvironmentCore'
@@ -176,5 +178,27 @@ describe('fertilizerEnrichmentServerEnvironmentCore', () => {
       expect(String(error)).not.toContain('cookie-signing-secret')
       expect(String(error)).not.toContain('hmac-secret')
     }
+  })
+
+  it('ENV-6: optional source storage loads when fully configured', () => {
+    const environment = loadFertilizerEnrichmentServerEnvironment({
+      ...BASE_ENV,
+      [FERTILIZER_ENRICHMENT_SOURCE_STORAGE_BUCKET_ENV]: 'fertilizer-enrichment-sources',
+      [FERTILIZER_ENRICHMENT_SOURCE_STORAGE_MAX_TEXT_BYTES_ENV]: '524288',
+    })
+
+    expect(environment.sourceStorage).toEqual({
+      bucket: 'fertilizer-enrichment-sources',
+      maxTextBytes: 524288,
+    })
+  })
+
+  it('ENV-7: incomplete source storage configuration throws controlled error', () => {
+    expect(() =>
+      loadFertilizerEnrichmentServerEnvironment({
+        ...BASE_ENV,
+        [FERTILIZER_ENRICHMENT_SOURCE_STORAGE_BUCKET_ENV]: 'fertilizer-enrichment-sources',
+      }),
+    ).toThrow(FertilizerEnrichmentServerConfigurationError)
   })
 })

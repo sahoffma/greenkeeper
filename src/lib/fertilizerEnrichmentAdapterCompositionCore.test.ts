@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import * as adapterCompositionModule from './fertilizerEnrichmentAdapterCompositionCore'
 import { createFertilizerEnrichmentOrchestrationDependencies } from './fertilizerEnrichmentAdapterCompositionCore'
 import { FERTILIZER_MANUFACTURER_PRODUCT_DOCUMENT_ADAPTER_TYPE } from './fertilizerManufacturerProductDocumentAdapterCore'
 import { FERTILIZER_USER_DOCUMENT_ADAPTER_TYPE } from './fertilizerUserDocumentAdapterCore'
@@ -6,7 +7,6 @@ import { FERTILIZER_PACKAGING_SOURCE_ADAPTER_TYPE } from './fertilizerPackagingS
 import { createFertilizerEnrichmentServerRuntime } from './fertilizerEnrichmentServerCompositionCore'
 import type { FertilizerEnrichmentServerEnvironment } from './fertilizerEnrichmentServerEnvironmentCore'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { vi } from 'vitest'
 
 const TEST_ENVIRONMENT: FertilizerEnrichmentServerEnvironment = {
   supabaseUrl: 'https://example.supabase.co',
@@ -65,8 +65,38 @@ describe('fertilizerEnrichmentAdapterCompositionCore', () => {
     expect(runtime.handlers.handleStart).toBeTypeOf('function')
   })
 
-  it('AR-5: production runtime does not register placeholder adapters implicitly', () => {
+  it('AR-5: production runtime without source storage keeps adapters empty', () => {
     const dependencies = createFertilizerEnrichmentOrchestrationDependencies()
     expect(dependencies.adapters).toHaveLength(0)
+  })
+
+  it('ARF-4: production runtime with source storage registers stored-source adapters', () => {
+    const adapterSpy = vi.spyOn(
+      adapterCompositionModule,
+      'createFertilizerEnrichmentOrchestrationDependencies',
+    )
+
+    createFertilizerEnrichmentServerRuntime({
+      environment: {
+        ...TEST_ENVIRONMENT,
+        sourceStorage: {
+          bucket: 'fertilizer-enrichment-sources',
+          maxTextBytes: 512 * 1024,
+        },
+      },
+      supabase: {
+        storage: { from: vi.fn(() => ({ download: vi.fn() })) },
+      } as unknown as SupabaseClient,
+      authValidator: { validateBearerToken: async () => null },
+    })
+
+    expect(adapterSpy).toHaveBeenCalledTimes(1)
+    expect(adapterSpy.mock.calls[0]?.[0]).toMatchObject({
+      fetchManufacturerDocument: expect.any(Function),
+      resolveUserDocumentSource: expect.any(Function),
+      resolvePackagingSource: expect.any(Function),
+    })
+    expect(adapterSpy.mock.results[0]?.value.adapters).toHaveLength(3)
+    adapterSpy.mockRestore()
   })
 })

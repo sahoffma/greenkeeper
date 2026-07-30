@@ -96,7 +96,7 @@ describe('fertilizerEnrichmentServerCompositionCore', () => {
       authValidator: { validateBearerToken: async () => null },
     })
 
-    expect(adapterSpy).toHaveBeenCalledWith(undefined)
+    expect(adapterSpy).toHaveBeenCalledWith({})
     expect(adapterSpy.mock.results[0]?.value.adapters).toHaveLength(0)
     adapterSpy.mockRestore()
   })
