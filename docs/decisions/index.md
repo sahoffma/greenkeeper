@@ -32,6 +32,7 @@ Neue Entscheidung: [Template](./templates/dl-template.md) · [README](./README.m
 | [DL-022](./dl-022.md) | Inventory Foundation Datenmodell und fachliche Grenzen | ✅ Festgelegt |
 | [DL-023](./dl-023.md) | Aggregierte Bestandsanzeige bei gebindebezogener Bestandsführung | ✅ Festgelegt |
 | [DL-024](./dl-024.md) | Physische Gebinde als separate Bestandsobjekte | ✅ Festgelegt |
+| [DL-025](./dl-025.md) | Inventory Core Architektur und Persistenzgrenzen | ✅ Festgelegt |
 
 ---
 
