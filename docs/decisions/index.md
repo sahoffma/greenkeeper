@@ -30,6 +30,7 @@ Neue Entscheidung: [Template](./templates/dl-template.md) · [README](./README.m
 | [DL-020](./dl-020.md) | Bestandsbindung an Produktversion, Produktform und Einheit | ✅ Festgelegt |
 | [DL-021](./dl-021.md) | Bestandsmengeneinheiten und Präzision | ✅ Festgelegt |
 | [DL-022](./dl-022.md) | Inventory Foundation Datenmodell und fachliche Grenzen | ✅ Festgelegt |
+| [DL-023](./dl-023.md) | Aggregierte Bestandsanzeige bei gebindebezogener Bestandsführung | ✅ Festgelegt |
 
 ---
 
