@@ -27,6 +27,7 @@ Neue Entscheidung: [Template](./templates/dl-template.md) · [README](./README.m
 | [DL-017](./dl-017.md) | Persistenzmodell für Dünger-Enrichment-Jobs (HMAC Session-Hash, server-only) | ✅ Festgelegt |
 | [DL-018](./dl-018.md) | Unveränderliche Dünger-Produktversionen bei geänderter Herstellerdeklaration | ✅ Festgelegt |
 | [DL-019](./dl-019.md) | Bestandsmodell ohne Lagerortverwaltung und mit unveränderlichen Bestandsbewegungen | ✅ Festgelegt |
+| [DL-020](./dl-020.md) | Bestandsbindung an Produktversion, Produktform und Einheit | ✅ Festgelegt |
 
 ---
 
