@@ -17,7 +17,13 @@ import {
   inventoryMovementMatchesAccessContext,
   validateInventoryItemRecord,
 } from './fertilizerInventoryRecordValidationCore'
+import type {
+  CreateFertilizerInventoryItemsWithInitialMovementsInput,
+  CreateFertilizerInventoryItemsWithInitialMovementsResult,
+} from './fertilizerInventoryCreationRpcCore'
+import { buildInventoryCreationMovementIdempotencyKey } from './fertilizerInventoryCreationRpcCore'
 import type { DeriveSessionAccessHash } from './fertilizerEnrichmentSessionAccessHashCore'
+import { buildCanonicalFertilizerInventoryCreationPayload } from './fertilizerInventoryCreationCore'
 import { createRandomId } from './randomId'
 
 export const FERTILIZER_INVENTORY_REPOSITORY_ERROR_CODES = [
@@ -29,7 +35,25 @@ export const FERTILIZER_INVENTORY_REPOSITORY_ERROR_CODES = [
   'unit_mismatch',
   'quantity_invalid',
   'negative_balance',
+  'product_profile_not_found',
+  'product_profile_not_ready',
+  'package_list_empty',
+  'package_count_exceeded',
+  'package_invalid',
+  'package_size_invalid',
+  'initial_quantity_invalid',
+  'initial_quantity_exceeds_package_size',
+  'creation_reason_invalid',
+  'creation_idempotency_invalid',
+  'creation_idempotency_conflict',
+  'creation_failed',
 ] as const
+
+export type {
+  CreateFertilizerInventoryItemsWithInitialMovementsInput,
+  CreateFertilizerInventoryItemsWithInitialMovementsResult,
+  CreatedFertilizerInventoryPackageResult,
+} from './fertilizerInventoryCreationRpcCore'
 
 export type FertilizerInventoryRepositoryErrorCode =
   (typeof FERTILIZER_INVENTORY_REPOSITORY_ERROR_CODES)[number]
@@ -75,6 +99,10 @@ export interface FertilizerInventoryRepository {
     input: CreateFertilizerInventoryItemInput,
     accessContext: FertilizerEnrichmentAccessContext,
   ): Promise<FertilizerInventoryItem>
+  createInventoryItemsWithInitialMovements(
+    input: CreateFertilizerInventoryItemsWithInitialMovementsInput,
+    accessContext: FertilizerEnrichmentAccessContext,
+  ): Promise<CreateFertilizerInventoryItemsWithInitialMovementsResult>
   getInventoryItemById(
     id: string,
     accessContext: FertilizerEnrichmentAccessContext,
@@ -97,10 +125,16 @@ export interface FertilizerInventoryRepository {
   ): Promise<number>
 }
 
+interface InMemoryFertilizerInventoryCreationReceipt {
+  fingerprint: string
+  result: CreateFertilizerInventoryItemsWithInitialMovementsResult
+}
+
 export interface InMemoryFertilizerInventoryRepositoryState {
   itemsById: Map<string, FertilizerInventoryItem>
   movementsByItemId: Map<string, FertilizerInventoryMovement[]>
   movementIdempotencyByScope: Map<string, string>
+  creationReceiptByScope: Map<string, InMemoryFertilizerInventoryCreationReceipt>
 }
 
 export interface InMemoryFertilizerInventoryRepositoryOptions {
@@ -160,6 +194,24 @@ function inventoryItemAccessScopeKey(item: FertilizerInventoryItem): string {
 
 function movementIdempotencyLookupKey(accessScope: string, idempotencyKey: string): string {
   return `${accessScope}|${idempotencyKey}`
+}
+
+function creationReceiptLookupKey(accessScope: string, idempotencyKey: string): string {
+  return `${accessScope}|creation|${idempotencyKey}`
+}
+
+function buildCreationReceiptFingerprint(
+  input: CreateFertilizerInventoryItemsWithInitialMovementsInput,
+  accessContext: FertilizerEnrichmentAccessContext,
+): string {
+  return buildCanonicalFertilizerInventoryCreationPayload({
+    savedProductProfileId: input.savedProductProfileId,
+    accessContext,
+    creationReason: input.creationReason,
+    idempotencyKey: input.idempotencyKey,
+    sourceEventRef: input.sourceEventRef ?? null,
+    packages: input.packages,
+  })
 }
 
 function mapInventoryDomainError(error: unknown): never {
@@ -266,6 +318,7 @@ export function createInMemoryFertilizerInventoryRepository(
     itemsById: initialState?.itemsById ?? new Map(),
     movementsByItemId: initialState?.movementsByItemId ?? new Map(),
     movementIdempotencyByScope: initialState?.movementIdempotencyByScope ?? new Map(),
+    creationReceiptByScope: initialState?.creationReceiptByScope ?? new Map(),
   }
 
   function getItemInScope(
@@ -328,6 +381,169 @@ export function createInMemoryFertilizerInventoryRepository(
         state.itemsById.set(snapshot.id, snapshot)
         return cloneInventoryItem(snapshot)
       } catch (error) {
+        mapInventoryDomainError(error)
+      }
+    },
+    async createInventoryItemsWithInitialMovements(input, accessContext) {
+      if (input.packages.length === 0) {
+        throw new FertilizerInventoryRepositoryError(
+          'package_list_empty',
+          'At least one confirmed package is required.',
+        )
+      }
+
+      if (input.packages.length > 20) {
+        throw new FertilizerInventoryRepositoryError(
+          'package_count_exceeded',
+          'At most 20 confirmed packages are allowed per request.',
+        )
+      }
+
+      const accessScope = inventoryAccessScopeKey(accessContext, deriveSessionAccessHash)
+      const receiptKey = creationReceiptLookupKey(accessScope, input.idempotencyKey)
+      const fingerprint = buildCreationReceiptFingerprint(input, accessContext)
+      const existingReceipt = state.creationReceiptByScope.get(receiptKey)
+
+      if (existingReceipt) {
+        if (existingReceipt.fingerprint !== fingerprint) {
+          throw new FertilizerInventoryRepositoryError(
+            'creation_idempotency_conflict',
+            'Inventory creation idempotency conflict.',
+          )
+        }
+
+        return structuredClone(existingReceipt.result)
+      }
+
+      const rollbackItemsById = new Map(state.itemsById)
+      const rollbackMovementsByItemId = new Map(state.movementsByItemId)
+      const rollbackMovementIdempotencyByScope = new Map(state.movementIdempotencyByScope)
+
+      try {
+        const sortedPackages = [...input.packages].sort(
+          (left, right) => left.sequenceIndex - right.sequenceIndex,
+        )
+
+        const operationId = createId()
+        const packageResults: CreateFertilizerInventoryItemsWithInitialMovementsResult['packages'] =
+          []
+
+        for (const pkg of sortedPackages) {
+          if (pkg.packageSizeUnit !== pkg.initialQuantityUnit) {
+            throw new FertilizerInventoryRepositoryError(
+              'unit_mismatch',
+              'Package size unit and initial quantity unit must match.',
+            )
+          }
+
+          if (pkg.packageSizeValue <= 0) {
+            throw new FertilizerInventoryRepositoryError(
+              'package_size_invalid',
+              'packageSizeValue must be greater than zero.',
+            )
+          }
+
+          if (pkg.initialQuantityValue <= 0) {
+            throw new FertilizerInventoryRepositoryError(
+              'initial_quantity_invalid',
+              'initialQuantityValue must be greater than zero.',
+            )
+          }
+
+          if (pkg.initialQuantityValue > pkg.packageSizeValue) {
+            throw new FertilizerInventoryRepositoryError(
+              'initial_quantity_exceeds_package_size',
+              'initialQuantityValue must not exceed packageSizeValue.',
+            )
+          }
+
+          const item = buildInventoryItemFromInput(
+            {
+              savedProductProfileId: input.savedProductProfileId,
+              baseUnit: pkg.packageSizeUnit,
+              packageSizeValue: pkg.packageSizeValue,
+              packageSizeUnit: pkg.packageSizeUnit,
+            },
+            accessContext,
+            deriveSessionAccessHash,
+            now,
+            createId,
+          )
+          validateInventoryItemRecord(item)
+
+          if (state.itemsById.has(item.id)) {
+            throw new FertilizerInventoryRepositoryError(
+              'creation_failed',
+              'Inventory item id collision during creation.',
+            )
+          }
+
+          const movement = buildInventoryMovementFromInput(
+            {
+              inventoryItemId: item.id,
+              quantityDelta: pkg.initialQuantityValue,
+              unit: pkg.initialQuantityUnit,
+              movementType: input.creationReason,
+              movementOrigin: 'manual',
+              sourceEventRef: input.sourceEventRef ?? null,
+              idempotencyKey: buildInventoryCreationMovementIdempotencyKey(
+                operationId,
+                pkg.sequenceIndex,
+              ),
+            },
+            item,
+            now,
+            createId,
+          )
+
+          validateAppendInventoryMovement(movement, item, [])
+
+          const itemSnapshot = cloneInventoryItem(item)
+          const movementSnapshot = cloneInventoryMovement(movement)
+
+          state.itemsById.set(itemSnapshot.id, itemSnapshot)
+          state.movementsByItemId.set(itemSnapshot.id, [movementSnapshot])
+
+          if (movementSnapshot.idempotencyKey) {
+            state.movementIdempotencyByScope.set(
+              movementIdempotencyLookupKey(accessScope, movementSnapshot.idempotencyKey),
+              movementSnapshot.id,
+            )
+          }
+
+          packageResults.push({
+            sequenceIndex: pkg.sequenceIndex,
+            clientCorrelationId: pkg.clientCorrelationId,
+            item: itemSnapshot,
+            initialMovement: movementSnapshot,
+          })
+        }
+
+        const result: CreateFertilizerInventoryItemsWithInitialMovementsResult = {
+          operationId,
+          idempotencyKey: input.idempotencyKey,
+          packages: packageResults.map((entry) => ({
+            ...entry,
+            item: cloneInventoryItem(entry.item),
+            initialMovement: cloneInventoryMovement(entry.initialMovement),
+          })),
+        }
+
+        state.creationReceiptByScope.set(receiptKey, {
+          fingerprint,
+          result: structuredClone(result),
+        })
+
+        return structuredClone(result)
+      } catch (error) {
+        state.itemsById = rollbackItemsById
+        state.movementsByItemId = rollbackMovementsByItemId
+        state.movementIdempotencyByScope = rollbackMovementIdempotencyByScope
+
+        if (error instanceof FertilizerInventoryRepositoryError) {
+          throw error
+        }
+
         mapInventoryDomainError(error)
       }
     },

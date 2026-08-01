@@ -6,6 +6,12 @@ import {
   type FertilizerInventoryItem,
   type FertilizerInventoryMovement,
 } from '../types/fertilizerInventoryCore'
+import {
+  buildCreateFertilizerInventoryCoreFromConfirmedPackagesRpcParams,
+  CREATE_FERTILIZER_INVENTORY_CORE_FROM_CONFIRMED_PACKAGES_RPC,
+  mapCreateFertilizerInventoryCoreFromConfirmedPackagesRpcError,
+  mapCreateFertilizerInventoryCoreFromConfirmedPackagesRpcResult,
+} from './fertilizerInventoryCreationRpcCore'
 import type { DeriveSessionAccessHash } from './fertilizerEnrichmentSessionAccessHashCore'
 import {
   APPEND_FERTILIZER_INVENTORY_CORE_MOVEMENT_RPC,
@@ -301,6 +307,34 @@ export function createPersistentFertilizerInventoryRepository(
 
         const persisted = mapContainerRowToInventoryItem(data as FertilizerInventoryContainerRow)
         validateItemRecord(persisted)
+        return persisted
+      } catch (error) {
+        mapPersistenceError(error)
+      }
+    },
+
+    async createInventoryItemsWithInitialMovements(input, accessContext) {
+      try {
+        const rpcParams = buildCreateFertilizerInventoryCoreFromConfirmedPackagesRpcParams(
+          input,
+          accessContext,
+          deriveSessionAccessHashFn,
+        )
+
+        const { data, error } = await supabase.rpc(
+          CREATE_FERTILIZER_INVENTORY_CORE_FROM_CONFIRMED_PACKAGES_RPC,
+          rpcParams,
+        )
+
+        if (error) {
+          throw mapCreateFertilizerInventoryCoreFromConfirmedPackagesRpcError(error)
+        }
+
+        const persisted = mapCreateFertilizerInventoryCoreFromConfirmedPackagesRpcResult(data)
+        persisted.packages.forEach((entry) => {
+          validateItemRecord(entry.item)
+          validateMovementRecord(entry.initialMovement)
+        })
         return persisted
       } catch (error) {
         mapPersistenceError(error)
