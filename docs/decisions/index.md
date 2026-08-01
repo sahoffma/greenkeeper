@@ -33,6 +33,9 @@ Neue Entscheidung: [Template](./templates/dl-template.md) · [README](./README.m
 | [DL-023](./dl-023.md) | Aggregierte Bestandsanzeige bei gebindebezogener Bestandsführung | ✅ Festgelegt |
 | [DL-024](./dl-024.md) | Physische Gebinde als separate Bestandsobjekte | ✅ Festgelegt |
 | [DL-025](./dl-025.md) | Inventory Core Architektur und Persistenzgrenzen | ✅ Festgelegt |
+| [DL-026](./dl-026.md) | Explizite Bestandsanlage durch Nutzeraktion | ✅ Festgelegt |
+| [DL-027](./dl-027.md) | Gebindeauflösung vor Bestandsanlage | ✅ Festgelegt |
+| [DL-028](./dl-028.md) | Trennung von Gebindegröße und aktuellem Inhalt | ✅ Festgelegt |
 
 ---
 
