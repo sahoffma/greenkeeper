@@ -8,6 +8,7 @@ import {
   createInMemoryFertilizerInventoryRepository,
   type FertilizerInventoryRepository,
 } from './fertilizerInventoryRepositoryCore'
+import { buildInventoryCreationMovementIdempotencyKey } from './fertilizerInventoryCreationRpcCore'
 import {
   PHASE7A_SAVED_PRODUCT_PROFILE_ID,
   PHASE7A_SESSION_HASH,
@@ -372,5 +373,152 @@ describe('fertilizerInventoryRepositoryCore', () => {
 
     expect(replay.id).toBe(first.id)
     expect(repository.state.movementsByItemId.get(item.id)).toHaveLength(1)
+  })
+
+  it('creates multiple inventory items with initial movements atomically in memory', async () => {
+    const repository = createTestRepository()
+    const accessContext = phase7AAuthenticatedAccessContext()
+
+    const result = await repository.createInventoryItemsWithInitialMovements(
+      {
+        savedProductProfileId: PHASE7A_SAVED_PRODUCT_PROFILE_ID,
+        creationReason: 'purchase',
+        idempotencyKey: 'creation-idem-memory',
+        packages: [
+          {
+            packageSizeValue: 25,
+            packageSizeUnit: 'kg',
+            initialQuantityValue: 25,
+            initialQuantityUnit: 'kg',
+            sequenceIndex: 0,
+          },
+          {
+            packageSizeValue: 25,
+            packageSizeUnit: 'kg',
+            initialQuantityValue: 25,
+            initialQuantityUnit: 'kg',
+            sequenceIndex: 1,
+          },
+        ],
+      },
+      accessContext,
+    )
+
+    expect(result.packages).toHaveLength(2)
+    expect(result.packages[0]?.item.id).not.toBe(result.packages[1]?.item.id)
+    expect(result.packages[0]?.initialMovement.inventoryItemId).toBe(result.packages[0]?.item.id)
+    expect(repository.state.itemsById.size).toBe(2)
+    expect(repository.state.movementsByItemId.size).toBe(2)
+  })
+
+  it('replays identical in-memory creation requests deterministically', async () => {
+    const repository = createTestRepository()
+    const accessContext = phase7AAuthenticatedAccessContext()
+    const input = {
+      savedProductProfileId: PHASE7A_SAVED_PRODUCT_PROFILE_ID,
+      creationReason: 'gift_received' as const,
+      idempotencyKey: 'creation-idem-replay',
+      packages: [
+        {
+          packageSizeValue: 10,
+          packageSizeUnit: 'kg' as const,
+          initialQuantityValue: 10,
+          initialQuantityUnit: 'kg' as const,
+          sequenceIndex: 0,
+        },
+      ],
+    }
+
+    const first = await repository.createInventoryItemsWithInitialMovements(input, accessContext)
+    const replay = await repository.createInventoryItemsWithInitialMovements(input, accessContext)
+
+    expect(replay.operationId).toBe(first.operationId)
+    expect(replay.packages[0]?.item.id).toBe(first.packages[0]?.item.id)
+    expect(replay.packages[0]?.initialMovement.id).toBe(first.packages[0]?.initialMovement.id)
+    expect(repository.state.itemsById.size).toBe(1)
+  })
+
+  it('rejects in-memory creation idempotency conflicts for differing payloads', async () => {
+    const repository = createTestRepository()
+    const accessContext = phase7AAuthenticatedAccessContext()
+
+    await repository.createInventoryItemsWithInitialMovements(
+      {
+        savedProductProfileId: PHASE7A_SAVED_PRODUCT_PROFILE_ID,
+        creationReason: 'initial_stock',
+        idempotencyKey: 'creation-idem-conflict',
+        packages: [
+          {
+            packageSizeValue: 25,
+            packageSizeUnit: 'kg',
+            initialQuantityValue: 25,
+            initialQuantityUnit: 'kg',
+            sequenceIndex: 0,
+          },
+        ],
+      },
+      accessContext,
+    )
+
+    await expect(
+      repository.createInventoryItemsWithInitialMovements(
+        {
+          savedProductProfileId: PHASE7A_SAVED_PRODUCT_PROFILE_ID,
+          creationReason: 'initial_stock',
+          idempotencyKey: 'creation-idem-conflict',
+          packages: [
+            {
+              packageSizeValue: 10,
+              packageSizeUnit: 'kg',
+              initialQuantityValue: 10,
+              initialQuantityUnit: 'kg',
+              sequenceIndex: 0,
+            },
+          ],
+        },
+        accessContext,
+      ),
+    ).rejects.toMatchObject({ code: 'creation_idempotency_conflict' })
+
+    expect(repository.state.itemsById.size).toBe(1)
+  })
+
+  it('uses receipt-based movement idempotency keys in memory', async () => {
+    let idCounter = 0
+    const receiptId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01'
+    const repository = createInMemoryFertilizerInventoryRepository({
+      deriveSessionAccessHash: deriveTestSessionAccessHash,
+      now: () => FIXED_NOW,
+      createId: () => {
+        idCounter += 1
+        return idCounter === 1 ? receiptId : `inventory-item-${idCounter}`
+      },
+    })
+
+    const result = await repository.createInventoryItemsWithInitialMovements(
+      {
+        savedProductProfileId: PHASE7A_SAVED_PRODUCT_PROFILE_ID,
+        creationReason: 'purchase',
+        idempotencyKey: 'creation-idem-memory-keys',
+        packages: [
+          {
+            packageSizeValue: 25,
+            packageSizeUnit: 'kg',
+            initialQuantityValue: 25,
+            initialQuantityUnit: 'kg',
+            sequenceIndex: 0,
+          },
+        ],
+      },
+      phase7AAuthenticatedAccessContext(),
+    )
+
+    expect(result.operationId).toBe(receiptId)
+    expect(result.packages[0]?.initialMovement.idempotencyKey).toBe(
+      buildInventoryCreationMovementIdempotencyKey(receiptId, 0),
+    )
+    expect(result.packages[0]?.initialMovement.idempotencyKey).not.toContain(
+      'creation-idem-memory-keys',
+    )
   })
 })
