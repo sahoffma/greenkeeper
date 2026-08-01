@@ -36,6 +36,7 @@ Neue Entscheidung: [Template](./templates/dl-template.md) · [README](./README.m
 | [DL-026](./dl-026.md) | Explizite Bestandsanlage durch Nutzeraktion | ✅ Festgelegt |
 | [DL-027](./dl-027.md) | Gebindeauflösung vor Bestandsanlage | ✅ Festgelegt |
 | [DL-028](./dl-028.md) | Trennung von Gebindegröße und aktuellem Inhalt | ✅ Festgelegt |
+| [DL-029](./dl-029.md) | Trennung von initialer Bestandsanlage und Bestandskorrektur | ✅ Festgelegt |
 
 ---
 
