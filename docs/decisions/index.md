@@ -40,6 +40,7 @@ Neue Entscheidung: [Template](./templates/dl-template.md) · [README](./README.m
 | [DL-030](./dl-030.md) | Atomare Dünger-Anwendung — ein Inventory Item, ein Journal, eine Bewegung | ✅ Festgelegt |
 | [DL-031](./dl-031.md) | Mehrflächen-Düngeranwendung — gemeinsamer Vorgang, konkrete Flächen, zwei Eingabemodi | ✅ Festgelegt |
 | [DL-032](./dl-032.md) | Flächenlöschung — eigenständige Löschdomäne, geschützte Nachbarsysteme | ✅ Festgelegt |
+| [DL-033](./dl-033.md) | Produktbasierter Düngerbestand ohne Gebindeverwaltung | ✅ Festgelegt |
 
 ---
 
