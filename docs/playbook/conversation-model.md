@@ -413,6 +413,84 @@ Kurz: **Mitdenken** = Kontext und Historie nutzen. **Nicht vorausdenken** = kein
 
 ---
 
+## CM-014 – Sprachgeführter Initialbestand im Onboarding
+
+| Feld | Wert |
+|------|------|
+| **ID** | CM-014 |
+| **Titel** | Sprachgeführter Initialbestand im Onboarding |
+| **Status** | ✅ Festgelegt |
+| **Priorität** | Hoch |
+| **Erstellt** | 2026-08-03 |
+| **Zuletzt geändert** | 2026-08-03 |
+| **Verantwortlich** | — |
+| **Verwandte Dokumente** | [DL-034](../decisions/dl-034.md); [DL-010](../decisions/dl-010.md); [CM-005](./conversation-model.md#cm-005--zusammenfassung-vor-speichern); [CM-006](./conversation-model.md#cm-006--greenkeeper-ergänzt-er-erfindet-nichts); [CM-013](./conversation-model.md#cm-013--kontextbezogene-rückfragen-bei-der-erfassung); [Onboarding – Sprachgeführte Erfassung](./onboarding.md#sprachgeführte-erfassung-vorhandener-düngerbestände); [GM-009](../model/gm-009.md) |
+| **Kurzbeschreibung** | Optionaler Onboarding-Dialog für vorhandenen Dünger: Voice-First, freie Aussage, unterstützende Recherche, gezielte Rückfragen, ausdrückliche Bestätigung, dann `initial_stock`. |
+
+---
+
+### Kontext
+
+[DL-034](../decisions/dl-034.md) regelt **`initial_stock`** und den Produktbestandsvertrag. [Onboarding](./onboarding.md) beschreibt den **Nutzerablauf**. CM-014 definiert die **Dialog- und Zustandslogik** für die spätere Implementierung — ohne parallele Conversation Engine.
+
+Der Dialog ist **kein** CM-011-Ereignis (kein Kauf, keine laufende Inventurbewegung), sondern ein **Onboarding-Sonderfall**.
+
+### Primärer Ablauf
+
+1. Einladung zur freien Spracheingabe
+2. Nutzer nennt Produkt und möglichst Menge
+3. Extraktion bekannter Felder
+4. Unterstützende Produktrecherche (Kandidaten, Unsicherheit)
+5. Rückfragen nur für Offenes oder Mehrdeutiges
+6. Produktkandidat benennen — Nutzer bestätigt oder korrigiert
+7. Menge und Base Unit bestätigen
+8. Nach ausdrücklicher Bestätigung: `initial_stock` persistieren
+9. „Hast Du noch weiteren Dünger?“ — Wiederholung oder Abschluss
+
+Kein Formular als primärer Weg ([CM-007](./conversation-model.md#cm-007--gespräch-statt-formular)). Bestätigung vor Speicherung ([CM-005](./conversation-model.md#cm-005--zusammenfassung-vor-dem-speichern)). Keine erfundenen Produkte ([CM-006](./conversation-model.md#cm-006--greenkeeper-ergänzt-er-erfindet-nichts)).
+
+### Dialogzustände (Implementierung)
+
+Zustände sind **fachliche Phasen** — keine zweite Engine neben bestehenden Flows.
+
+| Zustand | Bedeutung | Typische Übergänge |
+|---------|-----------|-------------------|
+| `collecting_product_statement` | Einladung / freie erste Aussage (Voice oder Text-Fallback) | → `resolving_product_candidate` |
+| `resolving_product_candidate` | Recherche, Kandidatenliste intern, Unsicherheit bewerten | → `clarifying_product_variant` · `clarifying_quantity` · `clarifying_unit` · `collecting_product_statement` (H) |
+| `clarifying_product_variant` | Form, Variante, Hersteller, Mehrdeutigkeit (A–D, G, H) | → `resolving_product_candidate` · `clarifying_quantity` |
+| `clarifying_quantity` | Menge fehlt oder unklar (E) | → `clarifying_unit` · `confirming_initial_stock` |
+| `clarifying_unit` | Einheit fehlt oder widerspricht Form (F, G) | → `clarifying_product_variant` · `confirming_initial_stock` |
+| `confirming_initial_stock` | Gesamtbestätigung Produkt + Menge + Base Unit | → `persisting_initial_stock` · `clarifying_*` (Korrektur I) |
+| `persisting_initial_stock` | Atomare Buchung `initial_stock` | → `asking_for_additional_product` |
+| `asking_for_additional_product` | „Noch weiterer Dünger?“ | → `collecting_product_statement` · `completed` |
+| `completed` | Schritt beendet (ggf. mit Abschlusszusammenfassung) | — |
+| `skipped` | Nutzer überspringt optionalen Schritt | — |
+| `cancelled` | Abbruch ohne unbestätigte Buchung (K) | → `completed` oder `asking_for_additional_product` |
+
+**Korrektur (I):** Aus jedem Klär- oder Bestätigungszustand zurück zu `resolving_product_candidate` — **keine** Buchung mit veraltetem Entwurf.
+
+**Mehrprodukt (J):** Aus Extraktion mehrere Nennungen → sequenzielle Durchläufe ab `resolving_product_candidate`.
+
+### Fallbacks
+
+Alle Eingänge (Mikrofon, „Lieber schreiben“, Suche, Foto, Barcode-Zielbild) müssen **dieselben Zustände** und **dieselbe** Bestätigungs- und Persistenzlogik nutzen — siehe [Onboarding](./onboarding.md#sprachgeführte-erfassung-vorhandener-düngerbestände).
+
+### Abgrenzung Recognition / Enrichment
+
+- **Recognition** liefert Kandidaten — keine stille Produktwahl.
+- **Enrichment** blockiert nicht unnötig, wenn Readiness Anlage erlaubt ([GM-009](../model/gm-009.md)).
+- **Bestandsbuchung** erst nach Nutzerbestätigung — getrennt von Enrichment-Abschluss.
+
+### Abgrenzung zu CM-011 / CM-013
+
+| Regel | Gilt für Initialbestand-Onboarding |
+|-------|-----------------------------------|
+| [DL-009](../decisions/dl-009.md) / CM-011 Routing Journal/Inventar | **Nein** — Onboarding-Sonderfall |
+| CM-013 Erfassungsflow Dünger (Ausrüstung) | Gleiche Prinzipien wie DL-010/CM-005 Erfassung — eigener Einstieg |
+| CM-005 Bestätigung vor Speichern | **Ja** |
+
+---
+
 ## Übersicht
 
 | ID | Kurztitel |
@@ -427,6 +505,7 @@ Kurz: **Mitdenken** = Kontext und Historie nutzen. **Nicht vorausdenken** = kein
 | CM-008 | Qualität der ersten Aussage |
 | CM-009 | Komplexe Arbeitsberichte |
 | CM-010 | Mitdenken, nicht vorausdenken |
+| CM-014 | Sprachgeführter Initialbestand (Onboarding) |
 
 ---
 
