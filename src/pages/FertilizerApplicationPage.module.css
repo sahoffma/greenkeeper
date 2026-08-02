@@ -100,6 +100,98 @@
   color: rgba(31, 61, 43, 0.58);
 }
 
+.fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.modeOptions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.modeOption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 0.92rem;
+  color: #1f3d2b;
+}
+
+.careGroupActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-sm);
+}
+
+.careGroupButton {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(31, 61, 43, 0.16);
+  border-radius: var(--radius-md);
+  background: rgba(31, 61, 43, 0.04);
+  color: #1f3d2b;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.areaList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.areaListItem {
+  margin: 0;
+}
+
+.areaOption,
+.areaOptionDisabled {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: 10px 12px;
+  border: 1px solid rgba(31, 61, 43, 0.12);
+  border-radius: var(--radius-md);
+  background: #fff;
+}
+
+.areaOptionDisabled {
+  opacity: 0.55;
+}
+
+.areaOptionText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.areaOptionName {
+  font-size: 0.94rem;
+  font-weight: 600;
+  color: #1f3d2b;
+}
+
+.areaOptionMeta {
+  font-size: 0.82rem;
+  color: rgba(31, 61, 43, 0.62);
+}
+
+.successAreaList {
+  margin: 0 0 var(--space-md);
+  padding-left: 1.1rem;
+  color: rgba(31, 61, 43, 0.72);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
 .input,
 .select,
 .textarea {

@@ -54,6 +54,7 @@ export function mapAreaRow(row: AreaRow): Area {
     name: row.name,
     subtitle: row.subtitle ?? '',
     sizeLabel: formatSizeLabel(row.size_sqm),
+    sizeSqm: parseSizeSqm(row.size_sqm),
     status: mapStatus(row.status),
     statusLabel: row.status_label ?? 'Entwicklung beobachten',
     summary: row.summary,

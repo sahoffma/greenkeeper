@@ -5,19 +5,31 @@ import { SubpageHeader } from '../components/layout/SubpageHeader'
 import { useAuth } from '../contexts/AuthContext'
 import { fetchAreas } from '../lib/areas'
 import { todayDateInputValue } from '../lib/activityCreate'
+import { buildCareGroupSummaries } from '../lib/careGroupsCore'
+import { fetchCareGroupMemberships } from '../lib/careGroups'
 import {
-  applyFertilizerInventoryItemToArea,
-  FertilizerApplicationRuntimeError,
-} from '../lib/fertilizerApplication'
+  applyFertilizerInventoryItemToAreas,
+  FertilizerMultiAreaApplicationRuntimeError,
+  type FertilizerMultiAreaApplicationResult,
+} from '../lib/fertilizerMultiAreaApplication'
 import {
-  applicationDateInputToIso,
-  buildApplicationSourceEventRef,
+  applyCareGroupSelection,
   buildFertilizerApplicationConfirmationRows,
+  buildMultiAreaApplicationCommandInput,
+  buildSuccessAreaLabels,
+  canSubmitFertilizerApplication,
+  formatApplicationModeLabel,
   formatBalanceLabel,
   formatFertilizerProductFormLabel,
+  getApplicableAreas,
+  getApplicationInputUnitLabel,
   getFertilizerApplicationIneligibilityMessage,
+  isAreaApplicableForFertilizerApplication,
   isFertilizerStockListItemApplicationEligible,
   isValidInventoryItemRouteId,
+  resolveInitialDraftSelection,
+  switchToManualAreaSelection,
+  toggleAreaSelection,
   type FertilizerApplicationDraft,
   type FertilizerApplicationFlowPhase,
   validateFertilizerApplicationDraft,
@@ -26,8 +38,8 @@ import { fetchFertilizerStockListItem } from '../lib/fertilizerInventory'
 import { FERTILIZER_ROUTES } from '../lib/fertilizerRoutes'
 import { createRandomId } from '../lib/randomId'
 import type { Area } from '../types/area'
+import type { CareGroupSummary } from '../types/careGroup'
 import type { FertilizerStockListItem } from '../types/fertilizerInventory'
-import type { FertilizerApplicationResult } from '../lib/fertilizerApplicationCore'
 import styles from './FertilizerApplicationPage.module.css'
 
 export function FertilizerApplicationPage() {
@@ -37,22 +49,26 @@ export function FertilizerApplicationPage() {
 
   const [item, setItem] = useState<FertilizerStockListItem | null>(null)
   const [areas, setAreas] = useState<Area[]>([])
+  const [careGroups, setCareGroups] = useState<CareGroupSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [phase, setPhase] = useState<FertilizerApplicationFlowPhase>('form')
   const [draft, setDraft] = useState<FertilizerApplicationDraft>({
-    amountInput: '',
-    areaId: null,
+    mode: 'rate_per_sqm',
+    inputValue: '',
+    selectedAreaIds: [],
+    selectionSource: 'manual',
+    careGroupId: null,
     appliedAtDate: todayDateInputValue(),
     note: '',
     idempotencyKey: null,
   })
   const [fieldErrors, setFieldErrors] = useState<
-    Partial<Record<'amount' | 'area' | 'date' | 'note', string>>
+    Partial<Record<'input' | 'areas' | 'date' | 'note', string>>
   >({})
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [result, setResult] = useState<FertilizerApplicationResult | null>(null)
+  const [result, setResult] = useState<FertilizerMultiAreaApplicationResult | null>(null)
 
   useEffect(() => {
     if (!isValidInventoryItemRouteId(inventoryItemId)) {
@@ -68,9 +84,10 @@ export function FertilizerApplicationPage() {
       setLoadError(null)
 
       try {
-        const [loadedItem, loadedAreas] = await Promise.all([
+        const [loadedItem, loadedAreas, memberships] = await Promise.all([
           fetchFertilizerStockListItem(inventoryItemId),
           fetchAreas(),
+          fetchCareGroupMemberships(),
         ])
 
         if (cancelled) {
@@ -83,8 +100,16 @@ export function FertilizerApplicationPage() {
           return
         }
 
+        const applicableAreas = getApplicableAreas(loadedAreas)
+        const initialSelection = resolveInitialDraftSelection(applicableAreas)
+
         setItem(loadedItem)
         setAreas(loadedAreas)
+        setCareGroups(buildCareGroupSummaries(memberships))
+        setDraft((current) => ({
+          ...current,
+          ...initialSelection,
+        }))
       } catch (error) {
         if (!cancelled) {
           setLoadError(
@@ -105,13 +130,16 @@ export function FertilizerApplicationPage() {
     }
   }, [inventoryItemId])
 
-  const selectedArea = useMemo(
-    () => areas.find((area) => area.id === draft.areaId) ?? null,
-    [areas, draft.areaId],
-  )
-
+  const applicableAreas = useMemo(() => getApplicableAreas(areas), [areas])
   const unitLabel = item?.baseUnit ?? item?.unit ?? 'kg'
   const eligible = item != null && isFertilizerStockListItemApplicationEligible(item)
+  const validation = useMemo(
+    () =>
+      item
+        ? validateFertilizerApplicationDraft(draft, item, areas)
+        : { ok: false, normalized: null, errors: {} },
+    [draft, item, areas],
+  )
 
   function handleProceedToConfirm(event: FormEvent) {
     event.preventDefault()
@@ -119,10 +147,10 @@ export function FertilizerApplicationPage() {
       return
     }
 
-    const validation = validateFertilizerApplicationDraft(draft, item)
-    setFieldErrors(validation.errors)
+    const nextValidation = validateFertilizerApplicationDraft(draft, item, areas)
+    setFieldErrors(nextValidation.errors)
 
-    if (!validation.ok) {
+    if (!nextValidation.ok) {
       return
     }
 
@@ -135,19 +163,26 @@ export function FertilizerApplicationPage() {
   }
 
   function handleConfirmSubmit() {
-    if (!item || !user || !draft.idempotencyKey || !selectedArea) {
+    if (!item || !user || !draft.idempotencyKey) {
       return
     }
 
-    const validation = validateFertilizerApplicationDraft(draft, item)
-    if (!validation.ok || validation.amount == null) {
+    const nextValidation = validateFertilizerApplicationDraft(draft, item, areas)
+    if (!nextValidation.ok) {
       setPhase('form')
-      setFieldErrors(validation.errors)
+      setFieldErrors(nextValidation.errors)
       return
     }
 
-    const appliedAt = applicationDateInputToIso(draft.appliedAtDate)
-    if (!appliedAt || !item.savedProductProfileId || !item.baseUnit) {
+    const command = buildMultiAreaApplicationCommandInput({
+      draft,
+      item,
+      areas,
+      userId: user.id,
+      idempotencyKey: draft.idempotencyKey,
+    })
+
+    if (!command) {
       setSubmitError('Die Anwendung konnte nicht vorbereitet werden.')
       return
     }
@@ -155,26 +190,14 @@ export function FertilizerApplicationPage() {
     setSubmitting(true)
     setSubmitError(null)
 
-    void applyFertilizerInventoryItemToArea({
-      inventoryItemId: item.id,
-      savedProductProfileId: item.savedProductProfileId,
-      targetKind: 'area',
-      targetId: selectedArea.id,
-      applicationAmount: validation.amount,
-      applicationUnit: item.baseUnit,
-      appliedAt,
-      idempotencyKey: draft.idempotencyKey,
-      sourceEventRef: buildApplicationSourceEventRef(draft.idempotencyKey),
-      note: draft.note.trim() || null,
-      userId: user.id,
-    })
+    void applyFertilizerInventoryItemToAreas(command)
       .then((applicationResult) => {
         setResult(applicationResult)
         setPhase('success')
       })
       .catch((error) => {
         const message =
-          error instanceof FertilizerApplicationRuntimeError
+          error instanceof FertilizerMultiAreaApplicationRuntimeError
             ? error.message
             : 'Die Anwendung konnte nicht gespeichert werden.'
         setSubmitError(message)
@@ -193,16 +216,42 @@ export function FertilizerApplicationPage() {
     }))
   }
 
+  function handleToggleArea(areaId: string) {
+    setDraft((current) => {
+      const nextSelected = toggleAreaSelection(current.selectedAreaIds, areaId)
+      if (current.selectionSource === 'care_group') {
+        return {
+          ...current,
+          ...switchToManualAreaSelection(nextSelected),
+        }
+      }
+
+      return {
+        ...current,
+        selectedAreaIds: nextSelected,
+      }
+    })
+  }
+
+  function handleApplyCareGroup(careGroupId: string) {
+    setDraft((current) => ({
+      ...current,
+      ...applyCareGroupSelection(careGroupId, careGroups, applicableAreas),
+    }))
+  }
+
   const confirmationRows =
-    item && selectedArea
+    item && validation.normalized
       ? buildFertilizerApplicationConfirmationRows({
           item,
-          area: selectedArea,
-          amount: parseApplicationAmountForConfirm(draft, item),
-          appliedAtDate: draft.appliedAtDate,
-          note: draft.note,
+          draft,
+          normalized: validation.normalized,
+          areas,
         })
       : []
+
+  const successAreaLabels =
+    result != null ? buildSuccessAreaLabels(result.areas.map((area) => area.areaId), areas) : []
 
   return (
     <HomeAppShell>
@@ -284,53 +333,106 @@ export function FertilizerApplicationPage() {
                   Anwendung
                 </h2>
                 <form className={styles.form} onSubmit={handleProceedToConfirm}>
+                  <fieldset className={styles.fieldset}>
+                    <legend className={styles.fieldLabel}>Eingabemodus</legend>
+                    <div className={styles.modeOptions}>
+                      {(['rate_per_sqm', 'total_amount_proportional'] as const).map((mode) => (
+                        <label key={mode} className={styles.modeOption}>
+                          <input
+                            type="radio"
+                            name="application-mode"
+                            checked={draft.mode === mode}
+                            onChange={() =>
+                              setDraft((current) => ({
+                                ...current,
+                                mode,
+                                idempotencyKey: null,
+                              }))
+                            }
+                          />
+                          <span>{formatApplicationModeLabel(mode)}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+
                   <div className={styles.field}>
-                    <label className={styles.fieldLabel} htmlFor="application-amount">
-                      Menge
+                    <label className={styles.fieldLabel} htmlFor="application-input">
+                      {draft.mode === 'rate_per_sqm' ? 'Aufwandmenge' : 'Gesamtmenge'}
                     </label>
                     <div className={styles.amountRow}>
                       <input
-                        id="application-amount"
+                        id="application-input"
                         className={styles.input}
                         inputMode="decimal"
-                        value={draft.amountInput}
+                        value={draft.inputValue}
                         onChange={(event) =>
-                          setDraft((current) => ({ ...current, amountInput: event.target.value }))
+                          setDraft((current) => ({
+                            ...current,
+                            inputValue: event.target.value,
+                            idempotencyKey: null,
+                          }))
                         }
-                        aria-invalid={Boolean(fieldErrors.amount)}
+                        aria-invalid={Boolean(fieldErrors.input)}
                       />
-                      <span className={styles.unitBadge}>{unitLabel}</span>
+                      <span className={styles.unitBadge}>
+                        {getApplicationInputUnitLabel(
+                          draft.mode,
+                          unitLabel === 'ml' ? 'ml' : 'kg',
+                        )}
+                      </span>
                     </div>
-                    {fieldErrors.amount && (
-                      <p className={styles.fieldError}>{fieldErrors.amount}</p>
-                    )}
+                    {fieldErrors.input && <p className={styles.fieldError}>{fieldErrors.input}</p>}
                   </div>
 
                   <div className={styles.field}>
-                    <label className={styles.fieldLabel} htmlFor="application-area">
-                      Fläche
-                    </label>
-                    <select
-                      id="application-area"
-                      className={styles.select}
-                      value={draft.areaId ?? ''}
-                      onChange={(event) =>
-                        setDraft((current) => ({
-                          ...current,
-                          areaId: event.target.value || null,
-                        }))
-                      }
-                      aria-invalid={Boolean(fieldErrors.area)}
-                    >
-                      <option value="">Fläche auswählen</option>
-                      {areas.map((area) => (
-                        <option key={area.id} value={area.id}>
-                          {area.name}
-                          {area.sizeLabel ? ` · ${area.sizeLabel}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    {fieldErrors.area && <p className={styles.fieldError}>{fieldErrors.area}</p>}
+                    <span className={styles.fieldLabel}>Flächen</span>
+                    {careGroups.length > 0 && (
+                      <div className={styles.careGroupActions}>
+                        {careGroups.map((group, index) => (
+                          <button
+                            key={group.id}
+                            type="button"
+                            className={styles.careGroupButton}
+                            onClick={() => handleApplyCareGroup(group.id)}
+                          >
+                            Pflegegruppe {index + 1} vorauswählen
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <ul className={styles.areaList}>
+                      {areas.map((area) => {
+                        const applicable = isAreaApplicableForFertilizerApplication(area)
+                        const checked = draft.selectedAreaIds.includes(area.id)
+
+                        return (
+                          <li key={area.id} className={styles.areaListItem}>
+                            <label
+                              className={
+                                applicable ? styles.areaOption : styles.areaOptionDisabled
+                              }
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={!applicable}
+                                onChange={() => handleToggleArea(area.id)}
+                              />
+                              <span className={styles.areaOptionText}>
+                                <span className={styles.areaOptionName}>{area.name}</span>
+                                <span className={styles.areaOptionMeta}>
+                                  {applicable
+                                    ? area.sizeLabel
+                                    : 'Größe fehlt — nicht anwendbar'}
+                                </span>
+                              </span>
+                            </label>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                    {fieldErrors.areas && <p className={styles.fieldError}>{fieldErrors.areas}</p>}
                   </div>
 
                   <div className={styles.field}>
@@ -344,7 +446,11 @@ export function FertilizerApplicationPage() {
                       value={draft.appliedAtDate}
                       max={todayDateInputValue()}
                       onChange={(event) =>
-                        setDraft((current) => ({ ...current, appliedAtDate: event.target.value }))
+                        setDraft((current) => ({
+                          ...current,
+                          appliedAtDate: event.target.value,
+                          idempotencyKey: null,
+                        }))
                       }
                       aria-invalid={Boolean(fieldErrors.date)}
                     />
@@ -360,21 +466,29 @@ export function FertilizerApplicationPage() {
                       className={styles.textarea}
                       value={draft.note}
                       onChange={(event) =>
-                        setDraft((current) => ({ ...current, note: event.target.value }))
+                        setDraft((current) => ({
+                          ...current,
+                          note: event.target.value,
+                          idempotencyKey: null,
+                        }))
                       }
                       aria-invalid={Boolean(fieldErrors.note)}
                     />
                     {fieldErrors.note && <p className={styles.fieldError}>{fieldErrors.note}</p>}
                   </div>
 
-                  <button type="submit" className={styles.primaryAction}>
+                  <button
+                    type="submit"
+                    className={styles.primaryAction}
+                    disabled={!canSubmitFertilizerApplication({ submitting, phase, item })}
+                  >
                     Weiter zur Bestätigung
                   </button>
                 </form>
               </section>
             )}
 
-            {phase === 'confirm' && (
+            {phase === 'confirm' && validation.normalized && (
               <section className={styles.section}>
                 <div className={styles.confirmPanel} aria-labelledby="application-confirm-heading">
                   <h2 id="application-confirm-heading" className={styles.confirmTitle}>
@@ -383,7 +497,7 @@ export function FertilizerApplicationPage() {
 
                   <dl className={styles.confirmList}>
                     {confirmationRows.map((row) => (
-                      <div key={row.label} className={styles.confirmRow}>
+                      <div key={`${row.label}-${row.value}`} className={styles.confirmRow}>
                         <dt>{row.label}</dt>
                         <dd>{row.value}</dd>
                       </div>
@@ -437,9 +551,18 @@ export function FertilizerApplicationPage() {
                 Düngung gespeichert
               </h2>
               <p className={styles.successMessage}>
-                {item.productLabel} wurde auf {selectedArea?.name ?? 'der gewählten Fläche'}{' '}
-                angewendet. Restbestand: {formatBalanceLabel(result.resultingBalance, unitLabel)}.
+                {item.productLabel} wurde auf {result.areas.length}{' '}
+                {result.areas.length === 1 ? 'Fläche' : 'Flächen'} angewendet. Gesamtentnahme:{' '}
+                {formatBalanceLabel(result.totalApplicationAmount, unitLabel)}. Restbestand:{' '}
+                {formatBalanceLabel(result.resultingBalance, unitLabel)}.
               </p>
+              {successAreaLabels.length > 0 && (
+                <ul className={styles.successAreaList}>
+                  {successAreaLabels.map((label) => (
+                    <li key={label}>{label}</li>
+                  ))}
+                </ul>
+              )}
               <div className={styles.successActions}>
                 <button
                   type="button"
@@ -455,12 +578,4 @@ export function FertilizerApplicationPage() {
       </main>
     </HomeAppShell>
   )
-}
-
-function parseApplicationAmountForConfirm(
-  draft: FertilizerApplicationDraft,
-  item: FertilizerStockListItem,
-): number {
-  const validation = validateFertilizerApplicationDraft(draft, item)
-  return validation.amount ?? 0
 }

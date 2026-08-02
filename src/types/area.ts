@@ -25,6 +25,7 @@ export interface Area {
   name: string
   subtitle: string
   sizeLabel: string
+  sizeSqm?: number | null
   status: AreaStatus
   statusLabel: string
   summary: string | null
