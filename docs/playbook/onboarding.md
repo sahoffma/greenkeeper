@@ -445,6 +445,14 @@ Alle Rückfälle führen in **dieselben** Dialogzustände und **dieselbe** Produ
 - Recognition identifiziert; Enrichment ergänzt — **getrennt** von der Bestandsbuchung (siehe unten)
 - Keine abweichende Bestandslogik im Onboarding
 
+
+### Abgrenzung zur offenen Startseitenunterhaltung
+
+- Sprachgeführter Dünger-Onboarding-Dialog = **geführte Erfassung** ([CM-015](../playbook/conversation-model.md#cm-015--offene-unterhaltung-und-geführte-erfassung)), kein offenes Startseitengespräch
+- Voice-First erlaubt; Intent und Aufgabe sind im Schritt vorgegeben
+- Derselbe Dialog später über **Startseite** (Intent aus freier Aussage) und **Ausrüstung → Dünger erfassen** (Scoped Capture) erreichbar
+- Einstiegspunkte unterscheiden sich; Produktidentifikation, Recognition, Enrichment und `initial_stock`-Vertrag bleiben identisch ([DL-034](../decisions/dl-034.md))
+
 ### 22. Nicht Teil von Version 1 *(Ist-Zustand)*
 
 Nicht als produktiv umgesetzt behaupten:

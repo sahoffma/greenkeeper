@@ -491,6 +491,92 @@ Alle Eingänge (Mikrofon, „Lieber schreiben“, Suche, Foto, Barcode-Zielbild)
 
 ---
 
+## CM-015 – Offene Unterhaltung und geführte Erfassung
+
+| Feld | Wert |
+|------|------|
+| **ID** | CM-015 |
+| **Titel** | Offene Unterhaltung und geführte Erfassung |
+| **Status** | ✅ Festgelegt |
+| **Priorität** | — |
+| **Erstellt** | 2026-08-03 |
+| **Zuletzt geändert** | — |
+| **Verantwortlich** | — |
+| **Verwandte Dokumente** | [home-experience](./home-experience.md); [DL-010](../decisions/dl-010.md); [DL-009](../decisions/dl-009.md); [DL-034](../decisions/dl-034.md); [CM-005](./conversation-model.md#cm-005--zusammenfassung-vor-dem-speichern); [CM-014](./conversation-model.md#cm-014--sprachgeführter-initialbestand-im-onboarding); [Onboarding](./onboarding.md) |
+| **Kurzbeschreibung** | Zwei Conversation-Ebenen: **offene Unterhaltung** nur auf der Startseite; **geführte Erfassung** in Unterbereichen und begrenzten Fachflows (inkl. Onboarding). |
+
+---
+
+### Verbindliche Begriffe
+
+**Offene Unterhaltung (Open Conversation):**
+
+- ausschließlich Startseite
+- freier Einstieg, Intent unbekannt
+- Greenkeeper erkennt Absicht, **globales Routing**
+- dialogisch über mehrere Beiträge
+- Sprache und Text gleichwertig
+- Bestätigung vor Persistenz
+- Orchestrator bestehender Fachflows — **keine eigene Persistenzlogik**
+
+**Geführte Erfassung (Scoped Capture):**
+
+- Unterseite oder gewählter Fachflow (inkl. Onboarding-Schritte wie [CM-014](./conversation-model.md#cm-014--sprachgeführter-initialbestand-im-onboarding))
+- Intent vorgegeben
+- Mikrofon = Spracheingabe/Diktat in lokalem Flow
+- Klärung nur im aktuellen Fachflow
+- kein globaler Intent-Wechsel
+- Rückfragen primär textlich
+- gleiche Domain- und Persistenzlogik wie Schreiben
+
+**Spracheingabe:**
+
+- technische Eingabemethod
+- allein **keine** offene Unterhaltung
+- Startseite und Unterbereiche
+
+### Mikrofon (präzisiert)
+
+| Kontext | Bedeutung |
+|---------|-----------|
+| Freistehendes Mikrofon (Startseite) | Offene Unterhaltung — Intent-Erkennung, dialogische Rückfragen |
+| Mikrofon im Eingabefeld (Unterbereich) | Diktat — Text in geführte Erfassung, kein globales Routing |
+| Mikrofon Onboarding (Voice-First) | Geführte Erfassung im begrenzten Einrichtungskontext — siehe [CM-014](./conversation-model.md#cm-014--sprachgeführter-initialbestand-im-onboarding), keine Startseiten-Unterhaltung |
+
+Ausrichtung an [DL-010](../decisions/dl-010.md). **Keine** zweite Conversation Engine.
+
+### Einstiegspunkte (gleicher Fachvertrag)
+
+| Einstieg | Rolle |
+|----------|-------|
+| Onboarding | optional, Voice-First möglich, geführter Kontext, gleiche Produkt/Bestandslogik |
+| Startseite | offene Unterhaltung, Intent aus Aussage |
+| Ausrüstung → Dünger erfassen | Scoped Capture, Mikrofon = Diktat |
+
+**Beispiel Unterseite:** Nutzer spricht „Stressmanager gekauft“ → textliche Fragen welcher Stressmanager, wie viel, Granulat/Flüssig — **kein** Routing zu Mähflow.
+
+**Beispiel Unterseite:** „Ich habe heute gemäht“ → **NICHT** als globaler Intent — bleibt im Dünger-Erfassungskontext oder wird ignoriert/korrigiert lokal.
+
+### Abgrenzung CM-014
+
+CM-014 ist Voice-First **geführte Erfassung** im Onboarding — kein Widerspruch zu CM-015. Nach Onboarding erreichbar über Startseite (offen) und Ausrüstung (scoped).
+
+### Nicht Teil von Version 1 (Ist)
+
+Nicht als produktiv umgesetzt behaupten:
+
+- funktionierendes Startseitenmikrofon
+- produktive Conversation Engine
+- TTS
+- animierte Beispielsätze
+- NLU pipeline
+- offline
+- conversation draft
+- global intent switch from subpages
+
+---
+
+
 ## Übersicht
 
 | ID | Kurztitel |
@@ -506,6 +592,7 @@ Alle Eingänge (Mikrofon, „Lieber schreiben“, Suche, Foto, Barcode-Zielbild)
 | CM-009 | Komplexe Arbeitsberichte |
 | CM-010 | Mitdenken, nicht vorausdenken |
 | CM-014 | Sprachgeführter Initialbestand (Onboarding) |
+| CM-015 | Offene Unterhaltung vs. geführte Erfassung |
 
 ---
 
