@@ -259,7 +259,9 @@ declare
   v_movement_date date;
   v_resulting_balance numeric;
   v_quantity_delta numeric;
+  v_receipt_exists boolean := false;
 begin
+  -- dl-030-rpc-order: receipt-after-reference-validation
   v_user_id := coalesce(p_user_id, auth.uid());
 
   if v_user_id is null then
@@ -309,13 +311,6 @@ begin
     public._fertilizer_application_advisory_lock_key(v_user_id, v_idempotency_key)
   );
 
-  select *
-  into v_receipt
-  from public.fertilizer_application_receipts far
-  where far.user_id = v_user_id
-    and far.idempotency_key = v_idempotency_key
-  for update;
-
   v_canonical_json := jsonb_build_object(
     'inventoryItemId', lower(p_inventory_item_id::text),
     'savedProductProfileId', lower(p_saved_product_profile_id::text),
@@ -331,7 +326,16 @@ begin
 
   v_fingerprint := public._inventory_creation_compute_fingerprint(v_canonical_json);
 
-  if found then
+  select *
+  into v_receipt
+  from public.fertilizer_application_receipts far
+  where far.user_id = v_user_id
+    and far.idempotency_key = v_idempotency_key
+  for update;
+
+  v_receipt_exists := found;
+
+  if v_receipt_exists then
     if v_receipt.payload_fingerprint is distinct from v_fingerprint then
       raise exception 'FERTILIZER_APPLICATION_IDEMPOTENCY_CONFLICT';
     end if;
@@ -339,36 +343,7 @@ begin
     if v_receipt.completed_at is not null and v_receipt.result_jsonb is not null then
       return v_receipt.result_jsonb || jsonb_build_object('idempotentReplay', true);
     end if;
-  else
-    insert into public.fertilizer_application_receipts (
-      user_id,
-      idempotency_key,
-      payload_fingerprint,
-      inventory_item_id,
-      saved_product_profile_id,
-      area_id,
-      application_amount,
-      application_unit,
-      applied_at,
-      source_event_ref,
-      note
-    ) values (
-      v_user_id,
-      v_idempotency_key,
-      v_fingerprint,
-      p_inventory_item_id,
-      p_saved_product_profile_id,
-      p_area_id,
-      p_application_amount,
-      p_application_unit,
-      p_applied_at,
-      v_source_event_ref,
-      v_note
-    )
-    returning * into v_receipt;
   end if;
-
-  v_receipt_id := v_receipt.id;
 
   select *
   into v_item
@@ -435,6 +410,37 @@ begin
   if v_balance + v_quantity_delta < 0 then
     raise exception 'FERTILIZER_APPLICATION_INSUFFICIENT_STOCK';
   end if;
+
+  if not v_receipt_exists then
+    insert into public.fertilizer_application_receipts (
+      user_id,
+      idempotency_key,
+      payload_fingerprint,
+      inventory_item_id,
+      saved_product_profile_id,
+      area_id,
+      application_amount,
+      application_unit,
+      applied_at,
+      source_event_ref,
+      note
+    ) values (
+      v_user_id,
+      v_idempotency_key,
+      v_fingerprint,
+      p_inventory_item_id,
+      p_saved_product_profile_id,
+      p_area_id,
+      p_application_amount,
+      p_application_unit,
+      p_applied_at,
+      v_source_event_ref,
+      v_note
+    )
+    returning * into v_receipt;
+  end if;
+
+  v_receipt_id := v_receipt.id;
 
   v_product_label := public._fertilizer_application_build_product_label(
     v_profile.manufacturer,

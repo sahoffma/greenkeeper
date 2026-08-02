@@ -180,6 +180,107 @@ log(
     : '20250805 missing expected content',
 )
 
+function extractApplicationRpcBody(source) {
+  const fnStart = source.indexOf(
+    'create or replace function public.apply_fertilizer_inventory_item_to_area',
+  )
+  if (fnStart < 0) {
+    return ''
+  }
+
+  const bodyStart = source.indexOf('as $$', fnStart)
+  const bodyEnd = source.indexOf('$$;', bodyStart + 4)
+  if (bodyStart < 0 || bodyEnd < 0) {
+    return ''
+  }
+
+  return source.slice(bodyStart, bodyEnd)
+}
+
+function positionOf(body, needle) {
+  const index = body.indexOf(needle)
+  return index >= 0 ? index : Number.POSITIVE_INFINITY
+}
+
+const rpcBody = extractApplicationRpcBody(sql)
+const advisoryLockPos = positionOf(rpcBody, 'pg_advisory_xact_lock')
+const receiptSelectPos = positionOf(rpcBody, 'from public.fertilizer_application_receipts far')
+const containerLockPos = positionOf(rpcBody, 'from public.fertilizer_containers fc')
+const profileLoadPos = positionOf(rpcBody, 'from public.product_profiles pp')
+const areaLoadPos = positionOf(rpcBody, 'from public.areas a')
+const areaNotFoundPos = positionOf(
+  rpcBody,
+  'FERTILIZER_APPLICATION_APPLICATION_TARGET_NOT_FOUND',
+)
+const profileMismatchPos = positionOf(rpcBody, 'FERTILIZER_APPLICATION_PRODUCT_PROFILE_MISMATCH')
+const receiptInsertPos = positionOf(rpcBody, 'insert into public.fertilizer_application_receipts')
+const orderMarkerPos = positionOf(rpcBody, 'dl-030-rpc-order: receipt-after-reference-validation')
+const receiptGuardPos = positionOf(rpcBody, 'if not v_receipt_exists then')
+
+log(
+  'FA-26 RPC order marker present',
+  orderMarkerPos < Number.POSITIVE_INFINITY,
+  orderMarkerPos < Number.POSITIVE_INFINITY
+    ? 'receipt-after-reference-validation marker found'
+    : 'missing dl-030-rpc-order marker',
+)
+
+log(
+  'FA-27 advisory lock before idempotency path',
+  advisoryLockPos < receiptSelectPos && advisoryLockPos < receiptInsertPos,
+  advisoryLockPos < receiptSelectPos && advisoryLockPos < receiptInsertPos
+    ? 'advisory lock precedes receipt read and insert'
+    : 'advisory lock must precede receipt handling',
+)
+
+log(
+  'FA-28 existing receipt checked before new insert',
+  receiptSelectPos < receiptInsertPos,
+  receiptSelectPos < receiptInsertPos
+    ? 'receipt select precedes receipt insert'
+    : 'receipt must be read before insert',
+)
+
+log(
+  'FA-29 inventory item validation before receipt insert',
+  containerLockPos < receiptInsertPos,
+  containerLockPos < receiptInsertPos
+    ? 'container lock precedes receipt insert'
+    : 'inventory item must be validated before receipt insert',
+)
+
+log(
+  'FA-30 product profile validation before receipt insert',
+  profileLoadPos < receiptInsertPos && profileMismatchPos < receiptInsertPos,
+  profileLoadPos < receiptInsertPos && profileMismatchPos < receiptInsertPos
+    ? 'profile load and mismatch precede receipt insert'
+    : 'product profile must be validated before receipt insert',
+)
+
+log(
+  'FA-31 area validation before receipt insert',
+  areaLoadPos < receiptInsertPos && areaNotFoundPos < receiptInsertPos,
+  areaLoadPos < receiptInsertPos && areaNotFoundPos < receiptInsertPos
+    ? 'area load and not-found precede receipt insert'
+    : 'area must be validated before receipt insert',
+)
+
+log(
+  'FA-32 receipt insert only after reference validation',
+  receiptGuardPos < receiptInsertPos && orderMarkerPos < receiptInsertPos,
+  receiptGuardPos < receiptInsertPos && orderMarkerPos < receiptInsertPos
+    ? 'receipt insert guarded and ordered after validation'
+    : 'receipt insert must follow reference validation guard',
+)
+
+log(
+  'FA-33 invalid area/profile cannot hit receipt FK first',
+  areaNotFoundPos < receiptInsertPos && profileMismatchPos < receiptInsertPos,
+  areaNotFoundPos < receiptInsertPos && profileMismatchPos < receiptInsertPos
+    ? 'domain errors precede receipt insert'
+    : 'domain errors must precede receipt insert to avoid FK failures',
+)
+
 const failed = results.filter((entry) => !entry.ok)
 if (failed.length > 0) {
   process.exitCode = 1

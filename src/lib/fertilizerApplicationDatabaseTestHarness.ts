@@ -24,6 +24,33 @@ import {
 export const APPLICATION_DB_TEST_PREFIX = `${CREATION_DB_TEST_PREFIX}-app`
 export const APPLICATION_MIGRATION_FILE = '20250808_fertilizer_application_atomic.sql'
 
+function readApplicationMigrationSql(): string {
+  return readFileSync(
+    resolve(process.cwd(), 'supabase/migrations', APPLICATION_MIGRATION_FILE),
+    'utf8',
+  )
+}
+
+function extractApplicationRpcSql(migrationSql: string): string {
+  const rpcStart = migrationSql.indexOf(
+    'create or replace function public.apply_fertilizer_inventory_item_to_area',
+  )
+  const grantStart = migrationSql.indexOf(
+    'grant execute on function public.apply_fertilizer_inventory_item_to_area',
+    rpcStart,
+  )
+  if (rpcStart < 0 || grantStart < 0) {
+    throw new Error('Could not extract application RPC from migration file.')
+  }
+
+  const grantEnd = migrationSql.indexOf('to authenticated, service_role;', grantStart)
+  if (grantEnd < 0) {
+    throw new Error('Could not extract application RPC grant from migration file.')
+  }
+
+  return migrationSql.slice(rpcStart, grantEnd + 'to authenticated, service_role;'.length)
+}
+
 export interface ApplicationDatabaseTestState extends CreationDatabaseTestState {
   areaIds: string[]
   activityIds: string[]
@@ -87,19 +114,30 @@ export function createEmptyApplicationDatabaseTestState(): ApplicationDatabaseTe
 
 export async function ensureApplicationMigrationsApplied(client: Client): Promise<boolean> {
   const creationApplied = await ensureCreationMigrationsApplied(client)
-  const probe = await client.query(
+  const tableProbe = await client.query(
     `select 1 from information_schema.tables
      where table_schema = 'public' and table_name = 'fertilizer_application_receipts'`,
   )
+  const orderProbe = await client.query(
+    `select 1
+     from pg_proc p
+     join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public'
+       and p.proname = 'apply_fertilizer_inventory_item_to_area'
+       and pg_get_functiondef(p.oid) like '%dl-030-rpc-order: receipt-after-reference-validation%'`,
+  )
 
-  if (probe.rows.length > 0) {
+  if (tableProbe.rows.length > 0 && orderProbe.rows.length > 0) {
     return creationApplied
   }
 
-  const sql = readFileSync(
-    resolve(process.cwd(), 'supabase/migrations', APPLICATION_MIGRATION_FILE),
-    'utf8',
-  )
+  const sql = readApplicationMigrationSql()
+
+  if (tableProbe.rows.length > 0) {
+    await client.query(extractApplicationRpcSql(sql))
+    return true
+  }
+
   await client.query(sql)
   return true
 }
@@ -235,6 +273,76 @@ export async function computeContainerBalance(
     [containerId],
   )
   return Number(rows[0]?.balance ?? 0)
+}
+
+export interface ApplicationFailureArtifactCounts {
+  receipts: number
+  activities: number
+  fertilizationDetails: number
+  movements: number
+}
+
+export async function countApplicationFailureArtifacts(
+  client: Client,
+  options: {
+    userId: string
+    idempotencyKey: string
+    inventoryItemId: string
+  },
+): Promise<ApplicationFailureArtifactCounts> {
+  const receipts = await client.query(
+    `select count(*)::int as count
+     from public.fertilizer_application_receipts
+     where user_id = $1 and idempotency_key = $2`,
+    [options.userId, options.idempotencyKey],
+  )
+  const activities = await client.query(
+    `select count(*)::int as count
+     from public.activities
+     where user_id = $1`,
+    [options.userId],
+  )
+  const details = await client.query(
+    `select count(*)::int as count
+     from public.fertilization_details fd
+     join public.activities act on act.id = fd.activity_id
+     where act.user_id = $1`,
+    [options.userId],
+  )
+  const movements = await client.query(
+    `select count(*)::int as count
+     from public.fertilizer_stock_movements
+     where container_id = $1`,
+    [options.inventoryItemId],
+  )
+
+  return {
+    receipts: Number(receipts.rows[0]?.count ?? 0),
+    activities: Number(activities.rows[0]?.count ?? 0),
+    fertilizationDetails: Number(details.rows[0]?.count ?? 0),
+    movements: Number(movements.rows[0]?.count ?? 0),
+  }
+}
+
+export async function insertNonInventoryCoupledActivity(
+  client: Client,
+  state: ApplicationDatabaseTestState,
+  userId: string,
+  areaId: string,
+): Promise<string> {
+  const activityId = crypto.randomUUID()
+  await client.query(
+    `insert into public.activities (id, area_id, user_id, activity_type, title, occurred_at)
+     values ($1, $2, $3, 'fertilization', $4, timezone('utc', now()))`,
+    [activityId, areaId, userId, `${APPLICATION_DB_TEST_PREFIX}-manual`],
+  )
+  await client.query(
+    `insert into public.fertilization_details (activity_id, product_name, amount_applied, amount_unit)
+     values ($1, $2, 1, 'kg')`,
+    [activityId, `${APPLICATION_DB_TEST_PREFIX}-manual-product`],
+  )
+  state.activityIds.push(activityId)
+  return activityId
 }
 
 async function withTestReplicationRole(client: Client, run: () => Promise<void>): Promise<void> {

@@ -5,6 +5,7 @@ import {
   callApplicationRpc,
   computeContainerBalance,
   connectApplicationTestPg,
+  countApplicationFailureArtifacts,
   createAdminSupabaseClient,
   createAuthenticatedSupabaseClient,
   createCreationDatabaseTestUser,
@@ -13,6 +14,7 @@ import {
   ensureApplicationMigrationsApplied,
   extractApplicationErrorCode,
   insertApplicationTestArea,
+  insertNonInventoryCoupledActivity,
   loadApplicationDatabaseTestConfig,
   parseApplicationRpcSuccess,
   purgeApplicationDatabaseTestData,
@@ -293,6 +295,13 @@ describeDb('fertilizerApplicationDatabase', () => {
       user,
       { initialQuantity: 5, unit: 'kg', idempotencyKey: uniqueKey('create-bad-area') },
     )
+    const idempotencyKey = uniqueKey('bad-area')
+    const balanceBefore = await computeContainerBalance(pgClient, itemId)
+    const { rows: movementsBefore } = await pgClient.query(
+      `select count(*)::int as count from public.fertilizer_stock_movements where container_id = $1`,
+      [itemId],
+    )
+    const movementCountBefore = Number(movementsBefore[0]?.count ?? 0)
 
     const { error } = await callApplicationRpc(auth, {
       inventoryItemId: itemId,
@@ -301,13 +310,24 @@ describeDb('fertilizerApplicationDatabase', () => {
       applicationAmount: 1,
       applicationUnit: 'kg',
       appliedAt: '2026-08-02T16:00:00.000Z',
-      idempotencyKey: uniqueKey('bad-area'),
+      idempotencyKey,
       userId: user.id,
     })
 
     expect(extractApplicationErrorCode(error!.message)).toBe(
       'FERTILIZER_APPLICATION_APPLICATION_TARGET_NOT_FOUND',
     )
+
+    const artifacts = await countApplicationFailureArtifacts(pgClient, {
+      userId: user.id,
+      idempotencyKey,
+      inventoryItemId: itemId,
+    })
+    expect(artifacts.receipts).toBe(0)
+    expect(artifacts.activities).toBe(0)
+    expect(artifacts.fertilizationDetails).toBe(0)
+    expect(artifacts.movements).toBe(movementCountBefore)
+    expect(await computeContainerBalance(pgClient, itemId)).toBe(balanceBefore)
   })
 
   it('DB-8 invalid profile rolls back', async () => {
@@ -322,6 +342,13 @@ describeDb('fertilizerApplicationDatabase', () => {
       user,
       { initialQuantity: 5, unit: 'kg', idempotencyKey: uniqueKey('create-bad-profile') },
     )
+    const idempotencyKey = uniqueKey('bad-profile')
+    const balanceBefore = await computeContainerBalance(pgClient, itemId)
+    const { rows: movementsBefore } = await pgClient.query(
+      `select count(*)::int as count from public.fertilizer_stock_movements where container_id = $1`,
+      [itemId],
+    )
+    const movementCountBefore = Number(movementsBefore[0]?.count ?? 0)
 
     const { error } = await callApplicationRpc(auth, {
       inventoryItemId: itemId,
@@ -330,13 +357,24 @@ describeDb('fertilizerApplicationDatabase', () => {
       applicationAmount: 1,
       applicationUnit: 'kg',
       appliedAt: '2026-08-02T17:00:00.000Z',
-      idempotencyKey: uniqueKey('bad-profile'),
+      idempotencyKey,
       userId: user.id,
     })
 
     expect(extractApplicationErrorCode(error!.message)).toBe(
       'FERTILIZER_APPLICATION_PRODUCT_PROFILE_MISMATCH',
     )
+
+    const artifacts = await countApplicationFailureArtifacts(pgClient, {
+      userId: user.id,
+      idempotencyKey,
+      inventoryItemId: itemId,
+    })
+    expect(artifacts.receipts).toBe(0)
+    expect(artifacts.activities).toBe(0)
+    expect(artifacts.fertilizationDetails).toBe(0)
+    expect(artifacts.movements).toBe(movementCountBefore)
+    expect(await computeContainerBalance(pgClient, itemId)).toBe(balanceBefore)
   })
 
   it('DB-9 blocks direct movement update and delete', async () => {
@@ -417,6 +455,67 @@ describeDb('fertilizerApplicationDatabase', () => {
     await expect(
       pgClient.query(`delete from public.activities where id = $1`, [result.activityId]),
     ).rejects.toThrow(/FERTILIZER_APPLICATION_ACTIVITY_IMMUTABLE/)
+  })
+
+  it('DB-13 blocks direct inventory-coupled fertilization_details update and delete', async () => {
+    state = createEmptyApplicationDatabaseTestState()
+    const user = await createCreationDatabaseTestUser(admin, state, 'details-immutable')
+    const auth = await createAuthenticatedSupabaseClient(testConfig, user.email, user.password)
+    const areaId = await insertApplicationTestArea(pgClient, state, user.id, 'details-immutable')
+    const { profileId, itemId } = await createInventoryItemForApplication(
+      testConfig,
+      pgClient,
+      state,
+      user,
+      { initialQuantity: 5, unit: 'kg', idempotencyKey: uniqueKey('create-details-immutable') },
+    )
+
+    const result = parseApplicationRpcSuccess(
+      (
+        await callApplicationRpc(auth, {
+          inventoryItemId: itemId,
+          savedProductProfileId: profileId,
+          areaId,
+          applicationAmount: 1,
+          applicationUnit: 'kg',
+          appliedAt: '2026-08-02T19:30:00.000Z',
+          idempotencyKey: uniqueKey('apply-details-immutable'),
+          userId: user.id,
+        })
+      ).data,
+    )
+    state.activityIds.push(result.activityId)
+    state.movementIds.push(result.movementId)
+
+    await expect(
+      pgClient.query(
+        `update public.fertilization_details set amount_applied = 99 where activity_id = $1`,
+        [result.activityId],
+      ),
+    ).rejects.toThrow(/FERTILIZER_APPLICATION_FERTILIZATION_IMMUTABLE/)
+
+    await expect(
+      pgClient.query(`delete from public.fertilization_details where activity_id = $1`, [
+        result.activityId,
+      ]),
+    ).rejects.toThrow(/FERTILIZER_APPLICATION_FERTILIZATION_IMMUTABLE/)
+  })
+
+  it('DB-14 non-inventory-coupled activity remains editable', async () => {
+    state = createEmptyApplicationDatabaseTestState()
+    const user = await createCreationDatabaseTestUser(admin, state, 'manual-activity')
+    const areaId = await insertApplicationTestArea(pgClient, state, user.id, 'manual')
+    const activityId = await insertNonInventoryCoupledActivity(pgClient, state, user.id, areaId)
+
+    await pgClient.query(`update public.activities set title = $2 where id = $1`, [
+      activityId,
+      `${APPLICATION_DB_TEST_PREFIX}-manual-updated`,
+    ])
+
+    const { rows } = await pgClient.query(`select title from public.activities where id = $1`, [
+      activityId,
+    ])
+    expect(rows[0]?.title).toBe(`${APPLICATION_DB_TEST_PREFIX}-manual-updated`)
   })
 
   it('DB-11 parallel identical calls produce one result', async () => {
