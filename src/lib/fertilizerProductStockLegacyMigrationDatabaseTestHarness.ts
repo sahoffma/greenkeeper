@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { Client } from 'pg'
 import {
+  insertDraftProductProfileFixture,
   type CreationDatabaseTestState,
 } from './fertilizerInventoryCreationDatabaseTestHarness'
 import {
@@ -26,6 +27,26 @@ export interface LegacyMigrationDatabaseTestState extends CreationDatabaseTestSt
   legacyContainerIds: string[]
   canonicalContainerIds: string[]
   movementIds: string[]
+  areaIds: string[]
+  applicationIdempotencyKeys: string[]
+}
+
+export interface LegacyMigrationApplicationAreaPayload {
+  areaId: string
+  areaNameSnapshot: string
+  areaSizeSqmSnapshot: number
+  applicationAmount: number
+  applicationUnit: 'kg' | 'ml'
+  ratePerSqm: number
+  rateUnit: 'g_per_sqm' | 'ml_per_sqm'
+  sortOrder: number
+}
+
+export interface LegacyMigrationApplicationArtifactCounts {
+  batches: number
+  activities: number
+  fertilizationDetails: number
+  movements: number
 }
 
 export function loadLegacyMigrationDatabaseTestConfig(): LocalProductStockIntakeDatabaseTestConfig | null {
@@ -43,6 +64,8 @@ export function createEmptyLegacyMigrationDatabaseTestState(): LegacyMigrationDa
     legacyContainerIds: [],
     canonicalContainerIds: [],
     movementIds: [],
+    areaIds: [],
+    applicationIdempotencyKeys: [],
   }
 }
 
@@ -103,6 +126,40 @@ export async function insertLegacyContainerFixture(
       options.supersededByContainerId ?? null,
     ],
   )
+
+  state.legacyContainerIds.push(id)
+  state.containerIds.push(id)
+  return id
+}
+
+export async function insertLegacyContainerBypassingProfileValidation(
+  client: Client,
+  state: LegacyMigrationDatabaseTestState,
+  options: {
+    userId: string
+    savedProductProfileId: string
+    baseUnit: 'kg' | 'ml'
+  },
+): Promise<string> {
+  const id = crypto.randomUUID()
+
+  await client.query('begin')
+  try {
+    await client.query(`set local session_replication_role = replica`)
+    await client.query(
+      `insert into public.fertilizer_containers (
+        id, user_id, saved_product_profile_id, access_kind, base_unit,
+        package_size_value, package_size_unit
+      ) values (
+        $1, $2, $3, 'authenticated_user', $4, 10, $4
+      )`,
+      [id, options.userId, options.savedProductProfileId, options.baseUnit],
+    )
+    await client.query('commit')
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined)
+    throw error
+  }
 
   state.legacyContainerIds.push(id)
   state.containerIds.push(id)
@@ -265,6 +322,205 @@ export async function computeLegacyMigrationFingerprint(
   return String(rows[0]?.fingerprint ?? '')
 }
 
+export async function insertDraftProductProfileForLegacyMigration(
+  client: Client,
+  state: LegacyMigrationDatabaseTestState,
+  userId: string,
+): Promise<string> {
+  return insertDraftProductProfileFixture(client, state, userId)
+}
+
+export async function insertLegacyMigrationTestArea(
+  client: Client,
+  state: LegacyMigrationDatabaseTestState,
+  userId: string,
+  label: string,
+  sizeSqm: number,
+): Promise<string> {
+  const id = crypto.randomUUID()
+  await client.query(
+    `insert into public.areas (id, user_id, name, size_sqm, sort_order)
+     values ($1, $2, $3, $4, 0)`,
+    [id, userId, `${LEGACY_MIGRATION_DB_TEST_PREFIX}-area-${label}`, sizeSqm],
+  )
+  state.areaIds.push(id)
+  return id
+}
+
+export async function analyzeLegacyMigrationGroupDirect(
+  client: Client,
+  options: {
+    userId: string
+    savedProductProfileId: string
+    baseUnit: string | null
+    migrationCutoffAt: string
+  },
+): Promise<Record<string, unknown>> {
+  const { rows } = await client.query(
+    `select public._product_stock_legacy_migration_analyze_group(
+      $1::uuid, $2::uuid, $3::text, $4::timestamptz
+    ) as result`,
+    [
+      options.userId,
+      options.savedProductProfileId,
+      options.baseUnit,
+      options.migrationCutoffAt,
+    ],
+  )
+  return (rows[0]?.result ?? {}) as Record<string, unknown>
+}
+
+export async function countLegacyMigrationReceipts(client: Client): Promise<number> {
+  const { rows } = await client.query(
+    `select count(*)::int as count from public.fertilizer_product_stock_migration_receipts`,
+  )
+  return Number(rows[0]?.count ?? 0)
+}
+
+export async function countLegacyBalanceMigrationMovements(client: Client): Promise<number> {
+  const { rows } = await client.query(
+    `select count(*)::int as count
+     from public.fertilizer_stock_movements
+     where movement_type = 'legacy_balance_migration'`,
+  )
+  return Number(rows[0]?.count ?? 0)
+}
+
+export async function computeLegacyContainerBalance(
+  client: Client,
+  containerId: string,
+): Promise<number> {
+  const { rows } = await client.query(
+    `select coalesce(sum(quantity_delta), 0)::numeric as balance
+     from public.fertilizer_stock_movements
+     where container_id = $1 and movement_at is not null`,
+    [containerId],
+  )
+  return Number(rows[0]?.balance ?? 0)
+}
+
+export async function countLegacyMigrationApplicationArtifacts(
+  client: Client,
+  options: {
+    userId: string
+    idempotencyKey: string
+    inventoryItemId: string
+  },
+): Promise<LegacyMigrationApplicationArtifactCounts> {
+  const batches = await client.query(
+    `select count(*)::int as count
+     from public.fertilizer_application_batches
+     where user_id = $1 and idempotency_key = $2`,
+    [options.userId, options.idempotencyKey],
+  )
+  const activities = await client.query(
+    `select count(*)::int as count
+     from public.activities act
+     join public.fertilizer_application_batches b on b.user_id = act.user_id
+     join public.fertilization_details fd on fd.activity_id = act.id and fd.application_batch_id = b.id
+     where b.user_id = $1 and b.idempotency_key = $2`,
+    [options.userId, options.idempotencyKey],
+  )
+  const details = await client.query(
+    `select count(*)::int as count
+     from public.fertilization_details fd
+     join public.fertilizer_application_batches b on b.id = fd.application_batch_id
+     where b.user_id = $1 and b.idempotency_key = $2`,
+    [options.userId, options.idempotencyKey],
+  )
+  const movements = await client.query(
+    `select count(*)::int as count
+     from public.fertilizer_stock_movements m
+     where m.container_id = $1::uuid
+       and m.movement_type = 'fertilization'::public.fertilizer_movement_type
+       and exists (
+         select 1
+         from public.fertilizer_application_batches b
+         where b.user_id = $2
+           and b.idempotency_key = $3
+           and b.movement_id = m.id
+       )`,
+    [options.inventoryItemId, options.userId, options.idempotencyKey],
+  )
+
+  return {
+    batches: Number(batches.rows[0]?.count ?? 0),
+    activities: Number(activities.rows[0]?.count ?? 0),
+    fertilizationDetails: Number(details.rows[0]?.count ?? 0),
+    movements: Number(movements.rows[0]?.count ?? 0),
+  }
+}
+
+export async function callApplyInventoryToAreasViaRpc(
+  authClient: LocalProductStockIntakeAuthClient,
+  options: {
+    inventoryItemId: string
+    savedProductProfileId: string
+    userId: string
+    idempotencyKey: string
+    totalApplicationAmount: number
+    applicationUnit: 'kg' | 'ml'
+    appliedAt: string
+    areas: LegacyMigrationApplicationAreaPayload[]
+  },
+): Promise<{ data: unknown; error: { message: string } | null }> {
+  const client = await authClient.pool.connect()
+  const effortRateUnit = options.applicationUnit === 'kg' ? 'g_per_sqm' : 'ml_per_sqm'
+  const areasJson = options.areas.map((area) => ({
+    areaId: area.areaId,
+    areaNameSnapshot: area.areaNameSnapshot,
+    areaSizeSqmSnapshot: area.areaSizeSqmSnapshot,
+    applicationAmount: area.applicationAmount,
+    applicationUnit: area.applicationUnit,
+    ratePerSqm: area.ratePerSqm,
+    rateUnit: area.rateUnit,
+    sortOrder: area.sortOrder,
+  }))
+
+  try {
+    await client.query('begin')
+    await client.query(`select set_config('request.jwt.claim.sub', $1, true)`, [authClient.userId])
+    const { rows } = await client.query(
+      `select public.apply_fertilizer_inventory_item_to_areas(
+        $1::uuid,
+        $2::uuid,
+        'rate_per_sqm',
+        'manual',
+        $3::numeric,
+        $4::text,
+        $5::numeric,
+        $6::text,
+        $7::timestamptz,
+        $8::text,
+        $9::jsonb,
+        null,
+        null,
+        null,
+        $10::uuid
+      ) as result`,
+      [
+        options.inventoryItemId,
+        options.savedProductProfileId,
+        options.areas[0]!.ratePerSqm,
+        effortRateUnit,
+        options.totalApplicationAmount,
+        options.applicationUnit,
+        options.appliedAt,
+        options.idempotencyKey,
+        JSON.stringify(areasJson),
+        options.userId,
+      ],
+    )
+    await client.query('commit')
+    return { data: rows[0]?.result ?? null, error: null }
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined)
+    return { data: null, error: { message: (error as Error).message } }
+  } finally {
+    client.release()
+  }
+}
+
 export async function findGroupAnalysis(
   dryRun: { groups: LegacyMigrationGroupAnalysis[] },
   profileId: string,
@@ -365,6 +621,13 @@ export async function purgeLegacyMigrationDatabaseTestData(
       await client.query(`delete from public.product_profiles where id = any($1::uuid[])`, [
         profileIds,
       ])
+    }
+
+    const areaIds = [...new Set(state.areaIds)]
+    if (areaIds.length > 0) {
+      for (const areaId of areaIds) {
+        await client.query(`select public.delete_area($1::uuid)`, [areaId]).catch(() => undefined)
+      }
     }
 
     if (userIds.length > 0) {

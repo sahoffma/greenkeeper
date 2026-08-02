@@ -7,21 +7,31 @@ import {
 } from './fertilizerProductStockIntakeDatabaseTestHarness'
 import type { LocalProductStockIntakeDatabaseTestConfig } from './fertilizerProductStockIntakeLocalPostgresHarness'
 import {
+  analyzeLegacyMigrationGroupDirect,
   appendMovementViaRpc,
   callAnalyzeLegacyMigrationRpc,
+  callApplyInventoryToAreasViaRpc,
   callMigrateLegacyGroupRpc,
+  computeLegacyContainerBalance,
   computeLegacyMigrationFingerprint,
   connectLegacyMigrationTestPg,
+  countLegacyBalanceMigrationMovements,
+  countLegacyMigrationApplicationArtifacts,
+  countLegacyMigrationReceipts,
   createEmptyLegacyMigrationDatabaseTestState,
   createLegacyMigrationAuthClient,
   createLegacyMigrationTestUser,
   findGroupAnalysis,
+  insertDraftProductProfileForLegacyMigration,
+  insertLegacyContainerBypassingProfileValidation,
   insertCanonicalProductStockFixture,
   insertLegacyContainerFixture,
+  insertLegacyMigrationTestArea,
   insertLegacyMovementFixture,
   loadLegacyMigrationDatabaseTestConfig,
   purgeLegacyMigrationDatabaseTestData,
   type LegacyMigrationDatabaseTestState,
+  LEGACY_MIGRATION_DB_TEST_PREFIX,
 } from './fertilizerProductStockLegacyMigrationDatabaseTestHarness'
 import {
   mapLegacyMigrationDryRunResult,
@@ -838,6 +848,291 @@ describeDb('fertilizerProductStockLegacyMigrationDatabase', () => {
       movementType: 'purchase',
     })
     expect(append.error).toBeNull()
+  })
+
+  it('DB-22 dry run class E blocks draft saved product profile anchor', async () => {
+    state = createEmptyLegacyMigrationDatabaseTestState()
+    const user = await createLegacyMigrationTestUser(state, 'class-e')
+    const authClient = await createLegacyMigrationAuthClient(user)
+    const draftProfileId = await insertDraftProductProfileForLegacyMigration(pgClient, state, user.id)
+    const legacyId = await insertLegacyContainerBypassingProfileValidation(pgClient, state, {
+      userId: user.id,
+      savedProductProfileId: draftProfileId,
+      baseUnit: 'kg',
+    })
+    await insertLegacyMovementFixture(pgClient, state, {
+      containerId: legacyId,
+      userId: user.id,
+      quantityDelta: 4,
+      unit: 'kg',
+      movementAt: '2026-08-01T10:00:00.000Z',
+    })
+
+    const beforeReceipts = await countLegacyMigrationReceipts(pgClient)
+    const beforeTakeovers = await countLegacyBalanceMigrationMovements(pgClient)
+    const beforeMovements = await pgClient.query(
+      `select id, quantity_delta, movement_type::text from public.fertilizer_stock_movements where container_id = $1 order by id`,
+      [legacyId],
+    )
+
+    const { data, error } = await callAnalyzeLegacyMigrationRpc(authClient, cutoff)
+    expect(error).toBeNull()
+    const dryRun = mapLegacyMigrationDryRunResult(data)
+    const group = await findGroupAnalysis(dryRun, draftProfileId, 'kg')
+
+    expect(group.classification).toBe('E')
+    expect(group.autoMigratable).toBe(false)
+    expect(group.blockingReasons).toContain('missing_or_invalid_saved_profile')
+    expect(group.expectedTakeoverMovement).toBe(false)
+    expect(group.canonicalContainerId).toBeNull()
+
+    const afterReceipts = await countLegacyMigrationReceipts(pgClient)
+    const afterTakeovers = await countLegacyBalanceMigrationMovements(pgClient)
+    const afterMovements = await pgClient.query(
+      `select id, quantity_delta, movement_type::text from public.fertilizer_stock_movements where container_id = $1 order by id`,
+      [legacyId],
+    )
+    const { rows: legacyRow } = await pgClient.query(
+      `select archived_at, superseded_by_container_id from public.fertilizer_containers where id = $1`,
+      [legacyId],
+    )
+
+    expect(afterReceipts).toBe(beforeReceipts)
+    expect(afterTakeovers).toBe(beforeTakeovers)
+    expect(afterMovements.rows).toEqual(beforeMovements.rows)
+    expect(legacyRow[0]?.archived_at).toBeNull()
+    expect(legacyRow[0]?.superseded_by_container_id).toBeNull()
+  })
+
+  it('DB-23 dry run class F blocks missing base unit without correction', async () => {
+    state = createEmptyLegacyMigrationDatabaseTestState()
+    const user = await createLegacyMigrationTestUser(state, 'class-f')
+    const authClient = await createLegacyMigrationAuthClient(user)
+    const profile = await insertSavedProductProfileFixture(pgClient, state, {
+      accessKind: 'authenticated_user',
+      userId: user.id,
+      sessionAccessHash: null,
+      productForm: 'granular',
+    })
+    const legacyId = await insertLegacyContainerFixture(pgClient, state, {
+      userId: user.id,
+      savedProductProfileId: profile.id,
+      baseUnit: 'kg',
+    })
+    await insertLegacyMovementFixture(pgClient, state, {
+      containerId: legacyId,
+      userId: user.id,
+      quantityDelta: 3,
+      unit: 'kg',
+      movementAt: '2026-08-01T10:00:00.000Z',
+    })
+
+    const beforeReceipts = await countLegacyMigrationReceipts(pgClient)
+    const beforeTakeovers = await countLegacyBalanceMigrationMovements(pgClient)
+
+    const { error: dryRunError } = await callAnalyzeLegacyMigrationRpc(authClient, cutoff)
+    expect(dryRunError).toBeNull()
+
+    const group = await analyzeLegacyMigrationGroupDirect(pgClient, {
+      userId: user.id,
+      savedProductProfileId: profile.id,
+      baseUnit: null,
+      migrationCutoffAt: cutoff,
+    })
+
+    expect(group.classification).toBe('F')
+    expect(group.autoMigratable).toBe(false)
+    expect(group.blockingReasons).toContain('missing_or_invalid_base_unit')
+    expect(group.expectedTakeoverMovement).toBe(false)
+
+    const invalidUnitGroup = await analyzeLegacyMigrationGroupDirect(pgClient, {
+      userId: user.id,
+      savedProductProfileId: profile.id,
+      baseUnit: 'lb',
+      migrationCutoffAt: cutoff,
+    })
+    expect(invalidUnitGroup.classification).toBe('F')
+    expect(invalidUnitGroup.autoMigratable).toBe(false)
+
+    expect(await countLegacyMigrationReceipts(pgClient)).toBe(beforeReceipts)
+    expect(await countLegacyBalanceMigrationMovements(pgClient)).toBe(beforeTakeovers)
+
+    const { rows: legacyRow } = await pgClient.query(
+      `select archived_at, superseded_by_container_id from public.fertilizer_containers where id = $1`,
+      [legacyId],
+    )
+    expect(legacyRow[0]?.archived_at).toBeNull()
+    expect(legacyRow[0]?.superseded_by_container_id).toBeNull()
+  })
+
+  it('DB-24 dry run class H blocks negative balance and write migration rejects partial writes', async () => {
+    state = createEmptyLegacyMigrationDatabaseTestState()
+    const user = await createLegacyMigrationTestUser(state, 'class-h')
+    const authClient = await createLegacyMigrationAuthClient(user)
+    const profile = await insertSavedProductProfileFixture(pgClient, state, {
+      accessKind: 'authenticated_user',
+      userId: user.id,
+      sessionAccessHash: null,
+      productForm: 'granular',
+    })
+    const legacyId = await insertLegacyContainerFixture(pgClient, state, {
+      userId: user.id,
+      savedProductProfileId: profile.id,
+      baseUnit: 'kg',
+    })
+    await insertLegacyMovementFixture(pgClient, state, {
+      containerId: legacyId,
+      userId: user.id,
+      quantityDelta: -3.5,
+      unit: 'kg',
+      movementAt: '2026-08-01T10:00:00.000Z',
+    })
+
+    const beforeReceipts = await countLegacyMigrationReceipts(pgClient)
+    const beforeTakeovers = await countLegacyBalanceMigrationMovements(pgClient)
+    const beforeMovements = await pgClient.query(
+      `select id, quantity_delta, movement_type::text, movement_at from public.fertilizer_stock_movements where container_id = $1 order by id`,
+      [legacyId],
+    )
+    const beforeCanonicalCount = await pgClient.query(
+      `select count(*)::int as count from public.fertilizer_containers
+       where saved_product_profile_id = $1 and stock_kind = 'product_stock'`,
+      [profile.id],
+    )
+
+    const dryRun = mapLegacyMigrationDryRunResult(
+      (await callAnalyzeLegacyMigrationRpc(authClient, cutoff)).data,
+    )
+    const group = await findGroupAnalysis(dryRun, profile.id, 'kg')
+
+    expect(group.classification).toBe('H')
+    expect(group.autoMigratable).toBe(false)
+    expect(group.blockingReasons).toContain('negative_balance')
+    expect(group.effectiveBalance).toBe(-3.5)
+    expect(group.expectedTakeoverMovement).toBe(false)
+
+    const fingerprint = await computeLegacyMigrationFingerprint(pgClient, group, cutoff)
+    const { error } = await callMigrateLegacyGroupRpc(authClient, {
+      p_saved_product_profile_id: profile.id,
+      p_base_unit: 'kg',
+      p_idempotency_key: `${labelPrefix()}-class-h`,
+      p_payload_fingerprint: fingerprint,
+      p_migration_cutoff_at: cutoff,
+    })
+    expect(error?.message).toContain('PRODUCT_STOCK_LEGACY_MIGRATION_GROUP_BLOCKED')
+
+    const afterReceipts = await countLegacyMigrationReceipts(pgClient)
+    const afterTakeovers = await countLegacyBalanceMigrationMovements(pgClient)
+    const afterMovements = await pgClient.query(
+      `select id, quantity_delta, movement_type::text, movement_at from public.fertilizer_stock_movements where container_id = $1 order by id`,
+      [legacyId],
+    )
+    const afterCanonicalCount = await pgClient.query(
+      `select count(*)::int as count from public.fertilizer_containers
+       where saved_product_profile_id = $1 and stock_kind = 'product_stock'`,
+      [profile.id],
+    )
+    const { rows: completedReceipts } = await pgClient.query(
+      `select count(*)::int as count from public.fertilizer_product_stock_migration_receipts
+       where status = 'completed' and saved_product_profile_id = $1`,
+      [profile.id],
+    )
+    const { rows: legacyRow } = await pgClient.query(
+      `select archived_at, superseded_by_container_id from public.fertilizer_containers where id = $1`,
+      [legacyId],
+    )
+
+    expect(afterReceipts).toBe(beforeReceipts)
+    expect(afterTakeovers).toBe(beforeTakeovers)
+    expect(afterMovements.rows).toEqual(beforeMovements.rows)
+    expect(afterCanonicalCount.rows[0]?.count).toBe(beforeCanonicalCount.rows[0]?.count)
+    expect(completedReceipts[0]?.count).toBe(0)
+    expect(legacyRow[0]?.archived_at).toBeNull()
+    expect(legacyRow[0]?.superseded_by_container_id).toBeNull()
+  })
+
+  it('DB-25 apply_fertilizer_inventory_item_to_areas rejects superseded legacy without partial write', async () => {
+    const { user, authClient, profile, legacyId } = await preparePositiveLegacyGroup('apply-block', 10)
+    const dryRun = mapLegacyMigrationDryRunResult(
+      (await callAnalyzeLegacyMigrationRpc(authClient, cutoff)).data,
+    )
+    const group = await findGroupAnalysis(dryRun, profile.id, 'kg')
+    const fingerprint = await computeLegacyMigrationFingerprint(pgClient, group, cutoff)
+    const migrated = mapMigrateLegacyGroupRpcResult(
+      (await callMigrateLegacyGroupRpc(authClient, {
+        p_saved_product_profile_id: profile.id,
+        p_base_unit: 'kg',
+        p_idempotency_key: `${labelPrefix()}-apply-block`,
+        p_payload_fingerprint: fingerprint,
+        p_migration_cutoff_at: cutoff,
+      })).data,
+    )
+    state.migrationReceiptIds.push(migrated.receipt_id)
+    state.canonicalContainerIds.push(migrated.canonical_container_id)
+
+    const { rows: legacyRow } = await pgClient.query(
+      `select archived_at, superseded_by_container_id from public.fertilizer_containers where id = $1`,
+      [legacyId],
+    )
+    expect(legacyRow[0]?.archived_at).not.toBeNull()
+    expect(legacyRow[0]?.superseded_by_container_id).toBe(migrated.canonical_container_id)
+
+    const areaId = await insertLegacyMigrationTestArea(pgClient, state, user.id, 'apply-block', 25)
+    const legacyBalanceBefore = await computeLegacyContainerBalance(pgClient, legacyId)
+    const canonicalBalanceBefore = await computeLegacyContainerBalance(
+      pgClient,
+      migrated.canonical_container_id,
+    )
+    const idempotencyKey = `${labelPrefix()}-apply-superseded`
+    state.applicationIdempotencyKeys.push(idempotencyKey)
+
+    const apply = await callApplyInventoryToAreasViaRpc(authClient, {
+      inventoryItemId: legacyId,
+      savedProductProfileId: profile.id,
+      userId: user.id,
+      idempotencyKey,
+      totalApplicationAmount: 0.5,
+      applicationUnit: 'kg',
+      appliedAt: '2026-08-01T14:00:00.000Z',
+      areas: [
+        {
+          areaId,
+          areaNameSnapshot: `${LEGACY_MIGRATION_DB_TEST_PREFIX}-area-apply-block`,
+          areaSizeSqmSnapshot: 25,
+          applicationAmount: 0.5,
+          applicationUnit: 'kg',
+          ratePerSqm: 20,
+          rateUnit: 'g_per_sqm',
+          sortOrder: 0,
+        },
+      ],
+    })
+
+    expect(apply.error?.message).toContain('INVENTORY_ITEM_SUPERSEDED')
+
+    const artifacts = await countLegacyMigrationApplicationArtifacts(pgClient, {
+      userId: user.id,
+      idempotencyKey,
+      inventoryItemId: legacyId,
+    })
+    expect(artifacts.batches).toBe(0)
+    expect(artifacts.activities).toBe(0)
+    expect(artifacts.fertilizationDetails).toBe(0)
+    expect(artifacts.movements).toBe(0)
+    expect(await computeLegacyContainerBalance(pgClient, legacyId)).toBe(legacyBalanceBefore)
+    expect(await computeLegacyContainerBalance(pgClient, migrated.canonical_container_id)).toBe(
+      canonicalBalanceBefore,
+    )
+
+    const canonicalAppend = await appendMovementViaRpc(authClient, {
+      containerId: migrated.canonical_container_id,
+      userId: user.id,
+      quantityDelta: 1,
+      unit: 'kg',
+      movementType: 'purchase',
+      idempotencyKey: `${labelPrefix()}-canonical-append`,
+    })
+    expect(canonicalAppend.error).toBeNull()
   })
 })
 
