@@ -22,6 +22,7 @@ export const UPGRADE_FERTILIZER_LEGACY_CONTAINER_TO_INVENTORY_CORE_RPC =
   'upgrade_fertilizer_legacy_container_to_inventory_core'
 
 const LEGACY_MIGRATION_FILE = '20250807_fertilizer_inventory_legacy_core_upgrade.sql'
+export const LEGACY_MIGRATION_UPGRADE_CONTEXT = 'greenkeeper.fertilizer_legacy_upgrade'
 const MIGRATION_DIR = resolve(process.cwd(), 'supabase/migrations')
 
 export interface LegacyMigrationDatabaseTestState {
@@ -100,20 +101,39 @@ export function createEmptyLegacyMigrationDatabaseTestState(): LegacyMigrationDa
 }
 
 export async function ensureLegacyMigrationApplied(client: Client): Promise<boolean> {
-  const appliedCore = await ensureCreationMigrationsApplied(client)
-  const probe = await client.query(
+  let applied = await ensureCreationMigrationsApplied(client)
+
+  const receiptProbe = await client.query(
     `select 1 from information_schema.tables
      where table_schema = 'public'
        and table_name = 'fertilizer_inventory_migration_receipts'`,
   )
 
-  if (probe.rows.length > 0) {
-    return appliedCore
+  const triggerProbe = await client.query(
+    `select pg_get_functiondef(p.oid) as definition
+     from pg_proc p
+     join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public'
+       and p.proname = 'prevent_fertilizer_stock_movement_mutation'`,
+  )
+
+  const triggerDefinition = String(triggerProbe.rows[0]?.definition ?? '')
+  const hasSecureTrigger = triggerDefinition.includes('greenkeeper.fertilizer_legacy_upgrade')
+  const fullSql = readFileSync(resolve(MIGRATION_DIR, LEGACY_MIGRATION_FILE), 'utf8')
+
+  if (receiptProbe.rows.length === 0) {
+    await client.query(fullSql)
+    return true
   }
 
-  const sql = readFileSync(resolve(MIGRATION_DIR, LEGACY_MIGRATION_FILE), 'utf8')
-  await client.query(sql)
-  return true
+  if (!hasSecureTrigger) {
+    const marker = 'create or replace function public.prevent_fertilizer_stock_movement_mutation'
+    const start = fullSql.indexOf(marker)
+    await client.query(start === -1 ? fullSql : fullSql.slice(start))
+    applied = true
+  }
+
+  return applied
 }
 
 export function computeLegacyMigrationPayloadFingerprint(canonicalPayload: string): string {

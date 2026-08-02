@@ -157,11 +157,20 @@ excludesAll('LM-17 no movement insert for legacy upgrade', sql, [
 ])
 
 includesAll('LM-18 movement metadata supplement', sql, [
-  'movement_at = v_movement_at',
-  'inventory_idempotency_key = v_inventory_key',
-  'source_event_ref = v_source_ref',
-  'movement_origin = v_movement_origin',
-  'session_replication_role = replica',
+  'movement_at = coalesce(movement_at, v_movement_at)',
+  'inventory_idempotency_key = coalesce(inventory_idempotency_key, v_inventory_key)',
+  'source_event_ref = coalesce(source_event_ref, v_source_ref)',
+  "set_config('greenkeeper.fertilizer_legacy_upgrade', '1', true)",
+])
+
+excludesAll('LM-18b no replication role bypass', sql, [
+  'session_replication_role',
+  'replica',
+])
+
+excludesAll('LM-18c no trigger disable', sql, [
+  'DISABLE TRIGGER',
+  'ENABLE TRIGGER',
 ])
 
 includesAll('LM-19 negative balance blocked', sql, ['NEGATIVE_BALANCE'])
@@ -244,6 +253,50 @@ log(
   'LM-36 prior creation migration untouched',
   !creationSql.includes('upgrade_fertilizer_legacy_container_to_inventory_core'),
   'creation migration unchanged',
+)
+
+includesAll('LM-37 hardened movement trigger', sql, [
+  'create or replace function public.prevent_fertilizer_stock_movement_mutation',
+  "current_setting('greenkeeper.fertilizer_legacy_upgrade', true)",
+  'INVENTORY_MOVEMENT_IMMUTABLE',
+])
+
+includesAll('LM-38 business fields guarded in trigger', sql, [
+  'new.quantity_delta is distinct from old.quantity_delta',
+  'new.movement_type is distinct from old.movement_type',
+  'new.unit is distinct from old.unit',
+])
+
+includesAll('LM-39 metadata overwrite guarded in trigger', sql, [
+  'old.movement_at is not null and new.movement_at is distinct from old.movement_at',
+  'old.inventory_idempotency_key is not null',
+  'old.source_event_ref is not null',
+])
+
+includesAll('LM-40 transaction-local upgrade context', sql, [
+  "set_config('greenkeeper.fertilizer_legacy_upgrade', '1', true)",
+])
+
+excludesAll('LM-41 no set_config replica role', sql, [
+  "set_config('session_replication_role'",
+])
+
+includesAll('LM-42 coalesce preserves existing metadata', sql, [
+  'coalesce(movement_at, v_movement_at)',
+  'coalesce(inventory_idempotency_key, v_inventory_key)',
+  'coalesce(source_event_ref, v_source_ref)',
+  'coalesce(movement_origin, v_movement_origin',
+])
+
+excludesAll('LM-43 no public metadata helper RPC', sql, [
+  '_legacy_migration_apply_movement',
+  'grant execute on function public._legacy_migration',
+])
+
+log(
+  'LM-44 core migration trigger not rewritten in place',
+  !coreSql.includes('greenkeeper.fertilizer_legacy_upgrade'),
+  'context only in 20250807 migration',
 )
 
 const failed = results.filter((entry) => !entry.ok)

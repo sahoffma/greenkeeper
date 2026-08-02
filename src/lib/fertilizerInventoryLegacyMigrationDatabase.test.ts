@@ -370,7 +370,7 @@ describeDb('fertilizerInventoryLegacyMigrationDatabase', () => {
           movementType: 'purchase',
           quantityDelta: 25,
           unit: 'kg',
-          captureIdempotencyKey: `${LEGACY_MIGRATION_DB_TEST_PREFIX}-cap-1`,
+          captureIdempotencyKey: `${LEGACY_MIGRATION_DB_TEST_PREFIX}-plan-cap-1`,
         },
       ],
     })
@@ -470,6 +470,144 @@ describeDb('fertilizerInventoryLegacyMigrationDatabase', () => {
     })
     expect(counts.receipts).toBe(1)
     expect(counts.containers).toBe(1)
+  })
+
+  it('DB-S1 preserves movement business fields and supplements metadata only', async () => {
+    state = createEmptyLegacyMigrationDatabaseTestState()
+    const user = await createLegacyMigrationDatabaseTestUser(admin, state, 'security-fields')
+    const authClient = await createAuthenticatedSupabaseClient(testConfig, user.email, user.password)
+    const profile = await insertSavedProductProfileFixture(pgClient, state, {
+      accessKind: 'authenticated_user',
+      userId: user.id,
+      sessionAccessHash: null,
+      productForm: 'granular',
+    })
+    const productId = await insertLegacyCatalogProductFixture(pgClient, state)
+    const fixture = await insertLegacyContainerFixture(pgClient, state, {
+      userId: user.id,
+      productId,
+      packageSizeValue: 25,
+      packageSizeUnit: 'kg',
+      movements: [{ movementType: 'purchase', quantityDelta: 25, unit: 'kg' }],
+    })
+    const before = (await fetchMovementsForContainer(pgClient, fixture.containerId))[0]!
+    const plan = buildUpgradePlan(fixture, profile.id, user.id)
+    state.migrationKeys.push(plan.migrationIdempotencyKey)
+
+    const result = await callLegacyUpgradeRpc(authClient, plan)
+    expect(result.error).toBeNull()
+
+    const after = (await fetchMovementsForContainer(pgClient, fixture.containerId))[0]!
+    expect(after.id).toBe(before.id)
+    expect(Number(after.quantity_delta)).toBe(Number(before.quantity_delta))
+    expect(after.unit).toBe(before.unit)
+    expect(after.movement_type).toBe(before.movement_type)
+    expect(after.movement_origin).toBe(before.movement_origin)
+    expect(after.movement_at).toBeTruthy()
+    expect(after.inventory_idempotency_key).toBeTruthy()
+    expect(after.source_event_ref).toBeTruthy()
+    expect(after.access_kind).toBe('authenticated_user')
+  })
+
+  it('DB-S2 blocks direct quantity change even with upgrade context', async () => {
+    state = createEmptyLegacyMigrationDatabaseTestState()
+    const user = await createLegacyMigrationDatabaseTestUser(admin, state, 'security-context')
+    const productId = await insertLegacyCatalogProductFixture(pgClient, state)
+    const fixture = await insertLegacyContainerFixture(pgClient, state, {
+      userId: user.id,
+      productId,
+      packageSizeValue: 25,
+      packageSizeUnit: 'kg',
+      movements: [{ movementType: 'purchase', quantityDelta: 25, unit: 'kg' }],
+    })
+    const movementId = fixture.movements[0]!.movementId
+
+    await pgClient.query('begin')
+    try {
+      await pgClient.query(`select set_config('greenkeeper.fertilizer_legacy_upgrade', '1', true)`)
+      await expect(
+        pgClient.query(
+          `update public.fertilizer_stock_movements
+           set quantity_delta = 999
+           where id = $1`,
+          [movementId],
+        ),
+      ).rejects.toThrow(/INVENTORY_MOVEMENT_IMMUTABLE/)
+    } finally {
+      await pgClient.query('rollback')
+    }
+
+    const movement = (await fetchMovementsForContainer(pgClient, fixture.containerId))[0]!
+    expect(Number(movement.quantity_delta)).toBe(25)
+  })
+
+  it('DB-S3 rejects conflicting existing core metadata with rollback', async () => {
+    state = createEmptyLegacyMigrationDatabaseTestState()
+    const user = await createLegacyMigrationDatabaseTestUser(admin, state, 'security-conflict')
+    const authClient = await createAuthenticatedSupabaseClient(testConfig, user.email, user.password)
+    const profile = await insertSavedProductProfileFixture(pgClient, state, {
+      accessKind: 'authenticated_user',
+      userId: user.id,
+      sessionAccessHash: null,
+      productForm: 'granular',
+    })
+    const productId = await insertLegacyCatalogProductFixture(pgClient, state)
+    const fixture = await insertLegacyContainerFixture(pgClient, state, {
+      userId: user.id,
+      productId,
+      packageSizeValue: 25,
+      packageSizeUnit: 'kg',
+      movements: [{ movementType: 'purchase', quantityDelta: 25, unit: 'kg' }],
+    })
+    const movementId = fixture.movements[0]!.movementId
+    const conflictingKey = `${LEGACY_MIGRATION_DB_TEST_PREFIX}-existing-key`
+    const conflictingRef = `${LEGACY_MIGRATION_DB_TEST_PREFIX}-existing-ref`
+
+    await pgClient.query('begin')
+    try {
+      await pgClient.query(`select set_config('greenkeeper.fertilizer_legacy_upgrade', '1', true)`)
+      await pgClient.query(
+        `update public.fertilizer_stock_movements
+         set movement_at = timezone('utc', now()),
+             access_kind = 'authenticated_user',
+             inventory_idempotency_key = $2,
+             source_event_ref = $3
+         where id = $1`,
+        [movementId, conflictingKey, conflictingRef],
+      )
+      await pgClient.query('commit')
+    } catch (error) {
+      await pgClient.query('rollback').catch(() => undefined)
+      throw error
+    }
+
+    const plan = buildUpgradePlan(fixture, profile.id, user.id)
+    const result = await callLegacyUpgradeRpc(authClient, plan)
+    expect(result.error).not.toBeNull()
+    expect(extractLegacyMigrationErrorCode(result.error?.message ?? '')).toBe('INVALID_MOVEMENT')
+
+    const container = await fetchContainerRow(pgClient, fixture.containerId)
+    expect(container?.saved_product_profile_id).toBeNull()
+    const counts = await countLegacyMigrationArtifacts(pgClient, { containerId: fixture.containerId })
+    expect(counts.receipts).toBe(0)
+  })
+
+  it('DB-S4 upgrade context is not active outside the RPC transaction', async () => {
+    await pgClient.query('begin')
+    try {
+      await pgClient.query(`select set_config('greenkeeper.fertilizer_legacy_upgrade', '1', true)`)
+      const { rows } = await pgClient.query(
+        `select current_setting('greenkeeper.fertilizer_legacy_upgrade', true) as value`,
+      )
+      expect(rows[0]?.value).toBe('1')
+    } finally {
+      await pgClient.query('rollback')
+    }
+
+    const { rows: afterRollback } = await pgClient.query(
+      `select current_setting('greenkeeper.fertilizer_legacy_upgrade', true) as value`,
+    )
+    expect(afterRollback[0]?.value).toBe('')
   })
 })
 

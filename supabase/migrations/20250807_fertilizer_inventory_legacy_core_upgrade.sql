@@ -239,6 +239,75 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Controlled legacy-upgrade metadata supplement on immutable movements
+-- Transaction-local context: greenkeeper.fertilizer_legacy_upgrade = '1'
+-- ---------------------------------------------------------------------------
+
+create or replace function public.prevent_fertilizer_stock_movement_mutation()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_legacy_upgrade boolean;
+begin
+  if tg_op = 'DELETE' then
+    raise exception 'INVENTORY_MOVEMENT_IMMUTABLE';
+  end if;
+
+  v_legacy_upgrade := coalesce(current_setting('greenkeeper.fertilizer_legacy_upgrade', true), '') = '1';
+
+  if tg_op = 'UPDATE' and v_legacy_upgrade then
+    if new.id is distinct from old.id
+      or new.container_id is distinct from old.container_id
+      or new.quantity_delta is distinct from old.quantity_delta
+      or new.unit is distinct from old.unit
+      or new.movement_type is distinct from old.movement_type
+      or new.movement_date is distinct from old.movement_date
+      or new.capture_idempotency_key is distinct from old.capture_idempotency_key
+      or new.note is distinct from old.note
+      or new.created_at is distinct from old.created_at
+      or new.activity_id is distinct from old.activity_id
+      or new.user_id is distinct from old.user_id
+    then
+      raise exception 'INVENTORY_MOVEMENT_IMMUTABLE';
+    end if;
+
+    if old.movement_at is not null and new.movement_at is distinct from old.movement_at then
+      raise exception 'INVENTORY_MOVEMENT_IMMUTABLE';
+    end if;
+
+    if old.inventory_idempotency_key is not null
+      and new.inventory_idempotency_key is distinct from old.inventory_idempotency_key then
+      raise exception 'INVENTORY_MOVEMENT_IMMUTABLE';
+    end if;
+
+    if old.source_event_ref is not null and new.source_event_ref is distinct from old.source_event_ref then
+      raise exception 'INVENTORY_MOVEMENT_IMMUTABLE';
+    end if;
+
+    if old.access_kind is not null and new.access_kind is distinct from old.access_kind then
+      raise exception 'INVENTORY_MOVEMENT_IMMUTABLE';
+    end if;
+
+    if old.session_access_hash is not null
+      and new.session_access_hash is distinct from old.session_access_hash then
+      raise exception 'INVENTORY_MOVEMENT_IMMUTABLE';
+    end if;
+
+    if old.movement_origin is not null
+      and new.movement_origin is distinct from old.movement_origin then
+      raise exception 'INVENTORY_MOVEMENT_IMMUTABLE';
+    end if;
+
+    return new;
+  end if;
+
+  raise exception 'INVENTORY_MOVEMENT_IMMUTABLE';
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- Single-container legacy upgrade RPC
 -- ---------------------------------------------------------------------------
 
@@ -590,6 +659,10 @@ begin
       raise exception 'INVALID_MOVEMENT';
     end if;
 
+    if v_movement.movement_origin is not null then
+      v_movement_origin := v_movement.movement_origin::text;
+    end if;
+
     if v_movement.movement_at is not null
       and v_movement.access_kind is not null
       and v_movement.inventory_idempotency_key is not null then
@@ -616,7 +689,7 @@ begin
       recognition_candidate_id = null
   where id = p_container_id;
 
-  set local session_replication_role = replica;
+  perform set_config('greenkeeper.fertilizer_legacy_upgrade', '1', true);
 
   for v_upgrade in
     select value
@@ -640,22 +713,24 @@ begin
       continue;
     end if;
 
+    if v_movement.movement_origin is not null then
+      v_movement_origin := v_movement.movement_origin::text;
+    end if;
+
     update public.fertilizer_stock_movements
     set access_kind = p_access_kind,
         user_id = case when p_access_kind = 'authenticated_user' then p_user_id else null end,
         session_access_hash = case when p_access_kind = 'session' then p_session_access_hash else null end,
-        movement_at = v_movement_at,
-        inventory_idempotency_key = v_inventory_key,
-        source_event_ref = v_source_ref,
-        movement_origin = v_movement_origin::public.fertilizer_movement_origin
+        movement_at = coalesce(movement_at, v_movement_at),
+        inventory_idempotency_key = coalesce(inventory_idempotency_key, v_inventory_key),
+        source_event_ref = coalesce(source_event_ref, v_source_ref),
+        movement_origin = coalesce(movement_origin, v_movement_origin::public.fertilizer_movement_origin)
     where id = v_movement_id
       and container_id = p_container_id
       and quantity_delta = v_movement.quantity_delta
       and unit = v_movement.unit
       and movement_type = v_movement.movement_type;
   end loop;
-
-  set local session_replication_role = origin;
 
   select coalesce(sum(fsm.quantity_delta), 0)
   into v_balance_after
