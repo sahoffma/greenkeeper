@@ -12,6 +12,9 @@ const CARE_GROUP_ERROR_MESSAGES: Record<string, string> = {
   INVALID_AREA_ID: 'Die Rasenfläche ist nicht mehr verfügbar.',
   INVALID_GROUP_ID: 'Diese Verbindung ist nicht mehr verfügbar.',
   FOREIGN_OR_MISSING_GROUP: 'Diese Verbindung gehört nicht zu deinem Konto.',
+  INVALID_CARE_TARGET: 'Die Auswahl ist ungültig. Bitte versuche es erneut.',
+  EMPTY_AREA_NAME: 'Bitte gib einen Namen für die Rasenfläche ein.',
+  INVALID_AREA_SIZE: 'Bitte gib eine gültige Größe in m² ein.',
 }
 
 function mapCareGroupError(error: unknown, fallback: string): Error {
@@ -86,5 +89,46 @@ export async function dissolveCareGroup(groupId: string): Promise<void> {
 
   if (error) {
     throw mapCareGroupError(error, 'Die Verbindung konnte nicht aufgehoben werden.')
+  }
+}
+
+const CREATE_AREA_FALLBACK =
+  'Die Rasenfläche konnte nicht vollständig angelegt werden. Bitte versuche es erneut.'
+
+export interface CreateAreaWithCareAssignmentInput {
+  name: string
+  sizeSqm: number | null
+  joinCareGroupId?: string | null
+  joinAreaId?: string | null
+}
+
+export async function createAreaWithCareAssignment(
+  input: CreateAreaWithCareAssignmentInput,
+): Promise<{ id: string; name: string; sizeSqm: number | null }> {
+  const { data, error } = await supabase.rpc('create_area_with_care_assignment', {
+    p_name: input.name.trim(),
+    p_size_sqm: input.sizeSqm,
+    p_join_care_group_id: input.joinCareGroupId ?? null,
+    p_join_area_id: input.joinAreaId ?? null,
+  })
+
+  if (error) {
+    throw mapCareGroupError(error, CREATE_AREA_FALLBACK)
+  }
+
+  if (!data || typeof data !== 'object') {
+    throw new Error(CREATE_AREA_FALLBACK)
+  }
+
+  const row = data as { id?: string; name?: string; size_sqm?: number | null }
+
+  if (!row.id || !row.name) {
+    throw new Error(CREATE_AREA_FALLBACK)
+  }
+
+  return {
+    id: row.id,
+    name: row.name,
+    sizeSqm: row.size_sqm ?? null,
   }
 }
