@@ -1,5 +1,6 @@
 import type { FertilizerRecognitionCandidate } from '../types/fertilizerRecognitionCandidate'
 import type {
+  FertilizerCaptureInventorySaveResult,
   FertilizerProductStockStatus,
   FertilizerRecognitionCandidatePayload,
 } from '../types/fertilizerInventory'
@@ -281,6 +282,24 @@ export function formatSaveConfirmationLines(result: {
   return { purchaseLine, remainderLine, balanceLine }
 }
 
+export function formatInventorySaveConfirmationLines(result: FertilizerCaptureInventorySaveResult): {
+  packageLine: string
+  quantityLine: string
+  reasonLine: string
+} {
+  const packageLabel = result.packageCount === 1 ? 'Packung' : 'Packungen'
+  return {
+    packageLine: `${result.packageCount} ${packageLabel} erfasst`,
+    quantityLine: `${formatQty(result.totalInitialQuantity)} ${result.baseUnit} aufgenommen`,
+    reasonLine:
+      result.creationReason === 'initial_stock'
+        ? 'Grund: Bereits vorhanden'
+        : result.creationReason === 'purchase'
+          ? 'Grund: Gekauft'
+          : 'Grund: Geschenkt erhalten',
+  }
+}
+
 function formatQty(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toLocaleString('de-DE', { maximumFractionDigits: 1 })
+  return Number.isInteger(value) ? String(value) : value.toLocaleString('de-DE', { maximumFractionDigits: 4 })
 }

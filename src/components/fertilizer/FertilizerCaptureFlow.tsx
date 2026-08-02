@@ -28,18 +28,16 @@ import {
   prototypeActionNotice,
   searchFixtureProducts,
   selectFixtureProduct,
+  setCreationReason,
   setCustomProductForm,
   startCustomProductCapture,
 } from '../../lib/fertilizerCaptureCore'
 import {
-  buildSavePayloadFromDraft,
   fingerprintFromRecognitionResult,
+  formatInventorySaveConfirmationLines,
   formatSaveConfirmationLines,
 } from '../../lib/fertilizerInventoryCore'
-import {
-  fetchFertilizerProductStockStatus,
-  saveFertilizerCapture,
-} from '../../lib/fertilizerInventory'
+import { fetchFertilizerProductStockStatus } from '../../lib/fertilizerInventory'
 import {
   catalogProductIdFromResult,
   INITIAL_STOCK_PREVIOUS_REMAINDER_QUESTION,
@@ -55,6 +53,11 @@ import {
   persistFertilizerCaptureSession,
 } from '../../lib/fertilizerCaptureSession'
 import { completeCaptureAfterSave } from '../../lib/fertilizerCaptureFlowActions'
+import {
+  FERTILIZER_CAPTURE_CREATION_REASON_OPTIONS,
+  saveFertilizerCaptureToInventoryCore,
+} from '../../lib/fertilizerCaptureInventorySaveCore'
+import { isFertilizerCaptureInventorySaveResult } from '../../types/fertilizerInventory'
 import {
   createInitialCaptureUiState,
   createInitialPhotoRecognitionSession,
@@ -553,6 +556,16 @@ export function FertilizerCaptureFlow() {
       return
     }
 
+    if (!userId) {
+      setNotice('Bitte melde dich erneut an.')
+      return
+    }
+
+    if (!draft.creationReason) {
+      setNotice('Bitte wähle einen Bestandsgrund aus.')
+      return
+    }
+
     if (!draft.recognitionResult && !draft.catalogProductId && !draft.recognitionCandidate) {
       setNotice(
         'Speichern ist derzeit nur für erkannte oder Katalogprodukte verfügbar.',
@@ -564,12 +577,16 @@ export function FertilizerCaptureFlow() {
     setNotice(null)
 
     try {
-      const payload = buildSavePayloadFromDraft(proceedToConfirm(draft))
-      const result = await saveFertilizerCapture(payload)
+      const confirmedDraft = proceedToConfirm(draft)
+      const result = await saveFertilizerCaptureToInventoryCore({
+        draft: confirmedDraft,
+        userId,
+        creationReason: draft.creationReason,
+      })
 
       const savedDraft = completeCaptureAfterSave({
         userId,
-        idempotencyKey: payload.idempotencyKey,
+        idempotencyKey: confirmedDraft.idempotencyKey!,
         saveResult: result,
       })
 
@@ -585,6 +602,11 @@ export function FertilizerCaptureFlow() {
     } finally {
       setSaving(false)
     }
+  }
+
+  function handleCreationReasonSelect(value: (typeof FERTILIZER_CAPTURE_CREATION_REASON_OPTIONS)[number]['value']) {
+    setDraft(setCreationReason(draft, value))
+    setNotice(null)
   }
 
   function handleGoToStock() {
@@ -938,11 +960,28 @@ export function FertilizerCaptureFlow() {
             <p className={styles.summaryStock}>{summary.stockLine}</p>
             {summary.badge && <p className={styles.summaryBadge}>{summary.badge}</p>}
           </div>
+          <fieldset className={styles.creationReasonFieldset}>
+            <legend className={styles.creationReasonLegend}>Bestandsgrund</legend>
+            <div className={styles.optionChips} role="radiogroup" aria-label="Bestandsgrund">
+              {FERTILIZER_CAPTURE_CREATION_REASON_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={draft.creationReason === option.value}
+                  className={`${styles.chip} ${draft.creationReason === option.value ? styles.chipSelected : ''}`}
+                  onClick={() => handleCreationReasonSelect(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
           <button
             type="button"
             className={styles.primaryButton}
             onClick={() => void handleSaveCapture()}
-            disabled={saving}
+            disabled={saving || !draft.creationReason}
           >
             {saving ? 'Wird gespeichert…' : 'Zum Bestand hinzufügen'}
           </button>
@@ -955,23 +994,36 @@ export function FertilizerCaptureFlow() {
             {draft.saveResult.productLabel} wurde erfasst.
           </h2>
           <div className={styles.summaryPanel}>
-            {(() => {
-              const lines = formatSaveConfirmationLines({
-                purchaseQuantity: draft.saveResult.purchaseQuantity,
-                purchaseUnit: draft.saveResult.purchaseUnit,
-                previousRemainder: draft.saveResult.previousRemainder,
-                resultingBalance: draft.saveResult.resultingBalance,
-              })
-              return (
-                <>
-                  <p className={styles.summaryStock}>{lines.purchaseLine}</p>
-                  {lines.remainderLine && (
-                    <p className={styles.summaryStock}>{lines.remainderLine}</p>
-                  )}
-                  <p className={styles.summaryProduct}>{lines.balanceLine}</p>
-                </>
-              )
-            })()}
+            {isFertilizerCaptureInventorySaveResult(draft.saveResult) ? (
+              (() => {
+                const lines = formatInventorySaveConfirmationLines(draft.saveResult)
+                return (
+                  <>
+                    <p className={styles.summaryStock}>{lines.packageLine}</p>
+                    <p className={styles.summaryStock}>{lines.quantityLine}</p>
+                    <p className={styles.summaryProduct}>{lines.reasonLine}</p>
+                  </>
+                )
+              })()
+            ) : (
+              (() => {
+                const lines = formatSaveConfirmationLines({
+                  purchaseQuantity: draft.saveResult.purchaseQuantity,
+                  purchaseUnit: draft.saveResult.purchaseUnit,
+                  previousRemainder: draft.saveResult.previousRemainder,
+                  resultingBalance: draft.saveResult.resultingBalance,
+                })
+                return (
+                  <>
+                    <p className={styles.summaryStock}>{lines.purchaseLine}</p>
+                    {lines.remainderLine && (
+                      <p className={styles.summaryStock}>{lines.remainderLine}</p>
+                    )}
+                    <p className={styles.summaryProduct}>{lines.balanceLine}</p>
+                  </>
+                )
+              })()
+            )}
           </div>
           <button type="button" className={styles.primaryButton} onClick={handleGoToStock}>
             Zum Düngerbestand

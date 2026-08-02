@@ -32,6 +32,25 @@ export interface FertilizerCaptureSaveResult {
   idempotentReplay: boolean
 }
 
+export interface FertilizerCaptureInventorySaveResult {
+  operationId: string
+  idempotencyKey: string
+  savedProductProfileId: string
+  productLabel: string
+  creationReason: 'initial_stock' | 'purchase' | 'gift_received'
+  packageCount: number
+  totalInitialQuantity: number
+  baseUnit: string
+  inventoryItemIds: string[]
+  idempotentReplay: boolean
+}
+
+export function isFertilizerCaptureInventorySaveResult(
+  result: FertilizerCaptureSaveResult | FertilizerCaptureInventorySaveResult,
+): result is FertilizerCaptureInventorySaveResult {
+  return 'inventoryItemIds' in result
+}
+
 export interface FertilizerStockListItem {
   id: string
   productLabel: string

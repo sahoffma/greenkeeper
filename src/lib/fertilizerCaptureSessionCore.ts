@@ -1,5 +1,8 @@
 import { FERTILIZER_CAPTURE_FIXTURE_PRODUCTS } from '../data/fertilizerCaptureFixtures'
-import type { FertilizerCaptureSaveResult } from '../types/fertilizerInventory'
+import type {
+  FertilizerCaptureInventorySaveResult,
+  FertilizerCaptureSaveResult,
+} from '../types/fertilizerInventory'
 import type { ProductRecognizeResult } from '../types/productRecognize'
 import {
   createInitialCaptureDraft,
@@ -62,7 +65,7 @@ export interface FertilizerCaptureSavedReceipt {
   savedAt: number
   userId: string | null
   idempotencyKey: string
-  saveResult: FertilizerCaptureSaveResult
+  saveResult: FertilizerCaptureSaveResult | FertilizerCaptureInventorySaveResult
 }
 
 type SerializableCaptureDraft = Omit<FertilizerCaptureDraft, 'selectedProduct'> & {
@@ -135,7 +138,7 @@ export function isEditableCaptureDraft(draft: FertilizerCaptureDraft): boolean {
 export function buildFertilizerCaptureSavedReceipt(input: {
   userId: string | null
   idempotencyKey: string
-  saveResult: FertilizerCaptureSaveResult
+  saveResult: FertilizerCaptureSaveResult | FertilizerCaptureInventorySaveResult
   savedAt?: number
   updatedAt?: number
 }): FertilizerCaptureSavedReceipt {

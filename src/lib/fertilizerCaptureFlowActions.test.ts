@@ -209,7 +209,9 @@ describe('fertilizerCaptureFlowActions', () => {
 
     expect(savedDraft.step).toBe('saved')
     expect(loadFertilizerCaptureSession('user-1')).toBeNull()
-    expect(loadFertilizerCaptureSavedReceipt('user-1')?.saveResult.resultingBalance).toBe(5)
+    expect(loadFertilizerCaptureSavedReceipt('user-1')?.saveResult).toMatchObject({
+      resultingBalance: 5,
+    })
 
     const remounted = remountCaptureFlowAfterSave({ userId: 'user-1' })
 

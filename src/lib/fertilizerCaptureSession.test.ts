@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import type { FertilizerCaptureSaveResult } from '../types/fertilizerInventory'
 import { FERTILIZER_CAPTURE_FIXTURE_PRODUCTS } from '../data/fertilizerCaptureFixtures'
 import {
   acceptRecognitionResult,
@@ -351,7 +352,7 @@ describe('fertilizerCaptureSession storage', () => {
 
     const restored = loadFertilizerCaptureSavedReceipt('user-1')
 
-    expect(restored?.saveResult.resultingBalance).toBe(5)
+    expect(restored?.saveResult).toMatchObject({ resultingBalance: 5 })
     expect(restored?.idempotencyKey).toBe('idem-1')
   })
 
@@ -406,7 +407,9 @@ describe('fertilizerCaptureSession storage', () => {
     clearFertilizerCaptureSession('user-1')
 
     expect(loadFertilizerCaptureSession('user-1')).toBeNull()
-    expect(loadFertilizerCaptureSavedReceipt('user-1')?.saveResult.resultingBalance).toBe(5)
+    expect(loadFertilizerCaptureSavedReceipt('user-1')?.saveResult).toMatchObject({
+      resultingBalance: 5,
+    })
   })
 
   it('round-trips saved receipt serialization', () => {
@@ -415,7 +418,9 @@ describe('fertilizerCaptureSession storage', () => {
       serializeFertilizerCaptureSavedReceipt(receipt),
     )
 
-    expect(restored?.saveResult.purchaseQuantity).toBe(5)
+    expect(restored?.saveResult as FertilizerCaptureSaveResult | undefined).toMatchObject({
+      purchaseQuantity: 5,
+    })
     expect(restored?.savedAt).toBe(receipt.savedAt)
   })
 })

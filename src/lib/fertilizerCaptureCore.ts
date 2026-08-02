@@ -6,6 +6,7 @@ import {
 } from '../data/fertilizerCaptureFixtures'
 import type { FertilizerRecognitionCandidate } from '../types/fertilizerRecognitionCandidate'
 import type {
+  FertilizerCaptureInventorySaveResult,
   FertilizerCaptureSaveResult,
   FertilizerProductStockStatus,
   FertilizerStockListItem,
@@ -22,6 +23,7 @@ import {
 import type { InitialStockQuestion, ProductStockStatusKind } from './productRecognizeStockCore'
 import { computePurchaseAmount } from './fertilizerInventoryCore'
 import { createRandomId } from './randomId'
+import type { FertilizerInventoryCreationReason } from './fertilizerInventoryCreationCore'
 
 export function attachProductProfileToCaptureDraft(
   draft: FertilizerCaptureDraft,
@@ -77,7 +79,8 @@ export interface FertilizerCaptureDraft {
   stockQuestion: InitialStockQuestion | null
   stockStatusKind: ProductStockStatusKind | null
   idempotencyKey: string | null
-  saveResult: FertilizerCaptureSaveResult | null
+  creationReason: FertilizerInventoryCreationReason | null
+  saveResult: FertilizerCaptureSaveResult | FertilizerCaptureInventorySaveResult | null
 }
 
 export interface FertilizerCaptureSummary {
@@ -183,6 +186,7 @@ export function createInitialCaptureDraft(): FertilizerCaptureDraft {
     stockQuestion: null,
     stockStatusKind: null,
     idempotencyKey: null,
+    creationReason: null,
     saveResult: null,
   }
 }
@@ -391,6 +395,16 @@ export function proceedToConfirm(draft: FertilizerCaptureDraft): FertilizerCaptu
     ...draft,
     step: 'confirm',
     idempotencyKey: draft.idempotencyKey ?? createRandomId(),
+  }
+}
+
+export function setCreationReason(
+  draft: FertilizerCaptureDraft,
+  creationReason: FertilizerInventoryCreationReason,
+): FertilizerCaptureDraft {
+  return {
+    ...draft,
+    creationReason,
   }
 }
 

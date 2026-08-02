@@ -3,7 +3,10 @@ import {
   createCaptureNavigationSnapshot,
   type CaptureNavigationSnapshot,
 } from './fertilizerCaptureNavigationCore'
-import type { FertilizerCaptureSaveResult } from '../types/fertilizerInventory'
+import type {
+  FertilizerCaptureInventorySaveResult,
+  FertilizerCaptureSaveResult,
+} from '../types/fertilizerInventory'
 import {
   buildFertilizerCaptureSavedReceipt,
   createCaptureDraftFromSavedReceipt,
@@ -61,7 +64,7 @@ export function buildCaptureRemainderNavigationSnapshot(input: {
 export function completeCaptureAfterSave(input: {
   userId: string | null
   idempotencyKey: string
-  saveResult: FertilizerCaptureSaveResult
+  saveResult: FertilizerCaptureSaveResult | FertilizerCaptureInventorySaveResult
 }): FertilizerCaptureDraft {
   const receipt = buildFertilizerCaptureSavedReceipt({
     userId: input.userId,
