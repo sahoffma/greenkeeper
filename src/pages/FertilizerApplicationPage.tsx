@@ -1,6 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ActivityConfirmationPanel } from '../components/home/ActivityConfirmationPanel'
 import { HomeAppShell } from '../components/home/HomeAppShell'
 import { SubpageHeader } from '../components/layout/SubpageHeader'
 import { useAuth } from '../contexts/AuthContext'
@@ -377,13 +376,50 @@ export function FertilizerApplicationPage() {
 
             {phase === 'confirm' && (
               <section className={styles.section}>
-                <ActivityConfirmationPanel
-                  rows={confirmationRows}
-                  submitting={submitting}
-                  onConfirm={handleConfirmSubmit}
-                  onEdit={handleEditFromConfirm}
-                  onDiscard={() => navigate(FERTILIZER_ROUTES.hub)}
-                />
+                <div className={styles.confirmPanel} aria-labelledby="application-confirm-heading">
+                  <h2 id="application-confirm-heading" className={styles.confirmTitle}>
+                    Anwendung bestätigen
+                  </h2>
+
+                  <dl className={styles.confirmList}>
+                    {confirmationRows.map((row) => (
+                      <div key={row.label} className={styles.confirmRow}>
+                        <dt>{row.label}</dt>
+                        <dd>{row.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+
+                  <div className={styles.confirmActions}>
+                    <button
+                      type="button"
+                      className={styles.primaryAction}
+                      disabled={submitting}
+                      onClick={handleConfirmSubmit}
+                    >
+                      {submitting ? 'Bitte warten …' : 'Anwenden'}
+                    </button>
+
+                    <div className={styles.confirmSecondaryActions}>
+                      <button
+                        type="button"
+                        className={styles.secondaryAction}
+                        disabled={submitting}
+                        onClick={handleEditFromConfirm}
+                      >
+                        Bearbeiten
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.secondaryAction}
+                        disabled={submitting}
+                        onClick={() => navigate(FERTILIZER_ROUTES.hub)}
+                      >
+                        Verwerfen
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 {submitError && (
                   <p className={styles.formError} role="alert">
                     {submitError}

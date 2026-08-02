@@ -41,11 +41,9 @@ function buildArea(overrides: Partial<Area> = {}): Area {
     name: 'Vorgarten',
     subtitle: '',
     sizeLabel: '120 m²',
-    sizeSqm: 120,
     status: 'excellent',
     statusLabel: 'Gut entwickelt',
     summary: null,
-    coverImagePath: null,
     ...overrides,
   }
 }
