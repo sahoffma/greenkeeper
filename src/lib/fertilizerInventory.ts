@@ -127,19 +127,46 @@ export async function fetchFertilizerStockList(): Promise<FertilizerStockListVie
   const items: FertilizerStockListItem[] = []
 
   for (const container of (containers ?? []) as FertilizerStockListContainerRow[]) {
-    const { data: balance, error: balanceError } = await supabase.rpc('fertilizer_container_balance', {
-      p_container_id: container.id,
-    })
-
-    if (balanceError) {
-      throw mapInventoryError(balanceError, 'Der Bestand konnte nicht berechnet werden.')
-    }
-
-    const numericBalance = typeof balance === 'number' ? balance : Number(balance ?? 0)
-    items.push(projectFertilizerStockListItem(container, numericBalance))
+    items.push(await loadProjectedStockListItem(container))
   }
 
   return partitionFertilizerStockListItems(items)
+}
+
+async function loadProjectedStockListItem(
+  container: FertilizerStockListContainerRow,
+): Promise<FertilizerStockListItem> {
+  const { data: balance, error: balanceError } = await supabase.rpc('fertilizer_container_balance', {
+    p_container_id: container.id,
+  })
+
+  if (balanceError) {
+    throw mapInventoryError(balanceError, 'Der Bestand konnte nicht berechnet werden.')
+  }
+
+  const numericBalance = typeof balance === 'number' ? balance : Number(balance ?? 0)
+  return projectFertilizerStockListItem(container, numericBalance)
+}
+
+export async function fetchFertilizerStockListItem(
+  containerId: string,
+): Promise<FertilizerStockListItem | null> {
+  const { data: container, error: containersError } = await supabase
+    .from('fertilizer_containers')
+    .select(FERTILIZER_STOCK_LIST_CONTAINER_SELECT)
+    .eq('id', containerId)
+    .is('archived_at', null)
+    .maybeSingle()
+
+  if (containersError) {
+    throw mapInventoryError(containersError, 'Das Gebinde konnte nicht geladen werden.')
+  }
+
+  if (!container) {
+    return null
+  }
+
+  return loadProjectedStockListItem(container as FertilizerStockListContainerRow)
 }
 
 export {

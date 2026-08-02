@@ -63,6 +63,8 @@ export interface FertilizerStockListItem {
   packageSizeValue: number | null
   packageSizeUnit: string | null
   savedProductProfileId: string | null
+  baseUnit: 'kg' | 'ml' | null
+  accessKind: 'authenticated_user' | 'session' | null
 }
 
 export interface FertilizerRecognitionCandidatePayload {

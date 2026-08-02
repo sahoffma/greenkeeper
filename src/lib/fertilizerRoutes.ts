@@ -6,3 +6,7 @@ export const FERTILIZER_ROUTES = {
 export function fertilizerProductPath(productId: string): string {
   return `/ausruestung/duenger/${productId}`
 }
+
+export function fertilizerApplicationPath(inventoryItemId: string): string {
+  return `/ausruestung/duenger/${inventoryItemId}/anwenden`
+}

@@ -5,6 +5,8 @@ export const FERTILIZER_STOCK_LIST_CONTAINER_SELECT = `
       product_id,
       recognition_candidate_id,
       saved_product_profile_id,
+      access_kind,
+      base_unit,
       package_size_value,
       package_size_unit,
       label,
@@ -34,6 +36,8 @@ export interface FertilizerStockListContainerRow {
   product_id: string | null
   recognition_candidate_id: string | null
   saved_product_profile_id: string | null
+  access_kind: 'authenticated_user' | 'session' | null
+  base_unit: 'kg' | 'ml' | null
   package_size_value: number | null
   package_size_unit: string | null
   label: string | null
@@ -196,6 +200,8 @@ export function projectFertilizerStockListItem(
     packageSizeValue,
     packageSizeUnit,
     savedProductProfileId: profile?.id ?? container.saved_product_profile_id,
+    baseUnit: container.base_unit,
+    accessKind: container.access_kind,
   }
 }
 

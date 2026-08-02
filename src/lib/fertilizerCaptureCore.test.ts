@@ -43,6 +43,8 @@ function stockItem(
     packageSizeValue: null,
     packageSizeUnit: null,
     savedProductProfileId: null,
+    baseUnit: null,
+    accessKind: null,
     ...overrides,
   }
 }

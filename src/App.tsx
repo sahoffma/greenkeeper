@@ -13,19 +13,26 @@ import { EmailConfirmPage } from './pages/EmailConfirmPage'
 import { EquipmentPage } from './pages/EquipmentPage'
 import { EquipmentCategoryPage } from './pages/EquipmentCategoryPage'
 import { FertilizerCapturePage } from './pages/FertilizerCapturePage'
+import { FertilizerApplicationPage } from './pages/FertilizerApplicationPage'
 import { FertilizerCategoryPage } from './pages/FertilizerCategoryPage'
 import { FertilizerProductDetailPage } from './pages/FertilizerProductDetailPage'
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
 import { JournalPage } from './pages/JournalPage'
 import { GreenkeeperPage } from './pages/GreenkeeperPage'
 import { LoginPage } from './pages/LoginPage'
+import { OnboardingAreaCapturePage } from './pages/onboarding/OnboardingAreaCapturePage'
+import { OnboardingCustomGroupingPage } from './pages/onboarding/OnboardingCustomGroupingPage'
 import { OnboardingLawnAreasPage } from './pages/onboarding/OnboardingLawnAreasPage'
 import { OnboardingMultipleCountPage } from './pages/onboarding/OnboardingMultipleCountPage'
 import { OnboardingMultipleCarePage } from './pages/onboarding/OnboardingMultipleCarePage'
 import { OnboardingStep3Page } from './pages/onboarding/OnboardingStep3Page'
 import { OnboardingStep4PlaceholderPage } from './pages/onboarding/OnboardingStep4PlaceholderPage'
+import { OnboardingSummaryPage } from './pages/onboarding/OnboardingSummaryPage'
 import { OnboardingWelcomePage } from './pages/onboarding/OnboardingWelcomePage'
+import { ManageAreasPage } from './pages/ManageAreasPage'
+import { AreaDetailPage } from './pages/AreaDetailPage'
 import { MorePage } from './pages/MorePage'
+import { NewAreaPage } from './pages/NewAreaPage'
 import { ProductAssistantPage } from './pages/ProductAssistantPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { ResetPasswordPage } from './pages/ResetPasswordPage'
@@ -99,6 +106,14 @@ export default function App() {
         }
       />
       <Route
+        path="/onboarding/areas"
+        element={
+          <OnboardingRoute>
+            <OnboardingAreaCapturePage />
+          </OnboardingRoute>
+        }
+      />
+      <Route
         path="/onboarding/2/care"
         element={
           <OnboardingRoute>
@@ -107,10 +122,26 @@ export default function App() {
         }
       />
       <Route
+        path="/onboarding/2/grouping"
+        element={
+          <OnboardingRoute>
+            <OnboardingCustomGroupingPage />
+          </OnboardingRoute>
+        }
+      />
+      <Route
         path="/onboarding/2/count"
         element={
           <OnboardingRoute>
             <OnboardingMultipleCountPage />
+          </OnboardingRoute>
+        }
+      />
+      <Route
+        path="/onboarding/summary"
+        element={
+          <OnboardingRoute>
+            <OnboardingSummaryPage />
           </OnboardingRoute>
         }
       />
@@ -163,6 +194,14 @@ export default function App() {
         }
       />
       <Route
+        path="/ausruestung/duenger/:inventoryItemId/anwenden"
+        element={
+          <ProtectedRoute>
+            <FertilizerApplicationPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/ausruestung/duenger/erfassen"
         element={
           <ProtectedRoute>
@@ -199,6 +238,30 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Navigate to="/ausruestung" replace />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/rasenflaechen"
+        element={
+          <ProtectedRoute>
+            <ManageAreasPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/rasenflaechen/:areaId"
+        element={
+          <ProtectedRoute>
+            <AreaDetailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/rasenflaechen/neu"
+        element={
+          <ProtectedRoute>
+            <NewAreaPage />
           </ProtectedRoute>
         }
       />

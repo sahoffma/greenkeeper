@@ -17,6 +17,8 @@ function coreContainer(
     product_id: null,
     recognition_candidate_id: null,
     saved_product_profile_id: PROFILE_ID,
+    access_kind: 'authenticated_user',
+    base_unit: 'kg',
     package_size_value: 25,
     package_size_unit: 'kg',
     label: null,
@@ -35,6 +37,8 @@ function coreContainer(
 describe('fertilizerInventoryStockListCore', () => {
   it('selects saved profile, package size and product_profiles relation', () => {
     expect(FERTILIZER_STOCK_LIST_CONTAINER_SELECT).toContain('saved_product_profile_id')
+    expect(FERTILIZER_STOCK_LIST_CONTAINER_SELECT).toContain('access_kind')
+    expect(FERTILIZER_STOCK_LIST_CONTAINER_SELECT).toContain('base_unit')
     expect(FERTILIZER_STOCK_LIST_CONTAINER_SELECT).toContain('package_size_value')
     expect(FERTILIZER_STOCK_LIST_CONTAINER_SELECT).toContain('product_profiles')
     expect(FERTILIZER_STOCK_LIST_CONTAINER_SELECT).toContain('official_name')
@@ -46,6 +50,8 @@ describe('fertilizerInventoryStockListCore', () => {
     const item = projectFertilizerStockListItem(coreContainer(), 20)
 
     expect(item.savedProductProfileId).toBe(PROFILE_ID)
+    expect(item.baseUnit).toBe('kg')
+    expect(item.accessKind).toBe('authenticated_user')
     expect(item.catalogProductId).toBeNull()
     expect(item.recognitionCandidateId).toBeNull()
     expect(item.productLabel).toBe('Rasendoktor Frühjahr & Neuansaat')
@@ -109,6 +115,8 @@ describe('fertilizerInventoryStockListCore', () => {
         product_id: 'product-1',
         recognition_candidate_id: null,
         saved_product_profile_id: null,
+        access_kind: null,
+        base_unit: null,
         package_size_value: null,
         package_size_unit: 'kg',
         label: null,
@@ -137,6 +145,8 @@ describe('fertilizerInventoryStockListCore', () => {
         product_id: null,
         recognition_candidate_id: 'candidate-1',
         saved_product_profile_id: null,
+        access_kind: null,
+        base_unit: null,
         package_size_value: null,
         package_size_unit: 'ml',
         label: null,
@@ -166,6 +176,8 @@ describe('fertilizerInventoryStockListCore', () => {
         product_id: 'product-1',
         recognition_candidate_id: null,
         saved_product_profile_id: null,
+        access_kind: null,
+        base_unit: null,
         package_size_value: null,
         package_size_unit: 'kg',
         label: 'Mein Sack',
@@ -191,6 +203,8 @@ describe('fertilizerInventoryStockListCore', () => {
         product_id: null,
         recognition_candidate_id: null,
         saved_product_profile_id: null,
+        access_kind: null,
+        base_unit: null,
         package_size_value: null,
         package_size_unit: null,
         label: null,
