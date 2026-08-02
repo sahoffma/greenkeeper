@@ -153,3 +153,11 @@ export {
   partitionFertilizerStockListItems,
   projectFertilizerStockListItem,
 } from './fertilizerInventoryStockListCore'
+
+export {
+  recordFertilizerProductStockIntake,
+  recordFertilizerProductStockOutbound,
+  FertilizerProductStockPersistenceError,
+  type RecordFertilizerProductStockIntakeInput,
+  type RecordFertilizerProductStockOutboundInput,
+} from './fertilizerProductStockIntake'

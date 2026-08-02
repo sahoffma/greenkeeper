@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { HomeAppShell } from '../components/home/HomeAppShell'
 import { FertilizerCaptureButton } from '../components/equipment/FertilizerCaptureButton'
 import { SubpageHeader } from '../components/layout/SubpageHeader'
 import { layoutStockListByProductForm } from '../lib/fertilizerCaptureCore'
 import { fetchFertilizerStockList } from '../lib/fertilizerInventory'
-import { FERTILIZER_ROUTES } from '../lib/fertilizerRoutes'
+import {
+  FERTILIZER_ROUTES,
+  fertilizerStockIntakePath,
+  fertilizerStockOutboundPath,
+} from '../lib/fertilizerRoutes'
 import type { FertilizerStockListItem } from '../types/fertilizerInventory'
 import styles from './FertilizerCategoryPage.module.css'
 
@@ -18,6 +23,9 @@ function formatBalance(item: FertilizerStockListItem): string {
 }
 
 function StockListItem({ item }: { item: FertilizerStockListItem }) {
+  const showStockActions =
+    item.savedProductProfileId != null && (item.baseUnit === 'kg' || item.baseUnit === 'ml')
+
   return (
     <li>
       <div className={styles.stockItem}>
@@ -30,6 +38,16 @@ function StockListItem({ item }: { item: FertilizerStockListItem }) {
 
         <div className={styles.stockItemActions}>
           <span className={styles.stockItemBalance}>{formatBalance(item)}</span>
+          {showStockActions && (
+            <div className={styles.stockItemLinks}>
+              <Link className={styles.stockActionLink} to={fertilizerStockIntakePath(item.id)}>
+                Zugang erfassen
+              </Link>
+              <Link className={styles.stockActionLink} to={fertilizerStockOutboundPath(item.id)}>
+                Abgang erfassen
+              </Link>
+            </div>
+          )}
         </div>
       </div>
     </li>

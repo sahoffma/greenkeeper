@@ -361,6 +361,37 @@ export async function callLocalProductStockIntakeRpc(
   }
 }
 
+export async function callLocalProductStockOutboundRpc(
+  authClient: LocalProductStockIntakeAuthClient,
+  params: Record<string, unknown>,
+): Promise<{ data: unknown; error: { message: string } | null }> {
+  const client = await authClient.pool.connect()
+  try {
+    await client.query('begin')
+    await client.query(`select set_config('request.jwt.claim.sub', $1, true)`, [authClient.userId])
+    const { rows } = await client.query(
+      `select public.record_fertilizer_product_stock_outbound(
+        $1::uuid, $2::numeric, $3::text, $4::text, $5::timestamptz, $6::text
+      ) as result`,
+      [
+        params.p_inventory_item_id,
+        params.p_quantity,
+        params.p_reason,
+        params.p_idempotency_key,
+        params.p_movement_at ?? null,
+        params.p_note ?? null,
+      ],
+    )
+    await client.query('commit')
+    return { data: rows[0]?.result ?? null, error: null }
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined)
+    return { data: null, error: { message: (error as Error).message } }
+  } finally {
+    client.release()
+  }
+}
+
 export async function purgeLocalProductStockIntakeDatabaseTestData(
   pgClient: Client,
   state: {

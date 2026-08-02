@@ -1,0 +1,54 @@
+import { describe, expect, it } from 'vitest'
+import {
+  FERTILIZER_ROUTES,
+  fertilizerStockIntakePath,
+  fertilizerStockOutboundPath,
+  isFertilizerStockIntakePath,
+  isFertilizerStockOutboundPath,
+  isValidFertilizerInventoryItemRouteId,
+  parseFertilizerStockIntakeInventoryItemId,
+  parseFertilizerStockOutboundInventoryItemId,
+  resolveFertilizerEquipmentEntryPoint,
+} from './fertilizerRoutes'
+
+const ITEM_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+
+describe('fertilizerRoutes', () => {
+  it('exposes capture route without home route', () => {
+    expect(FERTILIZER_ROUTES.capture).toBe('/ausruestung/duenger/erfassen')
+    expect(FERTILIZER_ROUTES.homeApplication).toBe('/duengung')
+  })
+
+  it('builds intake and outbound paths', () => {
+    expect(fertilizerStockIntakePath(ITEM_ID)).toBe(
+      `/ausruestung/duenger/${ITEM_ID}/zugang`,
+    )
+    expect(fertilizerStockOutboundPath(ITEM_ID)).toBe(
+      `/ausruestung/duenger/${ITEM_ID}/abgang`,
+    )
+  })
+
+  it('parses valid inventory item ids', () => {
+    const intakePath = fertilizerStockIntakePath(ITEM_ID)
+    expect(parseFertilizerStockIntakeInventoryItemId(intakePath)).toBe(ITEM_ID)
+    expect(isFertilizerStockIntakePath(intakePath)).toBe(true)
+    expect(parseFertilizerStockOutboundInventoryItemId(fertilizerStockOutboundPath(ITEM_ID))).toBe(
+      ITEM_ID,
+    )
+    expect(isFertilizerStockOutboundPath(fertilizerStockOutboundPath(ITEM_ID))).toBe(true)
+  })
+
+  it('rejects invalid ids', () => {
+    expect(isValidFertilizerInventoryItemRouteId('not-a-uuid')).toBe(false)
+    expect(parseFertilizerStockIntakeInventoryItemId('/ausruestung/duenger/bad/zugang')).toBeNull()
+  })
+
+  it('resolves equipment entry points', () => {
+    expect(resolveFertilizerEquipmentEntryPoint(FERTILIZER_ROUTES.capture)).toBe('capture')
+    expect(resolveFertilizerEquipmentEntryPoint(fertilizerStockIntakePath(ITEM_ID))).toBe('intake')
+    expect(resolveFertilizerEquipmentEntryPoint(fertilizerStockOutboundPath(ITEM_ID))).toBe(
+      'outbound',
+    )
+    expect(resolveFertilizerEquipmentEntryPoint(FERTILIZER_ROUTES.hub)).toBe('hub')
+  })
+})

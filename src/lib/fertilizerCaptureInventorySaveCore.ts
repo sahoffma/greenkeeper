@@ -5,19 +5,17 @@ import {
   buildFertilizerEnrichmentOrchestrationInputFromCaptureDraft,
   FertilizerCaptureEnrichmentInputError,
 } from './fertilizerCaptureEnrichmentInputCore'
-import {
-  buildConfirmedPackageGroupsFromCaptureDraft,
-  FertilizerCaptureInventoryPackagesError,
-} from './fertilizerCaptureInventoryPackagesCore'
+import { FertilizerCaptureInventoryPackagesError } from './fertilizerCaptureInventoryPackagesCore'
 import { startFertilizerEnrichmentFromCapture, FertilizerEnrichmentClientError } from './fertilizerEnrichmentClient'
 import {
   saveFertilizerProductProfileFromCapture,
   FertilizerProductProfileSaveClientError,
 } from './fertilizerProductProfileSaveClient'
+import { buildProductStockIntakeQuantityFromCaptureDraft } from './fertilizerProductStockIntakeFromCaptureCore'
 import {
-  createFertilizerInventoryFromCapture,
-  FertilizerInventoryCreationRuntimeError,
-} from './fertilizerInventoryCreation'
+  recordFertilizerProductStockIntake,
+  FertilizerProductStockPersistenceError,
+} from './fertilizerProductStockIntake'
 import { buildRecognitionProductLabel } from './fertilizerRecognitionCore'
 import type { FertilizerCaptureInventorySaveResult } from '../types/fertilizerInventory'
 
@@ -60,8 +58,8 @@ function profileSaveIdempotencyKey(baseKey: string): string {
   return `${baseKey}:profile`
 }
 
-function inventoryCreationIdempotencyKey(baseKey: string): string {
-  return `${baseKey}:inventory`
+function productStockIntakeIdempotencyKey(baseKey: string): string {
+  return `${baseKey}:intake`
 }
 
 function mapCaptureInventorySaveError(error: unknown): FertilizerCaptureInventorySaveError {
@@ -85,7 +83,7 @@ function mapCaptureInventorySaveError(error: unknown): FertilizerCaptureInventor
     return new FertilizerCaptureInventorySaveError(error.message, error.code)
   }
 
-  if (error instanceof FertilizerInventoryCreationRuntimeError) {
+  if (error instanceof FertilizerProductStockPersistenceError) {
     return new FertilizerCaptureInventorySaveError(error.message, error.code)
   }
 
@@ -157,29 +155,30 @@ export async function saveFertilizerCaptureToInventoryCore(
       idempotencyKey: profileSaveIdempotencyKey(baseKey),
     })
 
-    const confirmedPackageGroups = buildConfirmedPackageGroupsFromCaptureDraft(confirmedDraft)
-    const inventoryResult = await createFertilizerInventoryFromCapture({
-      savedProductProfileId: profileSave.profile.id,
+    const intakeQuantity = buildProductStockIntakeQuantityFromCaptureDraft(confirmedDraft)
+    const intakeResult = await recordFertilizerProductStockIntake({
       userId: input.userId,
-      creationReason: input.creationReason,
-      idempotencyKey: inventoryCreationIdempotencyKey(baseKey),
+      savedProductProfileId: profileSave.profile.id,
+      baseUnit: intakeQuantity.baseUnit,
+      quantity: intakeQuantity.quantity,
+      reason: input.creationReason,
+      idempotencyKey: productStockIntakeIdempotencyKey(baseKey),
       sourceEventRef: `capture:${baseKey}`,
-      confirmedPackageGroups,
     })
 
     const productLabel = resolveCaptureProductLabel(confirmedDraft)
 
     return {
-      operationId: inventoryResult.operationId,
-      idempotencyKey: inventoryResult.idempotencyKey,
+      operationId: intakeResult.operationId,
+      idempotencyKey: intakeResult.idempotencyKey,
       savedProductProfileId: profileSave.profile.id,
       productLabel,
       creationReason: input.creationReason,
-      packageCount: inventoryResult.packageCount,
-      totalInitialQuantity: inventoryResult.totalInitialQuantity,
-      baseUnit: inventoryResult.baseUnit,
-      inventoryItemIds: inventoryResult.packages.map((entry) => entry.item.id),
-      idempotentReplay: false,
+      packageCount: intakeQuantity.packageCount,
+      totalInitialQuantity: intakeQuantity.quantity,
+      baseUnit: intakeResult.baseUnit,
+      inventoryItemIds: [intakeResult.inventoryItemId],
+      idempotentReplay: intakeResult.idempotencyReplay,
     }
   } catch (error) {
     throw mapCaptureInventorySaveError(error)

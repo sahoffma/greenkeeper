@@ -22,17 +22,17 @@ vi.mock('./fertilizerProductProfileSaveClient', () => ({
   saveFertilizerProductProfileFromCapture: vi.fn(),
 }))
 
-vi.mock('./fertilizerInventoryCreation', () => ({
-  createFertilizerInventoryFromCapture: vi.fn(),
+vi.mock('./fertilizerProductStockIntake', () => ({
+  recordFertilizerProductStockIntake: vi.fn(),
 }))
 
 import { startFertilizerEnrichmentFromCapture } from './fertilizerEnrichmentClient'
 import { saveFertilizerProductProfileFromCapture } from './fertilizerProductProfileSaveClient'
-import { createFertilizerInventoryFromCapture } from './fertilizerInventoryCreation'
+import { recordFertilizerProductStockIntake } from './fertilizerProductStockIntake'
 
 const mockStartEnrichment = vi.mocked(startFertilizerEnrichmentFromCapture)
 const mockSaveProfile = vi.mocked(saveFertilizerProductProfileFromCapture)
-const mockCreateInventory = vi.mocked(createFertilizerInventoryFromCapture)
+const mockRecordIntake = vi.mocked(recordFertilizerProductStockIntake)
 
 function mockRecognitionResult(): ProductRecognizeResult {
   return {
@@ -83,7 +83,7 @@ describe('fertilizerCaptureInventorySaveCore', () => {
   beforeEach(() => {
     mockStartEnrichment.mockReset()
     mockSaveProfile.mockReset()
-    mockCreateInventory.mockReset()
+    mockRecordIntake.mockReset()
   })
 
   it('exposes exactly three creation reason options without inventory_correction', () => {
@@ -108,7 +108,7 @@ describe('fertilizerCaptureInventorySaveCore', () => {
     ).rejects.toMatchObject({ code: 'creation_reason_invalid' })
   })
 
-  it('maps Bereits vorhanden to initial_stock', async () => {
+  it('maps Bereits vorhanden to initial_stock via intake', async () => {
     mockStartEnrichment.mockResolvedValue({
       jobId: 'job-1',
       result: {
@@ -117,14 +117,19 @@ describe('fertilizerCaptureInventorySaveCore', () => {
       },
     } as never)
     mockSaveProfile.mockResolvedValue({ profile: { id: 'profile-1' } } as never)
-    mockCreateInventory.mockResolvedValue({
+    mockRecordIntake.mockResolvedValue({
       operationId: 'op-1',
-      idempotencyKey: 'idem:inventory',
-      packageCount: 1,
-      totalInitialQuantity: 25,
+      idempotencyKey: 'capture-key:intake',
+      inventoryItemId: 'item-1',
+      movementId: 'movement-1',
+      savedProductProfileId: 'profile-1',
       baseUnit: 'kg',
-      packages: [{ item: { id: 'item-1' }, initialMovement: { quantityDelta: 25 } }],
-    } as never)
+      quantityDelta: 25,
+      reason: 'initial_stock',
+      movementAt: '2026-01-01T00:00:00.000Z',
+      itemCreated: true,
+      idempotencyReplay: false,
+    })
 
     const draft = setCreationReason(readyDraft(), 'initial_stock')
     const result = await saveFertilizerCaptureToInventoryCore({
@@ -134,12 +139,13 @@ describe('fertilizerCaptureInventorySaveCore', () => {
     })
 
     expect(result.creationReason).toBe('initial_stock')
-    expect(mockCreateInventory).toHaveBeenCalledWith(
-      expect.objectContaining({ creationReason: 'initial_stock' }),
+    expect(mockRecordIntake).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'initial_stock', quantity: 25 }),
     )
+    expect(result.inventoryItemIds).toEqual(['item-1'])
   })
 
-  it('runs enrichment, profile save and inventory creation without legacy fallback', async () => {
+  it('runs enrichment, profile save and one intake call for multiple packages', async () => {
     mockStartEnrichment.mockResolvedValue({
       jobId: 'job-1',
       result: {
@@ -148,17 +154,19 @@ describe('fertilizerCaptureInventorySaveCore', () => {
       },
     } as never)
     mockSaveProfile.mockResolvedValue({ profile: { id: 'profile-1' } } as never)
-    mockCreateInventory.mockResolvedValue({
+    mockRecordIntake.mockResolvedValue({
       operationId: 'op-1',
-      idempotencyKey: 'idem:inventory',
-      packageCount: 2,
-      totalInitialQuantity: 50,
+      idempotencyKey: 'capture-key:intake',
+      inventoryItemId: 'item-1',
+      movementId: 'movement-1',
+      savedProductProfileId: 'profile-1',
       baseUnit: 'kg',
-      packages: [
-        { item: { id: 'item-1' }, initialMovement: { quantityDelta: 25 } },
-        { item: { id: 'item-2' }, initialMovement: { quantityDelta: 25 } },
-      ],
-    } as never)
+      quantityDelta: 50,
+      reason: 'purchase',
+      movementAt: '2026-01-01T00:00:00.000Z',
+      itemCreated: true,
+      idempotencyReplay: false,
+    })
 
     const draft = readyDraft()
     draft.packageCount = 2
@@ -170,24 +178,19 @@ describe('fertilizerCaptureInventorySaveCore', () => {
     })
 
     expect(mockStartEnrichment).toHaveBeenCalledOnce()
-    expect(mockSaveProfile).toHaveBeenCalledWith(
-      expect.objectContaining({
-        enrichmentJobId: 'job-1',
-        userConfirmed: true,
-      }),
-    )
-    expect(mockCreateInventory).toHaveBeenCalledWith(
+    expect(mockSaveProfile).toHaveBeenCalledOnce()
+    expect(mockRecordIntake).toHaveBeenCalledWith(
       expect.objectContaining({
         savedProductProfileId: 'profile-1',
-        confirmedPackageGroups: expect.arrayContaining([
-          expect.objectContaining({ count: 2 }),
-        ]),
+        quantity: 50,
+        reason: 'purchase',
       }),
     )
-    expect(result.inventoryItemIds).toEqual(['item-1', 'item-2'])
+    expect(result.inventoryItemIds).toEqual(['item-1'])
+    expect(result.totalInitialQuantity).toBe(50)
   })
 
-  it('blocks inventory creation when readiness is missing', async () => {
+  it('blocks intake when readiness is missing', async () => {
     mockStartEnrichment.mockResolvedValue({
       jobId: 'job-1',
       result: {
@@ -205,7 +208,7 @@ describe('fertilizerCaptureInventorySaveCore', () => {
     ).rejects.toMatchObject({ code: 'not_save_ready' })
 
     expect(mockSaveProfile).not.toHaveBeenCalled()
-    expect(mockCreateInventory).not.toHaveBeenCalled()
+    expect(mockRecordIntake).not.toHaveBeenCalled()
   })
 
   it('uses stable idempotency keys derived from the capture draft', async () => {
@@ -217,14 +220,19 @@ describe('fertilizerCaptureInventorySaveCore', () => {
       },
     } as never)
     mockSaveProfile.mockResolvedValue({ profile: { id: 'profile-1' } } as never)
-    mockCreateInventory.mockResolvedValue({
+    mockRecordIntake.mockResolvedValue({
       operationId: 'op-1',
-      idempotencyKey: 'capture-key:inventory',
-      packageCount: 1,
-      totalInitialQuantity: 25,
+      idempotencyKey: 'capture-key:intake',
+      inventoryItemId: 'item-1',
+      movementId: 'movement-1',
+      savedProductProfileId: 'profile-1',
       baseUnit: 'kg',
-      packages: [{ item: { id: 'item-1' }, initialMovement: { quantityDelta: 25 } }],
-    } as never)
+      quantityDelta: 25,
+      reason: 'gift_received',
+      movementAt: '2026-01-01T00:00:00.000Z',
+      itemCreated: true,
+      idempotencyReplay: false,
+    })
 
     const draft = readyDraft()
     draft.idempotencyKey = 'capture-key'
@@ -241,8 +249,8 @@ describe('fertilizerCaptureInventorySaveCore', () => {
     expect(mockSaveProfile).toHaveBeenCalledWith(
       expect.objectContaining({ idempotencyKey: 'capture-key:profile' }),
     )
-    expect(mockCreateInventory).toHaveBeenCalledWith(
-      expect.objectContaining({ idempotencyKey: 'capture-key:inventory' }),
+    expect(mockRecordIntake).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: 'capture-key:intake' }),
     )
   })
 })

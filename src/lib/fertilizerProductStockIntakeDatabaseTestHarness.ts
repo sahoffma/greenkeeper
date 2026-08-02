@@ -17,6 +17,7 @@ import {
 } from './fertilizerInventoryCreationDatabaseTestHarness'
 import {
   callLocalProductStockIntakeRpc,
+  callLocalProductStockOutboundRpc,
   connectLocalProductStockIntakeTestPg,
   createLocalProductStockIntakeAdminClient,
   createLocalProductStockIntakeAuthClient,
@@ -32,6 +33,7 @@ import {
   type LocalProductStockIntakeDatabaseTestConfig,
 } from './fertilizerProductStockIntakeLocalPostgresHarness'
 import { RECORD_FERTILIZER_PRODUCT_STOCK_INTAKE_RPC } from './fertilizerProductStockIntakeRpcCore'
+import { RECORD_FERTILIZER_PRODUCT_STOCK_OUTBOUND_RPC } from './fertilizerProductStockOutboundRpcCore'
 
 export const PRODUCT_STOCK_DB_TEST_PREFIX = `${CREATION_DB_TEST_PREFIX}-ps`
 
@@ -43,6 +45,13 @@ const PRODUCT_STOCK_MIGRATION = {
     where table_schema = 'public'
       and table_name = 'fertilizer_containers'
       and column_name = 'stock_kind'`,
+} as const
+
+const PRODUCT_STOCK_OUTBOUND_MIGRATION = {
+  file: '20250813_fertilizer_product_stock_outbound.sql',
+  probeSql: `select 1 from information_schema.tables
+    where table_schema = 'public'
+      and table_name = 'fertilizer_product_stock_outbound_receipts'`,
 } as const
 
 export type ProductStockIntakeDatabaseTestConfig =
@@ -115,6 +124,16 @@ export async function ensureProductStockIntakeMigrationsApplied(
     applied = true
   }
 
+  const outboundProbe = await client.query(PRODUCT_STOCK_OUTBOUND_MIGRATION.probeSql)
+  if (outboundProbe.rows.length === 0) {
+    const outboundSql = readFileSync(
+      resolve(MIGRATION_DIR, PRODUCT_STOCK_OUTBOUND_MIGRATION.file),
+      'utf8',
+    )
+    await client.query(outboundSql)
+    applied = true
+  }
+
   return applied
 }
 
@@ -180,6 +199,73 @@ export function parseProductStockIntakeRpcSuccess(payload: unknown): {
   }
 }
 
+export interface ProductStockOutboundRpcCallParams {
+  inventoryItemId: string
+  quantity: number
+  reason: 'gift_given' | 'disposed' | 'inventory_correction'
+  idempotencyKey: string
+  movementAt?: string | null
+  note?: string | null
+}
+
+export function buildProductStockOutboundRpcParams(
+  params: ProductStockOutboundRpcCallParams,
+): Record<string, unknown> {
+  return {
+    p_inventory_item_id: params.inventoryItemId,
+    p_quantity: params.quantity,
+    p_reason: params.reason,
+    p_idempotency_key: params.idempotencyKey,
+    p_movement_at: params.movementAt ?? null,
+    p_note: params.note ?? null,
+  }
+}
+
+export async function callProductStockOutboundRpc(
+  client: ProductStockIntakeAuthClient,
+  params: ProductStockOutboundRpcCallParams,
+): Promise<{ data: unknown; error: { message: string } | null }> {
+  const rpcParams = buildProductStockOutboundRpcParams(params)
+
+  if (isLocalProductStockIntakeAuthClient(client)) {
+    return callLocalProductStockOutboundRpc(client, rpcParams)
+  }
+
+  return client.rpc(RECORD_FERTILIZER_PRODUCT_STOCK_OUTBOUND_RPC, rpcParams)
+}
+
+export function extractProductStockOutboundErrorCode(message: string): string | null {
+  const match = message.match(/INVENTORY_OUTBOUND_[A-Z_]+/)
+  return match?.[0] ?? null
+}
+
+export function parseProductStockOutboundRpcSuccess(payload: unknown): {
+  operationId: string
+  idempotencyKey: string
+  inventoryItemId: string
+  movementId: string
+  quantityDelta: number
+  reason: string
+  movementType: string
+  idempotencyReplay: boolean
+} {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Outbound RPC returned an empty payload.')
+  }
+
+  const record = payload as Record<string, unknown>
+  return {
+    operationId: String(record.operation_id),
+    idempotencyKey: String(record.idempotency_key),
+    inventoryItemId: String(record.inventory_item_id),
+    movementId: String(record.movement_id),
+    quantityDelta: Number(record.quantity_delta),
+    reason: String(record.reason),
+    movementType: String(record.movement_type),
+    idempotencyReplay: Boolean(record.idempotency_replay),
+  }
+}
+
 export function trackProductStockIntakeResult(
   state: ProductStockIntakeDatabaseTestState,
   result: ReturnType<typeof parseProductStockIntakeRpcSuccess>,
@@ -187,6 +273,15 @@ export function trackProductStockIntakeResult(
   state.intakeReceiptIds.push(result.operationId)
   state.idempotencyKeys.push(result.idempotencyKey)
   state.containerIds.push(result.inventoryItemId)
+  state.intakeMovementIds.push(result.movementId)
+}
+
+export function trackProductStockOutboundResult(
+  state: ProductStockIntakeDatabaseTestState,
+  result: ReturnType<typeof parseProductStockOutboundRpcSuccess>,
+): void {
+  state.intakeReceiptIds.push(result.operationId)
+  state.idempotencyKeys.push(result.idempotencyKey)
   state.intakeMovementIds.push(result.movementId)
 }
 
@@ -275,6 +370,10 @@ export async function purgeProductStockIntakeDatabaseTestData(
 
   await withTestReplicationRole(client, async () => {
     if (receiptIds.length > 0) {
+      await client.query(
+        `delete from public.fertilizer_product_stock_outbound_receipts where id = any($1::uuid[])`,
+        [receiptIds],
+      )
       await client.query(
         `delete from public.fertilizer_product_stock_intake_receipts where id = any($1::uuid[])`,
         [receiptIds],

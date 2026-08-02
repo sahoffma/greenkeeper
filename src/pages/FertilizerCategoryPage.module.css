@@ -152,6 +152,21 @@
   flex-shrink: 0;
 }
 
+.stockItemLinks {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.stockActionLink {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #1f3d2b;
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+}
+
 .applyAction {
   min-height: 36px;
   padding: 0 12px;

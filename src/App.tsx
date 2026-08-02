@@ -13,6 +13,8 @@ import { EmailConfirmPage } from './pages/EmailConfirmPage'
 import { EquipmentPage } from './pages/EquipmentPage'
 import { EquipmentCategoryPage } from './pages/EquipmentCategoryPage'
 import { FertilizerCapturePage } from './pages/FertilizerCapturePage'
+import { FertilizerStockIntakePage } from './pages/FertilizerStockIntakePage'
+import { FertilizerStockOutboundPage } from './pages/FertilizerStockOutboundPage'
 import { FertilizerApplicationPage } from './pages/FertilizerApplicationPage'
 import { FertilizerCategoryPage } from './pages/FertilizerCategoryPage'
 import { FertilizerProductDetailPage } from './pages/FertilizerProductDetailPage'
@@ -192,6 +194,22 @@ export default function App() {
         element={
           <ProtectedRoute>
             <FertilizerCapturePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ausruestung/duenger/:inventoryItemId/zugang"
+        element={
+          <ProtectedRoute>
+            <FertilizerStockIntakePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ausruestung/duenger/:inventoryItemId/abgang"
+        element={
+          <ProtectedRoute>
+            <FertilizerStockOutboundPage />
           </ProtectedRoute>
         }
       />
