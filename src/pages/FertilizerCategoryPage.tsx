@@ -16,13 +16,27 @@ function formatBalance(value: number, unit: string): string {
   return `${formatted} ${unit}`
 }
 
+function formatPackageSize(value: number, unit: string): string {
+  const formatted = Number.isInteger(value)
+    ? String(value)
+    : value.toLocaleString('de-DE', { maximumFractionDigits: 4 })
+  return `${formatted} ${unit}`
+}
+
 function StockList({ items }: { items: FertilizerStockListItem[] }) {
   return (
     <ul className={styles.stockList}>
       {items.map((item) => (
         <li key={item.id}>
           <Link className={styles.stockItem} to={FERTILIZER_ROUTES.hub}>
-            <span className={styles.stockItemName}>{item.productLabel}</span>
+            <span className={styles.stockItemMain}>
+              <span className={styles.stockItemName}>{item.productLabel}</span>
+              {item.packageSizeValue != null && item.packageSizeUnit && (
+                <span className={styles.stockItemMeta}>
+                  Gebinde {formatPackageSize(item.packageSizeValue, item.packageSizeUnit)}
+                </span>
+              )}
+            </span>
             <span className={styles.stockItemBalance}>
               {formatBalance(item.balance, item.unit)}
             </span>

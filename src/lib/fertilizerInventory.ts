@@ -7,6 +7,12 @@ import type {
   FertilizerStockListItem,
 } from '../types/fertilizerInventory'
 import { parseStockStatusPayload } from './fertilizerInventoryCore'
+import {
+  FERTILIZER_STOCK_LIST_CONTAINER_SELECT,
+  partitionFertilizerStockListItems,
+  projectFertilizerStockListItem,
+  type FertilizerStockListContainerRow,
+} from './fertilizerInventoryStockListCore'
 
 const INVENTORY_ERROR_MESSAGES: Record<string, string> = {
   NOT_AUTHENTICATED: 'Bitte melde dich erneut an.',
@@ -110,28 +116,7 @@ export interface FertilizerStockListView {
 export async function fetchFertilizerStockList(): Promise<FertilizerStockListView> {
   const { data: containers, error: containersError } = await supabase
     .from('fertilizer_containers')
-    .select(
-      `
-      id,
-      product_id,
-      recognition_candidate_id,
-      package_size_unit,
-      label,
-      fertilizer_recognition_candidates (
-        brand,
-        product_line,
-        product_name,
-        product_form,
-        package_size_unit
-      ),
-      products (
-        official_name,
-        manufacturer,
-        product_form,
-        default_unit
-      )
-    `,
-    )
+    .select(FERTILIZER_STOCK_LIST_CONTAINER_SELECT)
     .is('archived_at', null)
     .order('created_at', { ascending: false })
 
@@ -139,12 +124,11 @@ export async function fetchFertilizerStockList(): Promise<FertilizerStockListVie
     throw mapInventoryError(containersError, 'Der Düngerbestand konnte nicht geladen werden.')
   }
 
-  const inStock: FertilizerStockListItem[] = []
-  const outOfStock: FertilizerStockListItem[] = []
+  const items: FertilizerStockListItem[] = []
 
-  for (const container of containers ?? []) {
+  for (const container of (containers ?? []) as FertilizerStockListContainerRow[]) {
     const { data: balance, error: balanceError } = await supabase.rpc('fertilizer_container_balance', {
-      p_container_id: container.id as string,
+      p_container_id: container.id,
     })
 
     if (balanceError) {
@@ -152,58 +136,14 @@ export async function fetchFertilizerStockList(): Promise<FertilizerStockListVie
     }
 
     const numericBalance = typeof balance === 'number' ? balance : Number(balance ?? 0)
-
-    const candidateRaw = container.fertilizer_recognition_candidates
-    const productRaw = container.products
-    const candidate = (Array.isArray(candidateRaw) ? candidateRaw[0] : candidateRaw) as Record<
-      string,
-      unknown
-    > | null
-    const product = (Array.isArray(productRaw) ? productRaw[0] : productRaw) as Record<
-      string,
-      unknown
-    > | null
-
-    const productLabel =
-      (container.label as string | null) ??
-      (product
-        ? `${product.manufacturer ?? ''} ${product.official_name ?? ''}`.trim()
-        : candidate
-          ? [candidate.brand, candidate.product_line, candidate.product_name]
-              .filter(Boolean)
-              .join(' · ')
-          : 'Dünger')
-
-    const unit =
-      (container.package_size_unit as string | null) ??
-      (candidate?.package_size_unit as string | null) ??
-      (product?.default_unit as string | null) ??
-      'kg'
-
-    const productFormRaw =
-      (product?.product_form as string | null) ??
-      (candidate?.product_form as string | null) ??
-      null
-
-    const productForm =
-      productFormRaw === 'granular' || productFormRaw === 'liquid' ? productFormRaw : null
-
-    const item: FertilizerStockListItem = {
-      id: container.id as string,
-      productLabel,
-      balance: numericBalance,
-      unit,
-      catalogProductId: (container.product_id as string | null) ?? null,
-      recognitionCandidateId: (container.recognition_candidate_id as string | null) ?? null,
-      productForm,
-    }
-
-    if (numericBalance > 0) {
-      inStock.push(item)
-    } else {
-      outOfStock.push(item)
-    }
+    items.push(projectFertilizerStockListItem(container, numericBalance))
   }
 
-  return { inStock, outOfStock }
+  return partitionFertilizerStockListItems(items)
 }
+
+export {
+  FERTILIZER_STOCK_LIST_CONTAINER_SELECT,
+  projectFertilizerStockListItem,
+  partitionFertilizerStockListItems,
+} from './fertilizerInventoryStockListCore'

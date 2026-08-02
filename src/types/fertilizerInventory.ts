@@ -59,6 +59,10 @@ export interface FertilizerStockListItem {
   catalogProductId: string | null
   recognitionCandidateId: string | null
   productForm: 'granular' | 'liquid' | 'unknown' | null
+  manufacturer: string | null
+  packageSizeValue: number | null
+  packageSizeUnit: string | null
+  savedProductProfileId: string | null
 }
 
 export interface FertilizerRecognitionCandidatePayload {
