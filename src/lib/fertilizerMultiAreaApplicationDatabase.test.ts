@@ -12,6 +12,7 @@ import {
   createCreationDatabaseTestUser,
   createEmptyMultiAreaDatabaseTestState,
   createInventoryItemForMultiAreaTest,
+  deleteAreaForMultiAreaTest,
   ensureMultiAreaMigrationsApplied,
   extractMultiAreaErrorCode,
   insertMultiAreaTestArea,
@@ -50,6 +51,22 @@ function confirmedInputUnit(normalized: NormalizedFertilizerMultiAreaApplication
   return normalized.mode === 'rate_per_sqm' ? normalized.effortRateUnit : normalized.baseUnit
 }
 
+
+function compareAreaIdsOrdinal(left: string, right: string): number {
+  const normalizedLeft = left.toLowerCase()
+  const normalizedRight = right.toLowerCase()
+  if (normalizedLeft < normalizedRight) {
+    return -1
+  }
+  if (normalizedLeft > normalizedRight) {
+    return 1
+  }
+  return 0
+}
+
+function sortAreaIdsCanonical(areaIds: readonly string[]): string[] {
+  return [...areaIds].map((id) => id.toLowerCase()).sort(compareAreaIdsOrdinal)
+}
 
 function amountsByAreaId(
   areas: ReadonlyArray<{ areaId: string; applicationAmount: number }>,
@@ -514,9 +531,7 @@ describeDb('fertilizerMultiAreaApplicationDatabase', () => {
         idempotencyKey: uniqueKey('sort-order'),
       })
 
-      const expectedOrder = [areas.area1Id, areas.area2Id]
-        .map((id) => id.toLowerCase())
-        .sort((left, right) => left.localeCompare(right))
+      const expectedOrder = sortAreaIdsCanonical([areas.area1Id, areas.area2Id])
       expect(applied.result!.areas.map((area) => area.areaId.toLowerCase())).toEqual(expectedOrder)
       expect(applied.result!.areas.map((area) => area.sortOrder)).toEqual([0, 1])
     })
@@ -552,15 +567,22 @@ describeDb('fertilizerMultiAreaApplicationDatabase', () => {
          order by sort_order`,
         [applied.result!.applicationBatchId],
       )
+      const canonicalAreaIds = sortAreaIdsCanonical([areas.area1Id, areas.area2Id])
+      const snapshotsByAreaId = Object.fromEntries(
+        [
+          { areaId: areas.area1Id, name: areas.area1Name, size: '100.25' },
+          { areaId: areas.area2Id, name: areas.area2Name, size: '50.50' },
+        ].map((entry) => [entry.areaId.toLowerCase(), entry]),
+      )
       expect(rows[0]).toMatchObject({
-        area_id: areas.area1Id,
-        area_name_snapshot: areas.area1Name,
-        area_size_sqm_snapshot: '100.25',
+        area_id: canonicalAreaIds[0],
+        area_name_snapshot: snapshotsByAreaId[canonicalAreaIds[0]!]!.name,
+        area_size_sqm_snapshot: snapshotsByAreaId[canonicalAreaIds[0]!]!.size,
       })
       expect(rows[1]).toMatchObject({
-        area_id: areas.area2Id,
-        area_name_snapshot: areas.area2Name,
-        area_size_sqm_snapshot: '50.50',
+        area_id: canonicalAreaIds[1],
+        area_name_snapshot: snapshotsByAreaId[canonicalAreaIds[1]!]!.name,
+        area_size_sqm_snapshot: snapshotsByAreaId[canonicalAreaIds[1]!]!.size,
       })
     })
 
@@ -1431,7 +1453,9 @@ describeDb('fertilizerMultiAreaApplicationDatabase', () => {
       })
       expect(artifacts.batches).toBe(0)
       expect(await countActivitiesForAreaIds([areaId])).toBe(activityCountBefore)
+      expect(artifacts.activities).toBe(0)
       expect(artifacts.fertilizationDetails).toBe(0)
+      expect(artifacts.movements).toBe(0)
     })
 
     it('MA-DB-36 balance unchanged on reference validation failure', async () => {
@@ -1497,7 +1521,7 @@ describeDb('fertilizerMultiAreaApplicationDatabase', () => {
         inventoryItemId: setup.itemId,
       })
       expect(artifacts.batches).toBe(0)
-      expect(artifacts.movements).toBe(1)
+      expect(artifacts.movements).toBe(0)
     })
 
     it('MA-DB-38 overdraft failure leaves no batch and unchanged balance', async () => {
@@ -1669,7 +1693,7 @@ describeDb('fertilizerMultiAreaApplicationDatabase', () => {
       const secondaryId = primaryId === baseline.area1Id ? baseline.area2Id : baseline.area1Id
       const balanceBefore = await computeContainerBalance(pgClient, baseline.itemId)
 
-      await pgClient.query(`delete from public.areas where id = $1`, [primaryId])
+      await deleteAreaForMultiAreaTest(pgClient, primaryId)
 
       const { rows: remainingBatchAreas } = await pgClient.query(
         `select area_id from public.fertilizer_application_areas where application_batch_id = $1`,
@@ -1701,7 +1725,7 @@ describeDb('fertilizerMultiAreaApplicationDatabase', () => {
       const baseline = await applyTwoAreaRateBaseline(state, 'delete-primary')
       const primaryAreaId = baseline.result.areas[0]!.areaId
 
-      await pgClient.query(`delete from public.areas where id = $1`, [primaryAreaId])
+      await deleteAreaForMultiAreaTest(pgClient, primaryAreaId)
 
       const { rows } = await pgClient.query(
         `select activity_id from public.fertilizer_stock_movements where id = $1`,
@@ -1715,9 +1739,8 @@ describeDb('fertilizerMultiAreaApplicationDatabase', () => {
       const baseline = await applyTwoAreaRateBaseline(state, 'delete-all')
       const balanceBefore = await computeContainerBalance(pgClient, baseline.itemId)
 
-      await pgClient.query(`delete from public.areas where id = any($1::uuid[])`, [
-        [baseline.area1Id, baseline.area2Id],
-      ])
+      await deleteAreaForMultiAreaTest(pgClient, baseline.area1Id)
+      await deleteAreaForMultiAreaTest(pgClient, baseline.area2Id)
 
       const { rows: batches } = await pgClient.query(
         `select id from public.fertilizer_application_batches where id = $1`,

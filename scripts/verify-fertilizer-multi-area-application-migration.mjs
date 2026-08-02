@@ -481,6 +481,61 @@ log(
     : 'batch insert must follow all reference validation',
 )
 
+includesAll('FMA-68 delete_area RPC binds deletion context', sql, [
+  'create or replace function public.delete_area(p_area_id uuid)',
+  '_gk_bind_area_deletion_context',
+  'delete from public.areas a where a.id = p_area_id',
+])
+
+includesAll('FMA-69 area deletion context helpers', sql, [
+  '_gk_bind_area_deletion_context',
+  '_gk_area_deletion_context_matches',
+  'gk_area_deletion_context',
+  'on commit drop',
+])
+
+log(
+  'FMA-70 per-area too-small check precedes precision check',
+  positionOf(
+    rpcBody,
+    "(v_area_entry ->> 'applicationAmount')::numeric < 0.0001",
+  ) < positionOf(rpcBody, "round((v_area_entry ->> 'applicationAmount')::numeric, 4)"),
+  positionOf(
+    rpcBody,
+    "(v_area_entry ->> 'applicationAmount')::numeric < 0.0001",
+  ) < positionOf(rpcBody, "round((v_area_entry ->> 'applicationAmount')::numeric, 4)")
+    ? 'too-small validation precedes precision validation in per-area loop'
+    : 'too-small must be checked before precision in per-area loop',
+)
+
+log(
+  'FMA-71 proportional distribution invalid precedes total invalid',
+  positionOf(rpcBody, 'APPLICATION_DISTRIBUTION_INVALID') <
+    positionOf(rpcBody, 'p_confirmed_input_value is distinct from p_total_application_amount'),
+  positionOf(rpcBody, 'APPLICATION_DISTRIBUTION_INVALID') <
+    positionOf(rpcBody, 'p_confirmed_input_value is distinct from p_total_application_amount')
+    ? 'distribution sum check precedes confirmed/total mismatch'
+    : 'distribution invalid must precede total invalid for proportional mode',
+)
+
+includesAll('FMA-72 canonical result sort order', rpcBody, [
+  "jsonb_agg(entry order by lower(entry ->> 'areaId'))",
+])
+
+includesAll('FMA-74 movement immutability allows activity_id null on area delete', sql, [
+  'prevent_fertilizer_stock_movement_mutation',
+  '_gk_area_deletion_context_matches',
+  '_gk_area_deletion_context_active',
+  'new.activity_id is null',
+])
+
+includesAll('FMA-75 batch allows care group snapshot null during area delete', sql, [
+  'prevent_fertilizer_application_batch_mutation',
+  '_gk_area_deletion_context_active',
+  'new.care_group_id_snapshot is null',
+  'old.care_group_id_snapshot is not null',
+])
+
 const failed = results.filter((entry) => !entry.ok)
 if (failed.length > 0) {
   process.exitCode = 1

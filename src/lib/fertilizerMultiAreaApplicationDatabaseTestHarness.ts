@@ -33,6 +33,7 @@ export const MULTI_AREA_DB_DEV_REF = CREATION_DB_DEV_REF
 export const MULTI_AREA_MIGRATION_FILE = '20250809_fertilizer_multi_area_application_atomic.sql'
 export const APPLY_FERTILIZER_INVENTORY_ITEM_TO_AREAS_RPC =
   'apply_fertilizer_inventory_item_to_areas'
+export const DELETE_AREA_RPC = 'delete_area'
 
 function readMultiAreaMigrationSql(): string {
   return readFileSync(
@@ -304,21 +305,26 @@ export async function countMultiAreaFailureArtifacts(
     [options.userId, options.idempotencyKey],
   )
   const activities = await client.query(
-    `select count(*)::int as count from public.activities where user_id = $1`,
-    [options.userId],
+    `select count(*)::int as count
+     from public.activities act
+     join public.fertilizer_application_batches b on b.user_id = act.user_id
+     join public.fertilization_details fd on fd.activity_id = act.id and fd.application_batch_id = b.id
+     where b.user_id = $1 and b.idempotency_key = $2`,
+    [options.userId, options.idempotencyKey],
   )
   const details = await client.query(
     `select count(*)::int as count
      from public.fertilization_details fd
-     join public.activities act on act.id = fd.activity_id
-     where act.user_id = $1`,
-    [options.userId],
+     join public.fertilizer_application_batches b on b.id = fd.application_batch_id
+     where b.user_id = $1 and b.idempotency_key = $2`,
+    [options.userId, options.idempotencyKey],
   )
   const movements = await client.query(
     `select count(*)::int as count
-     from public.fertilizer_stock_movements
-     where container_id = $1`,
-    [options.inventoryItemId],
+     from public.fertilizer_stock_movements m
+     join public.fertilizer_application_batches b on b.movement_id = m.id
+     where b.user_id = $1 and b.idempotency_key = $2`,
+    [options.userId, options.idempotencyKey],
   )
 
   return {
@@ -329,6 +335,13 @@ export async function countMultiAreaFailureArtifacts(
   }
 }
 
+export async function deleteAreaForMultiAreaTest(
+  client: Client,
+  areaId: string,
+): Promise<void> {
+  await client.query(`select public.delete_area($1::uuid)`, [areaId])
+}
+
 export async function purgeMultiAreaDatabaseTestData(
   client: Client,
   state: MultiAreaDatabaseTestState,
@@ -337,20 +350,8 @@ export async function purgeMultiAreaDatabaseTestData(
 ): Promise<void> {
   const areaIds = [...new Set(state.areaIds)]
 
-  if (areaIds.length > 0) {
-    await client.query('begin')
-    try {
-      for (const areaId of areaIds) {
-        await client.query(`select set_config('greenkeeper.area_deletion_id', $1, true)`, [
-          areaId.toLowerCase(),
-        ])
-        await client.query(`delete from public.areas where id = $1`, [areaId])
-      }
-      await client.query('commit')
-    } catch (error) {
-      await client.query('rollback').catch(() => undefined)
-      throw error
-    }
+  for (const areaId of areaIds) {
+    await deleteAreaForMultiAreaTest(client, areaId)
   }
 
   if (options.deleteUsers !== false) {

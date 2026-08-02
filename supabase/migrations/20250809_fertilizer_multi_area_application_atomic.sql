@@ -47,6 +47,16 @@ create table if not exists public.fertilizer_application_batches (
     )
 );
 
+alter table public.fertilizer_application_batches
+  drop constraint if exists fertilizer_application_batches_care_group_selection_check;
+
+alter table public.fertilizer_application_batches
+  add constraint fertilizer_application_batches_care_group_selection_check
+    check (
+      (selection_source = 'manual' and care_group_id_snapshot is null)
+      or selection_source = 'care_group'
+    );
+
 create unique index if not exists fertilizer_application_batches_user_idempotency_idx
   on public.fertilizer_application_batches (user_id, idempotency_key);
 
@@ -162,13 +172,90 @@ comment on column public.fertilizer_stock_movements.application_batch_id is
 -- DL-032 area deletion context
 -- ---------------------------------------------------------------------------
 
+create or replace function public._gk_ensure_area_deletion_context_table()
+returns void
+language plpgsql
+set search_path = public
+as $$
+begin
+  create temporary table if not exists gk_area_deletion_context (
+    area_id uuid primary key
+  ) on commit drop;
+end;
+$$;
+
+create or replace function public._gk_bind_area_deletion_context(p_area_id uuid)
+returns void
+language plpgsql
+set search_path = public
+as $$
+begin
+  perform public._gk_ensure_area_deletion_context_table();
+  insert into gk_area_deletion_context (area_id)
+  values (p_area_id)
+  on conflict (area_id) do nothing;
+  perform set_config('greenkeeper.area_deletion_id', lower(p_area_id::text), true);
+end;
+$$;
+
+create or replace function public._gk_area_deletion_context_matches(p_area_id uuid)
+returns boolean
+language plpgsql
+volatile
+set search_path = public
+as $$
+declare
+  v_deletion_id text;
+begin
+  if p_area_id is null then
+    return false;
+  end if;
+
+  v_deletion_id := nullif(trim(current_setting('greenkeeper.area_deletion_id', true)), '');
+  if v_deletion_id is not null and lower(p_area_id::text) = lower(v_deletion_id) then
+    return true;
+  end if;
+
+  begin
+    return exists (
+      select 1
+      from gk_area_deletion_context c
+      where c.area_id = p_area_id
+    );
+  exception
+    when undefined_table then
+      return false;
+  end;
+end;
+$$;
+
+create or replace function public._gk_area_deletion_context_active()
+returns boolean
+language plpgsql
+volatile
+set search_path = public
+as $$
+begin
+  if nullif(trim(current_setting('greenkeeper.area_deletion_id', true)), '') is not null then
+    return true;
+  end if;
+
+  begin
+    return exists (select 1 from gk_area_deletion_context limit 1);
+  exception
+    when undefined_table then
+      return false;
+  end;
+end;
+$$;
+
 create or replace function public.set_area_deletion_context()
 returns trigger
 language plpgsql
 set search_path = public
 as $$
 begin
-  perform set_config('greenkeeper.area_deletion_id', lower(old.id::text), true);
+  perform public._gk_bind_area_deletion_context(old.id);
   return old;
 end;
 $$;
@@ -179,6 +266,35 @@ create trigger areas_set_deletion_context
   for each row
   execute function public.set_area_deletion_context();
 
+-- Legitimate area hard delete: bind deletion context and delete in one transaction.
+create or replace function public.delete_area(p_area_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid := auth.uid();
+begin
+  if v_user_id is not null then
+    if not exists (
+      select 1
+      from public.areas a
+      where a.id = p_area_id
+        and a.user_id = v_user_id
+    ) then
+      raise exception 'AREA_NOT_FOUND';
+    end if;
+  end if;
+
+  perform public._gk_bind_area_deletion_context(p_area_id);
+  delete from public.areas a where a.id = p_area_id;
+end;
+$$;
+
+comment on function public.delete_area(uuid) is
+  'Hard delete one owned area — sets transaction-local greenkeeper.area_deletion_id for DL-032 cascades.';
+
 -- ---------------------------------------------------------------------------
 -- Immutability guards (DL-030 exception for area deletion — DL-032)
 -- ---------------------------------------------------------------------------
@@ -188,8 +304,6 @@ returns trigger
 language plpgsql
 set search_path = public
 as $$
-declare
-  v_deletion_id text;
 begin
   if exists (
     select 1
@@ -197,11 +311,8 @@ begin
     where fd.activity_id = old.id
       and (fd.inventory_item_id is not null or fd.application_batch_id is not null)
   ) then
-    if tg_op = 'DELETE' then
-      v_deletion_id := nullif(trim(current_setting('greenkeeper.area_deletion_id', true)), '');
-      if v_deletion_id is not null and lower(old.area_id::text) = lower(v_deletion_id) then
-        return old;
-      end if;
+    if tg_op = 'DELETE' and public._gk_area_deletion_context_matches(old.area_id) then
+      return old;
     end if;
 
     raise exception 'FERTILIZER_APPLICATION_ACTIVITY_IMMUTABLE';
@@ -217,30 +328,39 @@ language plpgsql
 set search_path = public
 as $$
 declare
-  v_deletion_id text;
   v_area_id uuid;
 begin
   if old.inventory_item_id is not null or old.application_batch_id is not null then
     if tg_op = 'DELETE' then
-      v_deletion_id := nullif(trim(current_setting('greenkeeper.area_deletion_id', true)), '');
-      if v_deletion_id is not null then
-        select a.area_id
-        into v_area_id
-        from public.activities a
-        where a.id = old.activity_id;
+      select a.area_id
+      into v_area_id
+      from public.activities a
+      where a.id = old.activity_id;
 
-        if v_area_id is not null and lower(v_area_id::text) = lower(v_deletion_id) then
-          return old;
-        end if;
+      if public._gk_area_deletion_context_matches(v_area_id) then
+        return old;
+      end if;
 
-        if exists (
-          select 1
-          from public.fertilizer_application_areas faa
-          where faa.activity_id = old.activity_id
-            and lower(faa.area_id::text) = lower(v_deletion_id)
-        ) then
-          return old;
-        end if;
+      if v_area_id is null and public._gk_area_deletion_context_active() then
+        return old;
+      end if;
+
+      if exists (
+        select 1
+        from public.fertilizer_application_areas faa
+        where faa.activity_id = old.activity_id
+          and public._gk_area_deletion_context_matches(faa.area_id)
+      ) then
+        return old;
+      end if;
+
+      if old.application_batch_id is not null and exists (
+        select 1
+        from public.fertilizer_application_areas faa
+        where faa.application_batch_id = old.application_batch_id
+          and public._gk_area_deletion_context_matches(faa.area_id)
+      ) then
+        return old;
       end if;
 
       raise exception 'FERTILIZER_APPLICATION_FERTILIZATION_IMMUTABLE';
@@ -267,6 +387,32 @@ begin
 
   if tg_op = 'UPDATE' then
     if old.completed_at is not null then
+      if public._gk_area_deletion_context_active()
+        and new.care_group_id_snapshot is null
+        and old.care_group_id_snapshot is not null
+        and new.id is not distinct from old.id
+        and new.user_id is not distinct from old.user_id
+        and new.inventory_item_id is not distinct from old.inventory_item_id
+        and new.saved_product_profile_id is not distinct from old.saved_product_profile_id
+        and new.application_mode is not distinct from old.application_mode
+        and new.selection_source is not distinct from old.selection_source
+        and new.confirmed_input_value is not distinct from old.confirmed_input_value
+        and new.confirmed_input_unit is not distinct from old.confirmed_input_unit
+        and new.total_application_amount is not distinct from old.total_application_amount
+        and new.application_unit is not distinct from old.application_unit
+        and new.applied_at is not distinct from old.applied_at
+        and new.note is not distinct from old.note
+        and new.idempotency_key is not distinct from old.idempotency_key
+        and new.source_event_ref is not distinct from old.source_event_ref
+        and new.request_fingerprint is not distinct from old.request_fingerprint
+        and new.movement_id is not distinct from old.movement_id
+        and new.result_jsonb is not distinct from old.result_jsonb
+        and new.completed_at is not distinct from old.completed_at
+        and new.created_at is not distinct from old.created_at
+      then
+        return new;
+      end if;
+
       raise exception 'FERTILIZER_MULTI_AREA_APPLICATION_BATCH_IMMUTABLE';
     end if;
 
@@ -301,23 +447,21 @@ returns trigger
 language plpgsql
 set search_path = public
 as $$
-declare
-  v_deletion_id text;
 begin
   if tg_op = 'UPDATE' then
     raise exception 'FERTILIZER_MULTI_AREA_APPLICATION_BATCH_AREA_IMMUTABLE';
   end if;
 
   if tg_op = 'DELETE' then
-    v_deletion_id := nullif(trim(current_setting('greenkeeper.area_deletion_id', true)), '');
-    if v_deletion_id is not null and (
-      lower(old.area_id::text) = lower(v_deletion_id)
-      or exists (
-        select 1
-        from public.activities act
-        where act.id = old.activity_id
-          and lower(act.area_id::text) = lower(v_deletion_id)
-      )
+    if public._gk_area_deletion_context_matches(old.area_id) then
+      return old;
+    end if;
+
+    if exists (
+      select 1
+      from public.activities act
+      where act.id = old.activity_id
+        and public._gk_area_deletion_context_matches(act.area_id)
     ) then
       return old;
     end if;
@@ -326,6 +470,107 @@ begin
   end if;
 
   return coalesce(new, old);
+end;
+$$;
+
+-- DL-032: allow movement.activity_id SET NULL when primary activity is removed by area deletion.
+create or replace function public.prevent_fertilizer_stock_movement_mutation()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_legacy_upgrade boolean;
+  v_activity_area_id uuid;
+begin
+  if tg_op = 'DELETE' then
+    raise exception 'INVENTORY_MOVEMENT_IMMUTABLE';
+  end if;
+
+  v_legacy_upgrade := coalesce(current_setting('greenkeeper.fertilizer_legacy_upgrade', true), '') = '1';
+
+  if tg_op = 'UPDATE'
+    and old.activity_id is not null
+    and new.activity_id is null
+  then
+    select a.area_id
+    into v_activity_area_id
+    from public.activities a
+    where a.id = old.activity_id;
+
+    if (
+      public._gk_area_deletion_context_matches(v_activity_area_id)
+      or (v_activity_area_id is null and public._gk_area_deletion_context_active())
+    )
+      and new.id is not distinct from old.id
+    and new.container_id is not distinct from old.container_id
+    and new.quantity_delta is not distinct from old.quantity_delta
+    and new.unit is not distinct from old.unit
+    and new.movement_type is not distinct from old.movement_type
+    and new.movement_date is not distinct from old.movement_date
+    and new.capture_idempotency_key is not distinct from old.capture_idempotency_key
+    and new.note is not distinct from old.note
+    and new.created_at is not distinct from old.created_at
+    and new.user_id is not distinct from old.user_id
+    and new.movement_at is not distinct from old.movement_at
+    and new.inventory_idempotency_key is not distinct from old.inventory_idempotency_key
+    and new.source_event_ref is not distinct from old.source_event_ref
+    and new.access_kind is not distinct from old.access_kind
+    and new.session_access_hash is not distinct from old.session_access_hash
+    and new.movement_origin is not distinct from old.movement_origin
+    and new.application_batch_id is not distinct from old.application_batch_id
+  then
+    return new;
+  end if;
+  end if;
+
+  if tg_op = 'UPDATE' and v_legacy_upgrade then
+    if new.id is distinct from old.id
+      or new.container_id is distinct from old.container_id
+      or new.quantity_delta is distinct from old.quantity_delta
+      or new.unit is distinct from old.unit
+      or new.movement_type is distinct from old.movement_type
+      or new.movement_date is distinct from old.movement_date
+      or new.capture_idempotency_key is distinct from old.capture_idempotency_key
+      or new.note is distinct from old.note
+      or new.created_at is distinct from old.created_at
+      or new.activity_id is distinct from old.activity_id
+      or new.user_id is distinct from old.user_id
+    then
+      raise exception 'INVENTORY_MOVEMENT_IMMUTABLE';
+    end if;
+
+    if old.movement_at is not null and new.movement_at is distinct from old.movement_at then
+      raise exception 'INVENTORY_MOVEMENT_IMMUTABLE';
+    end if;
+
+    if old.inventory_idempotency_key is not null
+      and new.inventory_idempotency_key is distinct from old.inventory_idempotency_key then
+      raise exception 'INVENTORY_MOVEMENT_IMMUTABLE';
+    end if;
+
+    if old.source_event_ref is not null and new.source_event_ref is distinct from old.source_event_ref then
+      raise exception 'INVENTORY_MOVEMENT_IMMUTABLE';
+    end if;
+
+    if old.access_kind is not null and new.access_kind is distinct from old.access_kind then
+      raise exception 'INVENTORY_MOVEMENT_IMMUTABLE';
+    end if;
+
+    if old.session_access_hash is not null
+      and new.session_access_hash is distinct from old.session_access_hash then
+      raise exception 'INVENTORY_MOVEMENT_IMMUTABLE';
+    end if;
+
+    if old.movement_origin is not null
+      and new.movement_origin is distinct from old.movement_origin then
+      raise exception 'INVENTORY_MOVEMENT_IMMUTABLE';
+    end if;
+
+    return new;
+  end if;
+
+  raise exception 'INVENTORY_MOVEMENT_IMMUTABLE';
 end;
 $$;
 
@@ -772,10 +1017,6 @@ begin
     if p_confirmed_input_unit <> p_application_unit then
       raise exception 'FERTILIZER_MULTI_AREA_APPLICATION_APPLICATION_UNIT_INVALID';
     end if;
-
-    if p_confirmed_input_value is distinct from p_total_application_amount then
-      raise exception 'FERTILIZER_MULTI_AREA_APPLICATION_APPLICATION_TOTAL_INVALID';
-    end if;
   end if;
 
   perform pg_advisory_xact_lock(
@@ -821,7 +1062,7 @@ begin
     end if;
 
     if (v_area_entry ->> 'applicationAmount') is null
-      or (v_area_entry ->> 'applicationAmount')::numeric <= 0 then
+      or (v_area_entry ->> 'applicationAmount')::numeric < 0.0001 then
       raise exception 'FERTILIZER_MULTI_AREA_APPLICATION_APPLICATION_AMOUNT_TOO_SMALL';
     end if;
 
@@ -1065,6 +1306,10 @@ begin
   if p_application_mode = 'total_amount_proportional' then
     if v_total_scaled is distinct from public._fertilizer_multi_area_scale_quantity(p_total_application_amount) then
       raise exception 'FERTILIZER_MULTI_AREA_APPLICATION_APPLICATION_DISTRIBUTION_INVALID';
+    end if;
+
+    if p_confirmed_input_value is distinct from p_total_application_amount then
+      raise exception 'FERTILIZER_MULTI_AREA_APPLICATION_APPLICATION_TOTAL_INVALID';
     end if;
 
     perform public._fertilizer_multi_area_validate_proportional_distribution(
@@ -1376,3 +1621,6 @@ grant execute on function public.apply_fertilizer_inventory_item_to_areas(
   text,
   uuid
 ) to authenticated, service_role;
+
+revoke all on function public.delete_area(uuid) from public;
+grant execute on function public.delete_area(uuid) to authenticated, service_role;
