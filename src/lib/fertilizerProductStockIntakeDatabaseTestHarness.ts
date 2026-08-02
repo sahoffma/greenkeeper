@@ -5,16 +5,32 @@ import type { Client } from 'pg'
 import {
   CREATION_DB_TEST_PREFIX,
   connectCreationTestPg,
-  createAdminSupabaseClient,
-  createAuthenticatedSupabaseClient,
-  createCreationDatabaseTestUser,
+  createAdminSupabaseClient as createCloudAdminSupabaseClient,
+  createAuthenticatedSupabaseClient as createCloudAuthenticatedSupabaseClient,
+  createCreationDatabaseTestUser as createCloudCreationDatabaseTestUser,
   ensureCreationMigrationsApplied,
   insertSavedProductProfileFixture,
   loadCreationDatabaseTestConfig,
-  reloadPostgrestSchema,
+  reloadPostgrestSchema as reloadCloudPostgrestSchema,
   type CreationDatabaseTestConfig,
   type CreationDatabaseTestState,
 } from './fertilizerInventoryCreationDatabaseTestHarness'
+import {
+  callLocalProductStockIntakeRpc,
+  connectLocalProductStockIntakeTestPg,
+  createLocalProductStockIntakeAdminClient,
+  createLocalProductStockIntakeAuthClient,
+  createLocalProductStockIntakeTestUser,
+  isLocalProductStockIntakeAdminClient,
+  isLocalProductStockIntakeAuthClient,
+  isLocalProductStockIntakeDatabaseTestConfig,
+  loadLocalProductStockIntakeDatabaseTestConfig,
+  purgeLocalProductStockIntakeDatabaseTestData,
+  reloadLocalPostgrestSchema,
+  stopLocalProductStockIntakePostgres,
+  type LocalProductStockIntakeAuthClient,
+  type LocalProductStockIntakeDatabaseTestConfig,
+} from './fertilizerProductStockIntakeLocalPostgresHarness'
 import { RECORD_FERTILIZER_PRODUCT_STOCK_INTAKE_RPC } from './fertilizerProductStockIntakeRpcCore'
 
 export const PRODUCT_STOCK_DB_TEST_PREFIX = `${CREATION_DB_TEST_PREFIX}-ps`
@@ -28,6 +44,14 @@ const PRODUCT_STOCK_MIGRATION = {
       and table_name = 'fertilizer_containers'
       and column_name = 'stock_kind'`,
 } as const
+
+export type ProductStockIntakeDatabaseTestConfig =
+  | CreationDatabaseTestConfig
+  | LocalProductStockIntakeDatabaseTestConfig
+
+export type ProductStockIntakeAuthClient = SupabaseClient | LocalProductStockIntakeAuthClient
+
+export type ProductStockIntakeAdminClient = SupabaseClient | ReturnType<typeof createLocalProductStockIntakeAdminClient>
 
 export interface ProductStockIntakeDatabaseTestState extends CreationDatabaseTestState {
   intakeReceiptIds: string[]
@@ -45,8 +69,8 @@ export interface ProductStockIntakeRpcCallParams {
   note?: string | null
 }
 
-export function loadProductStockIntakeDatabaseTestConfig(): CreationDatabaseTestConfig | null {
-  return loadCreationDatabaseTestConfig()
+export function loadProductStockIntakeDatabaseTestConfig(): ProductStockIntakeDatabaseTestConfig | null {
+  return loadLocalProductStockIntakeDatabaseTestConfig() ?? loadCreationDatabaseTestConfig()
 }
 
 export function createEmptyProductStockIntakeDatabaseTestState(): ProductStockIntakeDatabaseTestState {
@@ -64,12 +88,23 @@ export function createEmptyProductStockIntakeDatabaseTestState(): ProductStockIn
 }
 
 export async function connectProductStockIntakeTestPg(
-  config: CreationDatabaseTestConfig,
+  config: ProductStockIntakeDatabaseTestConfig,
 ): Promise<Client> {
+  if (isLocalProductStockIntakeDatabaseTestConfig(config)) {
+    return connectLocalProductStockIntakeTestPg(config)
+  }
+
   return connectCreationTestPg(config)
 }
 
-export async function ensureProductStockIntakeMigrationsApplied(client: Client): Promise<boolean> {
+export async function ensureProductStockIntakeMigrationsApplied(
+  client: Client,
+  config?: ProductStockIntakeDatabaseTestConfig | null,
+): Promise<boolean> {
+  if (config && isLocalProductStockIntakeDatabaseTestConfig(config)) {
+    return false
+  }
+
   const creationApplied = await ensureCreationMigrationsApplied(client)
   let applied = creationApplied
 
@@ -99,10 +134,16 @@ export function buildProductStockIntakeRpcParams(
 }
 
 export async function callProductStockIntakeRpc(
-  client: SupabaseClient,
+  client: ProductStockIntakeAuthClient,
   params: ProductStockIntakeRpcCallParams,
 ): Promise<{ data: unknown; error: { message: string } | null }> {
-  return client.rpc(RECORD_FERTILIZER_PRODUCT_STOCK_INTAKE_RPC, buildProductStockIntakeRpcParams(params))
+  const rpcParams = buildProductStockIntakeRpcParams(params)
+
+  if (isLocalProductStockIntakeAuthClient(client)) {
+    return callLocalProductStockIntakeRpc(client, rpcParams)
+  }
+
+  return client.rpc(RECORD_FERTILIZER_PRODUCT_STOCK_INTAKE_RPC, rpcParams)
 }
 
 export function extractProductStockIntakeErrorCode(message: string): string | null {
@@ -164,11 +205,70 @@ export async function withTestReplicationRole(
   }
 }
 
+export function createAdminSupabaseClient(
+  config: ProductStockIntakeDatabaseTestConfig,
+): ProductStockIntakeAdminClient {
+  if (isLocalProductStockIntakeDatabaseTestConfig(config)) {
+    return createLocalProductStockIntakeAdminClient()
+  }
+
+  return createCloudAdminSupabaseClient(config)
+}
+
+export async function createProductStockIntakeAuthenticatedClient(
+  config: ProductStockIntakeDatabaseTestConfig,
+  user: { id: string; email: string; password: string },
+): Promise<ProductStockIntakeAuthClient> {
+  if (isLocalProductStockIntakeDatabaseTestConfig(config)) {
+    return createLocalProductStockIntakeAuthClient(user)
+  }
+
+  return createCloudAuthenticatedSupabaseClient(config, user.email, user.password)
+}
+
+export async function createCreationDatabaseTestUser(
+  admin: ProductStockIntakeAdminClient,
+  state: CreationDatabaseTestState,
+  label: string,
+  password = 'Gk7bDbTest123!',
+): Promise<{ id: string; email: string; password: string }> {
+  if (isLocalProductStockIntakeAdminClient(admin)) {
+    return createLocalProductStockIntakeTestUser(state, label, password)
+  }
+
+  return createCloudCreationDatabaseTestUser(admin, state, label, password)
+}
+
+export async function reloadPostgrestSchema(
+  client: Client,
+  config?: ProductStockIntakeDatabaseTestConfig | null,
+): Promise<void> {
+  if (config && isLocalProductStockIntakeDatabaseTestConfig(config)) {
+    await reloadLocalPostgrestSchema(client)
+    return
+  }
+
+  await reloadCloudPostgrestSchema(client)
+}
+
+export async function stopProductStockIntakeDatabaseTestEnvironment(
+  config: ProductStockIntakeDatabaseTestConfig | null,
+): Promise<void> {
+  if (config && isLocalProductStockIntakeDatabaseTestConfig(config)) {
+    await stopLocalProductStockIntakePostgres()
+  }
+}
+
 export async function purgeProductStockIntakeDatabaseTestData(
   client: Client,
   state: ProductStockIntakeDatabaseTestState,
-  admin: SupabaseClient,
+  admin: ProductStockIntakeAdminClient,
 ): Promise<void> {
+  if (isLocalProductStockIntakeAdminClient(admin)) {
+    await purgeLocalProductStockIntakeDatabaseTestData(client, state)
+    return
+  }
+
   const receiptIds = [...new Set(state.intakeReceiptIds)]
   const containerIds = [...new Set(state.containerIds.filter(Boolean))]
   const profileIds = [...new Set(state.profileIds)]
@@ -271,11 +371,4 @@ export async function countProductStockArtifacts(
   }
 }
 
-export {
-  connectCreationTestPg,
-  createAdminSupabaseClient,
-  createAuthenticatedSupabaseClient,
-  createCreationDatabaseTestUser,
-  insertSavedProductProfileFixture,
-  reloadPostgrestSchema,
-}
+export { insertSavedProductProfileFixture, isLocalProductStockIntakeDatabaseTestConfig }

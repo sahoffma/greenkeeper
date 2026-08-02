@@ -273,15 +273,27 @@ begin
 
   v_movement_at := coalesce(p_movement_at, timezone('utc', now()));
 
-  v_canonical_json := jsonb_build_object(
-    'savedProductProfileId', p_saved_product_profile_id::text,
-    'baseUnit', p_base_unit,
-    'quantity', public._product_stock_intake_format_quantity(v_quantity),
-    'reason', p_reason,
-    'sourceEventRef', v_source_event_ref,
-    'note', v_note,
-    'movementAt', to_char(v_movement_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
-  )::text;
+  -- Fingerprint excludes default movement_at so idempotent replay works without an explicit client timestamp.
+  if p_movement_at is not null then
+    v_canonical_json := jsonb_build_object(
+      'savedProductProfileId', p_saved_product_profile_id::text,
+      'baseUnit', p_base_unit,
+      'quantity', public._product_stock_intake_format_quantity(v_quantity),
+      'reason', p_reason,
+      'sourceEventRef', v_source_event_ref,
+      'note', v_note,
+      'movementAt', to_char(p_movement_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+    )::text;
+  else
+    v_canonical_json := jsonb_build_object(
+      'savedProductProfileId', p_saved_product_profile_id::text,
+      'baseUnit', p_base_unit,
+      'quantity', public._product_stock_intake_format_quantity(v_quantity),
+      'reason', p_reason,
+      'sourceEventRef', v_source_event_ref,
+      'note', v_note
+    )::text;
+  end if;
 
   v_fingerprint := public._product_stock_intake_compute_fingerprint(v_canonical_json);
 
@@ -330,8 +342,7 @@ begin
       end if;
 
       if v_receipt.result_jsonb is not null then
-        v_replay := true;
-        return v_receipt.result_jsonb;
+        return v_receipt.result_jsonb || jsonb_build_object('idempotency_replay', true);
       end if;
   end;
 

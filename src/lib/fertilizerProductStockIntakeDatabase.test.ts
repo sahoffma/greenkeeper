@@ -10,9 +10,9 @@ import {
   connectProductStockIntakeTestPg,
   countProductStockArtifacts,
   createAdminSupabaseClient,
-  createAuthenticatedSupabaseClient,
   createCreationDatabaseTestUser,
   createEmptyProductStockIntakeDatabaseTestState,
+  createProductStockIntakeAuthenticatedClient,
   ensureProductStockIntakeMigrationsApplied,
   extractProductStockIntakeErrorCode,
   insertSavedProductProfileFixture,
@@ -21,11 +21,12 @@ import {
   PRODUCT_STOCK_DB_TEST_PREFIX,
   purgeProductStockIntakeDatabaseTestData,
   reloadPostgrestSchema,
+  stopProductStockIntakeDatabaseTestEnvironment,
   trackProductStockIntakeResult,
   withTestReplicationRole,
+  type ProductStockIntakeDatabaseTestConfig,
   type ProductStockIntakeDatabaseTestState,
 } from './fertilizerProductStockIntakeDatabaseTestHarness'
-import type { CreationDatabaseTestConfig } from './fertilizerInventoryCreationDatabaseTestHarness'
 
 const config = loadProductStockIntakeDatabaseTestConfig()
 const describeDb = config ? describe : describe.skip
@@ -34,17 +35,18 @@ describeDb('fertilizerProductStockIntakeDatabase', () => {
   let pgClient: Client
   let admin: ReturnType<typeof createAdminSupabaseClient>
   let state: ProductStockIntakeDatabaseTestState
-  const testConfig = config as CreationDatabaseTestConfig
+  const testConfig = config as ProductStockIntakeDatabaseTestConfig
 
   beforeAll(async () => {
     pgClient = await connectProductStockIntakeTestPg(testConfig)
-    await ensureProductStockIntakeMigrationsApplied(pgClient)
-    await reloadPostgrestSchema(pgClient)
+    await ensureProductStockIntakeMigrationsApplied(pgClient, testConfig)
+    await reloadPostgrestSchema(pgClient, testConfig)
     admin = createAdminSupabaseClient(testConfig)
   }, 120_000)
 
   afterAll(async () => {
     await pgClient.end()
+    await stopProductStockIntakeDatabaseTestEnvironment(testConfig)
   })
 
   afterEach(async () => {
@@ -86,11 +88,7 @@ describeDb('fertilizerProductStockIntakeDatabase', () => {
   it('DB-1 first intake creates one product_stock item and one movement', async () => {
     state = createEmptyProductStockIntakeDatabaseTestState()
     const user = await createCreationDatabaseTestUser(admin, state, 'first-intake')
-    const authClient = await createAuthenticatedSupabaseClient(
-      testConfig,
-      user.email,
-      user.password,
-    )
+    const authClient = await createProductStockIntakeAuthenticatedClient(testConfig, user)
     const profile = await insertSavedProductProfileFixture(pgClient, state, {
       accessKind: 'authenticated_user',
       userId: user.id,
@@ -134,11 +132,7 @@ describeDb('fertilizerProductStockIntakeDatabase', () => {
   it('DB-2 second intake reuses the same item and adds another movement', async () => {
     state = createEmptyProductStockIntakeDatabaseTestState()
     const user = await createCreationDatabaseTestUser(admin, state, 'second-intake')
-    const authClient = await createAuthenticatedSupabaseClient(
-      testConfig,
-      user.email,
-      user.password,
-    )
+    const authClient = await createProductStockIntakeAuthenticatedClient(testConfig, user)
     const profile = await insertSavedProductProfileFixture(pgClient, state, {
       accessKind: 'authenticated_user',
       userId: user.id,
@@ -182,11 +176,7 @@ describeDb('fertilizerProductStockIntakeDatabase', () => {
   it('DB-3 idempotent replay returns same ids without duplicate movement', async () => {
     state = createEmptyProductStockIntakeDatabaseTestState()
     const user = await createCreationDatabaseTestUser(admin, state, 'idempotent-replay')
-    const authClient = await createAuthenticatedSupabaseClient(
-      testConfig,
-      user.email,
-      user.password,
-    )
+    const authClient = await createProductStockIntakeAuthenticatedClient(testConfig, user)
     const profile = await insertSavedProductProfileFixture(pgClient, state, {
       accessKind: 'authenticated_user',
       userId: user.id,
@@ -227,11 +217,7 @@ describeDb('fertilizerProductStockIntakeDatabase', () => {
   it('DB-4 same idempotency key with different payload conflicts', async () => {
     state = createEmptyProductStockIntakeDatabaseTestState()
     const user = await createCreationDatabaseTestUser(admin, state, 'idempotent-conflict')
-    const authClient = await createAuthenticatedSupabaseClient(
-      testConfig,
-      user.email,
-      user.password,
-    )
+    const authClient = await createProductStockIntakeAuthenticatedClient(testConfig, user)
     const profile = await insertSavedProductProfileFixture(pgClient, state, {
       accessKind: 'authenticated_user',
       userId: user.id,
@@ -267,11 +253,7 @@ describeDb('fertilizerProductStockIntakeDatabase', () => {
   it('DB-5 rejects invalid quantity and reason', async () => {
     state = createEmptyProductStockIntakeDatabaseTestState()
     const user = await createCreationDatabaseTestUser(admin, state, 'invalid-inputs')
-    const authClient = await createAuthenticatedSupabaseClient(
-      testConfig,
-      user.email,
-      user.password,
-    )
+    const authClient = await createProductStockIntakeAuthenticatedClient(testConfig, user)
     const profile = await insertSavedProductProfileFixture(pgClient, state, {
       accessKind: 'authenticated_user',
       userId: user.id,
@@ -316,11 +298,7 @@ describeDb('fertilizerProductStockIntakeDatabase', () => {
   it('DB-6 parallel first intakes with different keys create one item and two movements', async () => {
     state = createEmptyProductStockIntakeDatabaseTestState()
     const user = await createCreationDatabaseTestUser(admin, state, 'parallel-first')
-    const authClient = await createAuthenticatedSupabaseClient(
-      testConfig,
-      user.email,
-      user.password,
-    )
+    const authClient = await createProductStockIntakeAuthenticatedClient(testConfig, user)
     const profile = await insertSavedProductProfileFixture(pgClient, state, {
       accessKind: 'authenticated_user',
       userId: user.id,
@@ -368,11 +346,7 @@ describeDb('fertilizerProductStockIntakeDatabase', () => {
     state = createEmptyProductStockIntakeDatabaseTestState()
     const owner = await createCreationDatabaseTestUser(admin, state, 'owner')
     const other = await createCreationDatabaseTestUser(admin, state, 'other')
-    const otherClient = await createAuthenticatedSupabaseClient(
-      testConfig,
-      other.email,
-      other.password,
-    )
+    const otherClient = await createProductStockIntakeAuthenticatedClient(testConfig, other)
     const profile = await insertSavedProductProfileFixture(pgClient, state, {
       accessKind: 'authenticated_user',
       userId: owner.id,
@@ -396,11 +370,7 @@ describeDb('fertilizerProductStockIntakeDatabase', () => {
   it('DB-8 legacy creation path can coexist with product_stock intake', async () => {
     state = createEmptyProductStockIntakeDatabaseTestState()
     const user = await createCreationDatabaseTestUser(admin, state, 'legacy-coexist')
-    const authClient = await createAuthenticatedSupabaseClient(
-      testConfig,
-      user.email,
-      user.password,
-    )
+    const authClient = await createProductStockIntakeAuthenticatedClient(testConfig, user)
     const profile = await insertSavedProductProfileFixture(pgClient, state, {
       accessKind: 'authenticated_user',
       userId: user.id,
