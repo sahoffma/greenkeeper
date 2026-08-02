@@ -22,9 +22,10 @@ Neue Entscheidung: [Template](./templates/ga-template.md) · [README](./README.m
 | [GA-012](./ga-012.md) | Berechneter Bestand aus Bewegungen | 📋 Geplant | Hoch |
 | [GA-013](./ga-013.md) | KI-gestützte Düngererkennung — Architektur (Stufe 1 Product Profiles) | ✅ Stufe 1 umgesetzt | Hoch |
 | [GA-014](./ga-014.md) | Product Enrichment Engine | 📋 Geplant | Hoch |
+| [GA-015](./ga-015.md) | Produktbasierter Düngerbestand — technische Umstellung | 📋 Geplant | Hoch |
 
 ---
 
 ## Abstimmung mit Produkt-Governance
 
-Produkte folgen zusätzlich [product-governance.md](../product-governance.md). GA-001 und GA-002 gelten fachlich auch für Produkte; technische Umsetzung ist dort spezifiziert. Fachliche Modellentscheidungen zu Produkten siehe [GM-003](../model/gm-003.md). Persönlicher Düngerbestand und Bestandsbewegungen: [GM-008](../model/gm-008.md), [GA-012](./ga-012.md).
+Produkte folgen zusätzlich [product-governance.md](../product-governance.md). GA-001 und GA-002 gelten fachlich auch für Produkte; technische Umsetzung ist dort spezifiziert. Fachliche Modellentscheidungen zu Produkten siehe [GM-003](../model/gm-003.md). Persönlicher Düngerbestand und Bestandsbewegungen: [GM-008](../model/gm-008.md), [GA-012](./ga-012.md), [GA-015](./ga-015.md) (Umsetzungsplan DL-033).
