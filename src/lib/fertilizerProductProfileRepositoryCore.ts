@@ -4,7 +4,7 @@ import type {
   FertilizerSavedProductProfile,
 } from '../types/fertilizerProductProfile'
 import type { DeriveSessionAccessHash } from './fertilizerEnrichmentSessionAccessHashCore'
-import { isValidSessionAccessHash } from './fertilizerEnrichmentSessionAccessHashCore'
+import { isValidSessionAccessHash } from './fertilizerSessionAccessHashValidationCore'
 
 export const FERTILIZER_PRODUCT_PROFILE_REPOSITORY_ERROR_CODES = [
   'invalid_stored_record',

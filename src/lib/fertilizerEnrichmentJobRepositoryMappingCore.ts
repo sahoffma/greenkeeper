@@ -7,7 +7,7 @@ import type {
 } from '../types/fertilizerEnrichmentOrchestration'
 import { FERTILIZER_ENRICHMENT_ORCHESTRATION_STATUSES } from '../types/fertilizerEnrichmentOrchestration'
 import type { DeriveSessionAccessHash } from './fertilizerEnrichmentSessionAccessHashCore'
-import { isValidSessionAccessHash } from './fertilizerEnrichmentSessionAccessHashCore'
+import { isValidSessionAccessHash } from './fertilizerSessionAccessHashValidationCore'
 import type { FertilizerEnrichmentJobRecord } from './fertilizerEnrichmentJobRepositoryCore'
 import { FertilizerEnrichmentJobRepositoryError } from './fertilizerEnrichmentJobRepositoryCore'
 

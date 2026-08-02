@@ -11,7 +11,7 @@ import {
   type FertilizerInventoryItem,
   type FertilizerInventoryMovement,
 } from '../types/fertilizerInventoryCore'
-import { isValidSessionAccessHash } from './fertilizerEnrichmentSessionAccessHashCore'
+import { isValidSessionAccessHash } from './fertilizerSessionAccessHashValidationCore'
 
 const MAX_INVENTORY_QUANTITY = 100_000
 const MAX_INVENTORY_DECIMAL_PLACES = 4

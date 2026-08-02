@@ -1,8 +1,9 @@
 import { createHmac } from 'node:crypto'
+import { isValidSessionAccessHash } from './fertilizerSessionAccessHashValidationCore'
 
 export type DeriveSessionAccessHash = (sessionId: string) => string
 
-const SESSION_ACCESS_HASH_HEX_PATTERN = /^[0-9a-f]{64}$/
+export { isValidSessionAccessHash }
 
 export function createDeriveSessionAccessHash(secret: string): DeriveSessionAccessHash {
   const normalizedSecret = secret.trim()
@@ -18,8 +19,4 @@ export function createDeriveSessionAccessHash(secret: string): DeriveSessionAcce
 
     return createHmac('sha256', normalizedSecret).update(normalizedSessionId, 'utf8').digest('hex')
   }
-}
-
-export function isValidSessionAccessHash(value: string): boolean {
-  return SESSION_ACCESS_HASH_HEX_PATTERN.test(value)
 }
