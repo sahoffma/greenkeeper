@@ -3,8 +3,7 @@ import { Link } from 'react-router-dom'
 import { HomeAppShell } from '../components/home/HomeAppShell'
 import { FertilizerCaptureButton } from '../components/equipment/FertilizerCaptureButton'
 import { SubpageHeader } from '../components/layout/SubpageHeader'
-import type { FertilizerCaptureProductForm } from '../data/fertilizerCaptureFixtures'
-import { shouldShowProductFormFilter } from '../lib/fertilizerCaptureCore'
+import { layoutStockListByProductForm } from '../lib/fertilizerCaptureCore'
 import { fetchFertilizerStockList } from '../lib/fertilizerInventory'
 import type { FertilizerStockListItem } from '../types/fertilizerInventory'
 import { FERTILIZER_ROUTES } from '../lib/fertilizerRoutes'
@@ -17,8 +16,49 @@ function formatBalance(value: number, unit: string): string {
   return `${formatted} ${unit}`
 }
 
+function StockList({ items }: { items: FertilizerStockListItem[] }) {
+  return (
+    <ul className={styles.stockList}>
+      {items.map((item) => (
+        <li key={item.id}>
+          <Link className={styles.stockItem} to={FERTILIZER_ROUTES.hub}>
+            <span className={styles.stockItemName}>{item.productLabel}</span>
+            <span className={styles.stockItemBalance}>
+              {formatBalance(item.balance, item.unit)}
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function StockListSection({ items }: { items: FertilizerStockListItem[] }) {
+  if (items.length === 0) {
+    return null
+  }
+
+  const layout = layoutStockListByProductForm(items)
+
+  if (layout.mode === 'flat') {
+    return <StockList items={layout.items} />
+  }
+
+  return (
+    <div className={styles.formGroupList}>
+      {layout.groups.map((group) => (
+        <section key={group.key} className={styles.formGroup} aria-label={group.label}>
+          <h3 className={styles.formGroupHeading}>{group.label}</h3>
+          <StockList items={group.items} />
+        </section>
+      ))}
+    </div>
+  )
+}
+
 export function FertilizerCategoryPage() {
-  const [items, setItems] = useState<FertilizerStockListItem[]>([])
+  const [inStock, setInStock] = useState<FertilizerStockListItem[]>([])
+  const [outOfStock, setOutOfStock] = useState<FertilizerStockListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -28,7 +68,8 @@ export function FertilizerCategoryPage() {
     void fetchFertilizerStockList()
       .then((data) => {
         if (!cancelled) {
-          setItems(data)
+          setInStock(data.inStock)
+          setOutOfStock(data.outOfStock)
         }
       })
       .catch((caught) => {
@@ -51,12 +92,6 @@ export function FertilizerCategoryPage() {
     }
   }, [])
 
-  const inStockForms = items
-    .map((item) => item.productForm)
-    .filter((form): form is FertilizerCaptureProductForm => form != null)
-
-  const showInStockFormFilter = shouldShowProductFormFilter(inStockForms)
-
   return (
     <HomeAppShell>
       <main className={styles.screen}>
@@ -72,21 +107,9 @@ export function FertilizerCategoryPage() {
         </div>
 
         <section className={styles.section} aria-labelledby="fertilizer-in-stock-heading">
-          <div className={styles.sectionHeaderRow}>
-            <h2 id="fertilizer-in-stock-heading" className={styles.sectionHeading}>
-              Im Bestand
-            </h2>
-            {showInStockFormFilter && (
-              <div className={styles.formFilter} role="group" aria-label="Produktform filtern">
-                <button type="button" className={styles.formFilterButton} aria-pressed="true">
-                  Granulat
-                </button>
-                <button type="button" className={styles.formFilterButton} aria-pressed="false">
-                  Flüssig
-                </button>
-              </div>
-            )}
-          </div>
+          <h2 id="fertilizer-in-stock-heading" className={styles.sectionHeading}>
+            Im Bestand
+          </h2>
 
           {loading && (
             <div className={styles.panel}>
@@ -100,7 +123,7 @@ export function FertilizerCategoryPage() {
             </div>
           )}
 
-          {!loading && !error && items.length === 0 && (
+          {!loading && !error && inStock.length === 0 && (
             <div className={styles.panel}>
               <p className={styles.emptyMessage}>Noch kein Dünger im Bestand.</p>
               <p className={styles.emptyHint}>
@@ -109,28 +132,23 @@ export function FertilizerCategoryPage() {
             </div>
           )}
 
-          {!loading && !error && items.length > 0 && (
-            <ul className={styles.stockList}>
-              {items.map((item) => (
-                <li key={item.id}>
-                  <Link
-                    className={styles.stockItem}
-                    to={FERTILIZER_ROUTES.hub}
-                  >
-                    <span className={styles.stockItemName}>{item.productLabel}</span>
-                    <span className={styles.stockItemBalance}>
-                      {formatBalance(item.balance, item.unit)}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
+          {!loading && !error && inStock.length > 0 && <StockListSection items={inStock} />}
         </section>
 
-        <details className={styles.collapsible}>
-          <summary className={styles.collapsibleSummary}>Nicht mehr im Bestand</summary>
-        </details>
+        {!loading && !error && (
+          <details className={styles.collapsible}>
+            <summary className={styles.collapsibleSummary}>Nicht mehr im Bestand</summary>
+            <div className={styles.collapsibleBody}>
+              {outOfStock.length === 0 ? (
+                <div className={styles.panel}>
+                  <p className={styles.emptyHint}>Keine leeren Bestände.</p>
+                </div>
+              ) : (
+                <StockListSection items={outOfStock} />
+              )}
+            </div>
+          </details>
+        )}
       </main>
     </HomeAppShell>
   )

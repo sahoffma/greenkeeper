@@ -102,7 +102,12 @@ export async function saveFertilizerCapture(input: {
   return parseSaveResult(data)
 }
 
-export async function fetchFertilizerStockList(): Promise<FertilizerStockListItem[]> {
+export interface FertilizerStockListView {
+  inStock: FertilizerStockListItem[]
+  outOfStock: FertilizerStockListItem[]
+}
+
+export async function fetchFertilizerStockList(): Promise<FertilizerStockListView> {
   const { data: containers, error: containersError } = await supabase
     .from('fertilizer_containers')
     .select(
@@ -134,7 +139,8 @@ export async function fetchFertilizerStockList(): Promise<FertilizerStockListIte
     throw mapInventoryError(containersError, 'Der Düngerbestand konnte nicht geladen werden.')
   }
 
-  const items: FertilizerStockListItem[] = []
+  const inStock: FertilizerStockListItem[] = []
+  const outOfStock: FertilizerStockListItem[] = []
 
   for (const container of containers ?? []) {
     const { data: balance, error: balanceError } = await supabase.rpc('fertilizer_container_balance', {
@@ -146,10 +152,6 @@ export async function fetchFertilizerStockList(): Promise<FertilizerStockListIte
     }
 
     const numericBalance = typeof balance === 'number' ? balance : Number(balance ?? 0)
-
-    if (numericBalance <= 0) {
-      continue
-    }
 
     const candidateRaw = container.fertilizer_recognition_candidates
     const productRaw = container.products
@@ -186,7 +188,7 @@ export async function fetchFertilizerStockList(): Promise<FertilizerStockListIte
     const productForm =
       productFormRaw === 'granular' || productFormRaw === 'liquid' ? productFormRaw : null
 
-    items.push({
+    const item: FertilizerStockListItem = {
       id: container.id as string,
       productLabel,
       balance: numericBalance,
@@ -194,8 +196,14 @@ export async function fetchFertilizerStockList(): Promise<FertilizerStockListIte
       catalogProductId: (container.product_id as string | null) ?? null,
       recognitionCandidateId: (container.recognition_candidate_id as string | null) ?? null,
       productForm,
-    })
+    }
+
+    if (numericBalance > 0) {
+      inStock.push(item)
+    } else {
+      outOfStock.push(item)
+    }
   }
 
-  return items
+  return { inStock, outOfStock }
 }

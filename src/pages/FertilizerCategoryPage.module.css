@@ -32,52 +32,32 @@
   margin-bottom: var(--space-md);
 }
 
-.sectionHeaderRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-sm);
-}
-
-.sectionHeaderRow .sectionHeading {
-  margin: 0;
-}
-
-.formFilter,
-.formFilterCollapsed {
-  display: flex;
-  gap: 6px;
-}
-
-.formFilterCollapsed {
-  padding: var(--space-xs) 0 var(--space-sm);
-}
-
-.formFilterButton {
-  min-height: 32px;
-  padding: 0 10px;
-  border: 1px solid rgba(31, 61, 43, 0.1);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
-  color: rgba(31, 61, 43, 0.72);
-  font: inherit;
-  font-size: 0.76rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.formFilterButton[aria-pressed='true'] {
-  border-color: rgba(47, 107, 79, 0.22);
-  background: rgba(230, 240, 234, 0.72);
-  color: #1f3d2b;
-}
-
 .sectionHeading {
   margin: 0 0 var(--space-sm);
   font-size: 0.84rem;
   font-weight: 600;
   color: rgba(31, 61, 43, 0.78);
+}
+
+.formGroupList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.formGroupHeading {
+  margin: 0;
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: rgba(31, 61, 43, 0.58);
 }
 
 .panel {

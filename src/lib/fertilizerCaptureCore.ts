@@ -5,7 +5,11 @@ import {
   type FertilizerCaptureProductForm,
 } from '../data/fertilizerCaptureFixtures'
 import type { FertilizerRecognitionCandidate } from '../types/fertilizerRecognitionCandidate'
-import type { FertilizerCaptureSaveResult, FertilizerProductStockStatus } from '../types/fertilizerInventory'
+import type {
+  FertilizerCaptureSaveResult,
+  FertilizerProductStockStatus,
+  FertilizerStockListItem,
+} from '../types/fertilizerInventory'
 import type { ProductRecognizeResult } from '../types/productRecognize'
 import {
   buildRecognitionCandidateFromResult,
@@ -433,6 +437,61 @@ function formatQuantity(value: number): string {
 export function shouldShowProductFormFilter(productFormsInView: FertilizerCaptureProductForm[]): boolean {
   const unique = new Set(productFormsInView)
   return unique.has('granular') && unique.has('liquid')
+}
+
+export type FertilizerStockFormGroupKey = FertilizerCaptureProductForm | 'unknown'
+
+export type FertilizerStockFormGroup = {
+  key: FertilizerStockFormGroupKey
+  label: string
+  items: FertilizerStockListItem[]
+}
+
+export type FertilizerStockListLayout =
+  | { mode: 'flat'; items: FertilizerStockListItem[] }
+  | { mode: 'byForm'; groups: FertilizerStockFormGroup[] }
+
+export const FERTILIZER_STOCK_UNKNOWN_FORM_GROUP_LABEL = 'Weitere Dünger'
+
+function isUnknownStockProductForm(
+  productForm: FertilizerStockListItem['productForm'],
+): boolean {
+  return productForm == null || productForm === 'unknown'
+}
+
+export function layoutStockListByProductForm(
+  items: FertilizerStockListItem[],
+): FertilizerStockListLayout {
+  const formsInView = items
+    .map((item) => item.productForm)
+    .filter((form): form is FertilizerCaptureProductForm => form === 'granular' || form === 'liquid')
+
+  if (!shouldShowProductFormFilter(formsInView)) {
+    return { mode: 'flat', items }
+  }
+
+  const granularItems = items.filter((item) => item.productForm === 'granular')
+  const liquidItems = items.filter((item) => item.productForm === 'liquid')
+  const unknownItems = items.filter((item) => isUnknownStockProductForm(item.productForm))
+  const groups: FertilizerStockFormGroup[] = []
+
+  if (granularItems.length > 0) {
+    groups.push({ key: 'granular', label: 'Granulat', items: granularItems })
+  }
+
+  if (liquidItems.length > 0) {
+    groups.push({ key: 'liquid', label: 'Flüssig', items: liquidItems })
+  }
+
+  if (unknownItems.length > 0) {
+    groups.push({
+      key: 'unknown',
+      label: FERTILIZER_STOCK_UNKNOWN_FORM_GROUP_LABEL,
+      items: unknownItems,
+    })
+  }
+
+  return { mode: 'byForm', groups }
 }
 
 export function createHomeResolvedHandoffDraft(): FertilizerCaptureDraft {
