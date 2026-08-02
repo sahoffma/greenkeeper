@@ -175,7 +175,19 @@ describeDb('fertilizerProductStockReadDatabase', () => {
 
     const { data, error } = await callListActiveProductStockViaRpc(authClient)
     expect(error).toBeNull()
-    expect(parseActiveProductStockListPayload(data).items).toHaveLength(0)
+    const activeItems = parseActiveProductStockListPayload(data).items
+    expect(activeItems).toHaveLength(0)
+    expect(activeItems.map((item) => item.inventoryItemId)).not.toContain(supersededId)
+
+    expect(
+      parseActiveProductStockItemPayload(
+        (await callGetActiveProductStockItemViaRpc(authClient, supersededId)).data,
+      ),
+    ).toBeNull()
+
+    const supersededRow = await loadContainerRowDirect(pgClient, supersededId)
+    expect(supersededRow?.superseded_by_container_id).toBe(legacyId)
+    expect(supersededRow?.archived_at).not.toBeNull()
   })
 
   it('DB-3 keeps kg and ml and different saved product profiles separate', async () => {
