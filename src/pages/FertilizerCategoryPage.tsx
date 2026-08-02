@@ -1,15 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { HomeAppShell } from '../components/home/HomeAppShell'
 import { FertilizerCaptureButton } from '../components/equipment/FertilizerCaptureButton'
 import { SubpageHeader } from '../components/layout/SubpageHeader'
 import { layoutStockListByProductForm } from '../lib/fertilizerCaptureCore'
-import {
-  getFertilizerApplicationIneligibilityMessage,
-  isFertilizerStockListItemApplicationEligible,
-} from '../lib/fertilizerApplicationFlowCore'
 import { fetchFertilizerStockList } from '../lib/fertilizerInventory'
-import { FERTILIZER_ROUTES, fertilizerApplicationPath } from '../lib/fertilizerRoutes'
+import { FERTILIZER_ROUTES } from '../lib/fertilizerRoutes'
 import type { FertilizerStockListItem } from '../types/fertilizerInventory'
 import styles from './FertilizerCategoryPage.module.css'
 
@@ -22,45 +17,19 @@ function formatBalance(item: FertilizerStockListItem): string {
   return `${formatted} ${unit}`
 }
 
-function formatPackageSize(value: number, unit: string): string {
-  const formatted = Number.isInteger(value)
-    ? String(value)
-    : value.toLocaleString('de-DE', { maximumFractionDigits: 4 })
-  return `${formatted} ${unit}`
-}
-
 function StockListItem({ item }: { item: FertilizerStockListItem }) {
-  const eligible = isFertilizerStockListItemApplicationEligible(item)
-  const applyPath = fertilizerApplicationPath(item.id)
-
   return (
     <li>
       <div className={styles.stockItem}>
         <div className={styles.stockItemMain}>
           <span className={styles.stockItemName}>{item.productLabel}</span>
-          {item.packageSizeValue != null && item.packageSizeUnit && (
-            <span className={styles.stockItemMeta}>
-              Gebinde {formatPackageSize(item.packageSizeValue, item.packageSizeUnit)}
-            </span>
-          )}
-          {!eligible && item.balance > 0 && (
-            <span className={styles.stockItemHint}>
-              {getFertilizerApplicationIneligibilityMessage(item)}
-            </span>
+          {item.manufacturer && (
+            <span className={styles.stockItemMeta}>{item.manufacturer}</span>
           )}
         </div>
 
         <div className={styles.stockItemActions}>
           <span className={styles.stockItemBalance}>{formatBalance(item)}</span>
-          {eligible ? (
-            <Link className={styles.applyAction} to={applyPath}>
-              Anwenden
-            </Link>
-          ) : (
-            <span className={styles.applyActionDisabled} aria-disabled="true">
-              Anwenden
-            </span>
-          )}
         </div>
       </div>
     </li>

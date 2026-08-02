@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { ConversationSection } from '../components/home/ConversationSection'
 import { HeroSection } from '../components/home/HeroSection'
 import { HomeAppShell } from '../components/home/HomeAppShell'
 import { LawnCarouselSection } from '../components/home/LawnCarouselSection'
 import { fetchAreas } from '../lib/areas'
+import { fertilizerHomeApplicationPath } from '../lib/fertilizerRoutes'
 import type { Area } from '../types/area'
 import styles from './HomeScreen.module.css'
 
@@ -40,6 +42,12 @@ export function HomeScreen() {
       <main className={styles.screen}>
         <HeroSection />
         <ConversationSection />
+
+        <section className={styles.activitySection} aria-label="Düngung erfassen">
+          <Link to={fertilizerHomeApplicationPath()} className={styles.fertilizerCta}>
+            Düngung erfassen
+          </Link>
+        </section>
 
         <div className={styles.lawnSpacing}>
           {loading && (

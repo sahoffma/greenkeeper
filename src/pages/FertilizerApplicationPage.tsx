@@ -18,6 +18,7 @@ import {
   buildMultiAreaApplicationCommandInput,
   buildSuccessAreaLabels,
   canSubmitFertilizerApplication,
+  filterApplicationEligibleProductStockItems,
   formatApplicationModeLabel,
   formatBalanceLabel,
   formatFertilizerProductFormLabel,
@@ -27,27 +28,45 @@ import {
   isAreaApplicableForFertilizerApplication,
   isFertilizerStockListItemApplicationEligible,
   isValidInventoryItemRouteId,
+  mapToApplicationProductOption,
+  resolveApplicationFlowPhase,
   resolveInitialDraftSelection,
+  shouldRedirectLegacyApplicationRoute,
   switchToManualAreaSelection,
   toggleAreaSelection,
   type FertilizerApplicationDraft,
   type FertilizerApplicationFlowPhase,
+  type FertilizerApplicationProductOption,
   validateFertilizerApplicationDraft,
 } from '../lib/fertilizerApplicationFlowCore'
-import { fetchFertilizerStockListItem } from '../lib/fertilizerInventory'
-import { FERTILIZER_ROUTES } from '../lib/fertilizerRoutes'
+import { fetchFertilizerStockList, fetchFertilizerStockListItem } from '../lib/fertilizerInventory'
+import {
+  FERTILIZER_ROUTES,
+  fertilizerHomeApplicationPath,
+} from '../lib/fertilizerRoutes'
 import { createRandomId } from '../lib/randomId'
 import type { Area } from '../types/area'
 import type { CareGroupSummary } from '../types/careGroup'
 import type { FertilizerStockListItem } from '../types/fertilizerInventory'
 import styles from './FertilizerApplicationPage.module.css'
 
-export function FertilizerApplicationPage() {
-  const { inventoryItemId = '' } = useParams<{ inventoryItemId: string }>()
+export type FertilizerApplicationEntryPoint = 'home' | 'legacy'
+
+interface FertilizerApplicationPageProps {
+  entryPoint?: FertilizerApplicationEntryPoint
+}
+
+export function FertilizerApplicationPage({
+  entryPoint = 'home',
+}: FertilizerApplicationPageProps) {
+  const { inventoryItemId } = useParams<{ inventoryItemId?: string }>()
   const navigate = useNavigate()
   const { user } = useAuth()
 
   const [item, setItem] = useState<FertilizerStockListItem | null>(null)
+  const [selectableProducts, setSelectableProducts] = useState<
+    FertilizerApplicationProductOption[]
+  >([])
   const [areas, setAreas] = useState<Area[]>([])
   const [careGroups, setCareGroups] = useState<CareGroupSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -70,22 +89,77 @@ export function FertilizerApplicationPage() {
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<FertilizerMultiAreaApplicationResult | null>(null)
 
+  const resolvedPhase = resolveApplicationFlowPhase({
+    inventoryItemId,
+    phase,
+  })
+  const isProductSelect = entryPoint === 'home' && resolvedPhase === 'product-select'
+  const backTo = entryPoint === 'home' ? '/' : FERTILIZER_ROUTES.hub
+  const backLabel = entryPoint === 'home' ? 'Zurück zur Startseite' : 'Zurück zu Dünger'
+
   useEffect(() => {
+    if (entryPoint !== 'home' || inventoryItemId) {
+      return
+    }
+
+    let cancelled = false
+
+    async function loadProductSelect() {
+      setLoading(true)
+      setLoadError(null)
+      setPhase('product-select')
+
+      try {
+        const stock = await fetchFertilizerStockList()
+        if (cancelled) {
+          return
+        }
+
+        setSelectableProducts(
+          filterApplicationEligibleProductStockItems(stock.inStock).map(mapToApplicationProductOption),
+        )
+      } catch (error) {
+        if (!cancelled) {
+          setLoadError(
+            error instanceof Error
+              ? error.message
+              : 'Die Produktbestände konnten nicht geladen werden.',
+          )
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void loadProductSelect()
+
+    return () => {
+      cancelled = true
+    }
+  }, [entryPoint, inventoryItemId])
+
+  useEffect(() => {
+    if (entryPoint === 'home' && !inventoryItemId) {
+      return
+    }
+
     if (!isValidInventoryItemRouteId(inventoryItemId)) {
-      setLoadError('Dieses Gebinde wurde nicht gefunden.')
+      setLoadError('Dieser Produktbestand wurde nicht gefunden.')
       setLoading(false)
       return
     }
 
     let cancelled = false
 
-    async function load() {
+    async function loadItemFlow() {
       setLoading(true)
       setLoadError(null)
 
       try {
         const [loadedItem, loadedAreas, memberships] = await Promise.all([
-          fetchFertilizerStockListItem(inventoryItemId),
+          fetchFertilizerStockListItem(inventoryItemId!),
           fetchAreas(),
           fetchCareGroupMemberships(),
         ])
@@ -94,8 +168,13 @@ export function FertilizerApplicationPage() {
           return
         }
 
+        if (entryPoint === 'legacy' && shouldRedirectLegacyApplicationRoute(loadedItem)) {
+          navigate(fertilizerHomeApplicationPath(inventoryItemId!), { replace: true })
+          return
+        }
+
         if (!loadedItem) {
-          setLoadError('Dieses Gebinde wurde nicht gefunden.')
+          setLoadError('Dieser Produktbestand wurde nicht gefunden.')
           setItem(null)
           return
         }
@@ -106,6 +185,7 @@ export function FertilizerApplicationPage() {
         setItem(loadedItem)
         setAreas(loadedAreas)
         setCareGroups(buildCareGroupSummaries(memberships))
+        setPhase('form')
         setDraft((current) => ({
           ...current,
           ...initialSelection,
@@ -113,7 +193,9 @@ export function FertilizerApplicationPage() {
       } catch (error) {
         if (!cancelled) {
           setLoadError(
-            error instanceof Error ? error.message : 'Das Gebinde konnte nicht geladen werden.',
+            error instanceof Error
+              ? error.message
+              : 'Der Produktbestand konnte nicht geladen werden.',
           )
         }
       } finally {
@@ -123,12 +205,12 @@ export function FertilizerApplicationPage() {
       }
     }
 
-    void load()
+    void loadItemFlow()
 
     return () => {
       cancelled = true
     }
-  }, [inventoryItemId])
+  }, [entryPoint, inventoryItemId, navigate])
 
   const applicableAreas = useMemo(() => getApplicableAreas(areas), [areas])
   const unitLabel = item?.baseUnit ?? item?.unit ?? 'kg'
@@ -240,6 +322,10 @@ export function FertilizerApplicationPage() {
     }))
   }
 
+  function handleSelectProduct(productId: string) {
+    navigate(fertilizerHomeApplicationPath(productId))
+  }
+
   const confirmationRows =
     item && validation.normalized
       ? buildFertilizerApplicationConfirmationRows({
@@ -257,15 +343,17 @@ export function FertilizerApplicationPage() {
     <HomeAppShell>
       <main className={styles.screen}>
         <SubpageHeader
-          title="Dünger anwenden"
-          backTo={FERTILIZER_ROUTES.hub}
-          backLabel="Zurück zu Dünger"
+          title={isProductSelect ? 'Düngung erfassen' : 'Dünger anwenden'}
+          backTo={isProductSelect ? '/' : entryPoint === 'home' ? FERTILIZER_ROUTES.homeApplication : backTo}
+          backLabel={isProductSelect ? 'Zurück zur Startseite' : backLabel}
         />
 
         {loading && (
           <section className={styles.section}>
             <div className={styles.panel}>
-              <p className={styles.emptyMessage}>Gebinde wird geladen…</p>
+              <p className={styles.emptyMessage}>
+                {isProductSelect ? 'Produktbestände werden geladen…' : 'Produktbestand wird geladen…'}
+              </p>
             </div>
           </section>
         )}
@@ -275,28 +363,73 @@ export function FertilizerApplicationPage() {
             <div className={styles.panel} role="alert">
               <p className={styles.emptyMessage}>{loadError}</p>
               <p className={styles.emptyHint}>
-                <Link to={FERTILIZER_ROUTES.hub}>Zurück zum Düngerbestand</Link>
+                <Link to={backTo}>{backLabel}</Link>
               </p>
             </div>
           </section>
         )}
 
-        {!loading && !loadError && item && !eligible && (
+        {!loading && !loadError && isProductSelect && (
+          <section className={styles.section} aria-labelledby="product-select-heading">
+            <h2 id="product-select-heading" className={styles.sectionHeading}>
+              Produktbestand wählen
+            </h2>
+
+            {selectableProducts.length === 0 ? (
+              <div className={styles.panel}>
+                <p className={styles.emptyMessage}>
+                  Aktuell ist kein anwendbarer Produktbestand verfügbar.
+                </p>
+                <p className={styles.emptyHint}>
+                  Eine Düngung kann nur auf aktive kanonische Bestände mit positivem Saldo
+                  angewendet werden.
+                </p>
+              </div>
+            ) : (
+              <ul className={styles.productSelectList}>
+                {selectableProducts.map((product) => (
+                  <li key={product.inventoryItemId}>
+                    <button
+                      type="button"
+                      className={styles.productSelectButton}
+                      onClick={() => handleSelectProduct(product.inventoryItemId)}
+                    >
+                      <span className={styles.productSelectMain}>
+                        <span className={styles.productSelectName}>{product.productLabel}</span>
+                        {product.manufacturer && (
+                          <span className={styles.productSelectMeta}>{product.manufacturer}</span>
+                        )}
+                        {product.productFormLabel && (
+                          <span className={styles.productSelectMeta}>{product.productFormLabel}</span>
+                        )}
+                      </span>
+                      <span className={styles.productSelectBalance}>{product.balanceLabel}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
+        {!loading && !loadError && item && !eligible && !isProductSelect && (
           <section className={styles.section}>
             <div className={styles.panel} role="alert">
-              <p className={styles.emptyMessage}>{getFertilizerApplicationIneligibilityMessage(item)}</p>
+              <p className={styles.emptyMessage}>
+                {getFertilizerApplicationIneligibilityMessage(item)}
+              </p>
               <p className={styles.emptyHint}>
-                <Link to={FERTILIZER_ROUTES.hub}>Zurück zum Düngerbestand</Link>
+                <Link to={backTo}>{backLabel}</Link>
               </p>
             </div>
           </section>
         )}
 
-        {!loading && !loadError && item && eligible && phase !== 'success' && (
+        {!loading && !loadError && item && eligible && !isProductSelect && phase !== 'success' && (
           <>
             <section className={styles.section} aria-labelledby="application-product-heading">
               <h2 id="application-product-heading" className={styles.sectionHeading}>
-                Gebinde
+                Produktbestand
               </h2>
               <div className={styles.panel}>
                 <div className={styles.productHeader}>
@@ -309,14 +442,6 @@ export function FertilizerApplicationPage() {
                     <div className={styles.detailRow}>
                       <dt>Produktform</dt>
                       <dd>{formatFertilizerProductFormLabel(item.productForm)}</dd>
-                    </div>
-                  )}
-                  {item.packageSizeValue != null && item.packageSizeUnit && (
-                    <div className={styles.detailRow}>
-                      <dt>Gebindegröße</dt>
-                      <dd>
-                        {formatBalanceLabel(item.packageSizeValue, item.packageSizeUnit)}
-                      </dd>
                     </div>
                   )}
                   <div className={styles.detailRow}>
@@ -527,7 +652,13 @@ export function FertilizerApplicationPage() {
                         type="button"
                         className={styles.secondaryAction}
                         disabled={submitting}
-                        onClick={() => navigate(FERTILIZER_ROUTES.hub)}
+                        onClick={() =>
+                          navigate(
+                            entryPoint === 'home'
+                              ? FERTILIZER_ROUTES.homeApplication
+                              : FERTILIZER_ROUTES.hub,
+                          )
+                        }
                       >
                         Verwerfen
                       </button>
@@ -544,7 +675,7 @@ export function FertilizerApplicationPage() {
           </>
         )}
 
-        {!loading && !loadError && item && eligible && phase === 'success' && result && (
+        {!loading && !loadError && item && eligible && !isProductSelect && phase === 'success' && result && (
           <section className={styles.section} aria-labelledby="application-success-heading">
             <div className={styles.panel}>
               <h2 id="application-success-heading" className={styles.successTitle}>
@@ -567,9 +698,9 @@ export function FertilizerApplicationPage() {
                 <button
                   type="button"
                   className={styles.primaryAction}
-                  onClick={() => navigate(FERTILIZER_ROUTES.hub)}
+                  onClick={() => navigate(entryPoint === 'home' ? '/' : FERTILIZER_ROUTES.hub)}
                 >
-                  Zurück zum Düngerbestand
+                  {entryPoint === 'home' ? 'Zurück zur Startseite' : 'Zurück zum Düngerbestand'}
                 </button>
               </div>
             </div>

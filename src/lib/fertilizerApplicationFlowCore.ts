@@ -11,8 +11,21 @@ import {
 } from './fertilizerMultiAreaApplicationCore'
 import type { FertilizerMultiAreaApplicationCommandInput } from './fertilizerMultiAreaApplication'
 import { validateApplicationAmount } from './fertilizerApplicationCore'
+import { fertilizerHomeApplicationPath } from './fertilizerRoutes'
 
-export type FertilizerApplicationFlowPhase = 'form' | 'confirm' | 'success'
+export type FertilizerApplicationFlowPhase =
+  | 'product-select'
+  | 'form'
+  | 'confirm'
+  | 'success'
+
+export interface FertilizerApplicationProductOption {
+  inventoryItemId: string
+  productLabel: string
+  manufacturer: string | null
+  balanceLabel: string
+  productFormLabel: string | null
+}
 
 export type FertilizerApplicationInputMode = FertilizerMultiAreaApplicationMode
 
@@ -78,6 +91,55 @@ export function isFertilizerStockListItemApplicationEligible(
     (item.baseUnit === 'kg' || item.baseUnit === 'ml') &&
     item.balance > 0
   )
+}
+
+export function filterApplicationEligibleProductStockItems(
+  items: readonly FertilizerStockListItem[],
+): FertilizerStockListItem[] {
+  return items.filter(isFertilizerStockListItemApplicationEligible)
+}
+
+export function resolveApplicationFlowPhase(input: {
+  inventoryItemId?: string
+  phase: FertilizerApplicationFlowPhase
+}): FertilizerApplicationFlowPhase {
+  if (!input.inventoryItemId) {
+    return 'product-select'
+  }
+
+  if (input.phase === 'product-select') {
+    return 'form'
+  }
+
+  return input.phase
+}
+
+export function buildFertilizerApplicationRoute(inventoryItemId?: string): string {
+  return fertilizerHomeApplicationPath(inventoryItemId)
+}
+
+export function shouldRedirectLegacyApplicationRoute(
+  item: FertilizerStockListItem | null,
+): boolean {
+  return item != null && isFertilizerStockListItemApplicationEligible(item)
+}
+
+export function mapToApplicationProductOption(
+  item: FertilizerStockListItem,
+): FertilizerApplicationProductOption {
+  const unit = item.baseUnit ?? item.unit
+  return {
+    inventoryItemId: item.id,
+    productLabel: item.productLabel,
+    manufacturer: item.manufacturer,
+    balanceLabel: formatBalanceLabel(item.balance, unit),
+    productFormLabel: formatFertilizerProductFormLabel(item.productForm),
+  }
+}
+
+export function formatProductStockSelectionLabel(item: FertilizerStockListItem): string {
+  const unit = item.baseUnit ?? item.unit
+  return `${item.productLabel} · ${formatBalanceLabel(item.balance, unit)}`
 }
 
 export function getFertilizerApplicationIneligibilityMessage(
@@ -524,7 +586,12 @@ export function canSubmitFertilizerApplication(input: {
   phase: FertilizerApplicationFlowPhase
   item: FertilizerStockListItem | null
 }): boolean {
-  return !input.submitting && input.phase !== 'success' && input.item != null
+  return (
+    !input.submitting &&
+    input.phase !== 'success' &&
+    input.phase !== 'product-select' &&
+    input.item != null
+  )
 }
 
 export function buildSuccessAreaLabels(

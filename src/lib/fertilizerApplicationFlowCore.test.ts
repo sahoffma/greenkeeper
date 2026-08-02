@@ -6,17 +6,28 @@ import {
   applyCareGroupSelection,
   buildCareGroupPreselection,
   buildFertilizerApplicationConfirmationRows,
+  buildFertilizerApplicationRoute,
   buildMultiAreaApplicationCommandInput,
+  filterApplicationEligibleProductStockItems,
   formatSelectionSourceLabel,
   getApplicableAreas,
   getApplicationInputUnitLabel,
   isAreaApplicableForFertilizerApplication,
+  isFertilizerStockListItemApplicationEligible,
+  mapToApplicationProductOption,
+  resolveApplicationFlowPhase,
   resolveInitialDraftSelection,
   shouldDiscardIdempotencyKey,
+  shouldRedirectLegacyApplicationRoute,
   switchToManualAreaSelection,
   toggleAreaSelection,
   validateFertilizerApplicationDraft,
 } from './fertilizerApplicationFlowCore'
+import {
+  fertilizerHomeApplicationPath,
+  fertilizerLegacyApplicationPath,
+  isLegacyFertilizerApplicationPath,
+} from './fertilizerRoutes'
 
 const PROFILE_ID = '22222222-2222-4222-8222-222222222222'
 const AREA_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
@@ -387,5 +398,105 @@ describe('fertilizerApplicationFlowCore unified area selection', () => {
       buildArea({ id: AREA_C, name: 'Ohne Größe', sizeSqm: null }),
     ])
     expect(preselected).toEqual([AREA_A])
+  })
+})
+
+describe('fertilizerApplicationFlowCore phase five home entry', () => {
+  const ITEM_A = '11111111-1111-4111-8111-111111111111'
+  const ITEM_B = '99999999-9999-4999-8999-999999999999'
+  const PROFILE_B = '33333333-3333-4333-8333-333333333333'
+
+  it('starts in product-select without inventory item id', () => {
+    expect(
+      resolveApplicationFlowPhase({ inventoryItemId: undefined, phase: 'form' }),
+    ).toBe('product-select')
+  })
+
+  it('accepts only application-eligible active canonical items', () => {
+    const eligible = buildItem({ id: ITEM_A, balance: 5 })
+    const zeroBalance = buildItem({ id: ITEM_B, balance: 0 })
+    const legacy = buildItem({
+      id: ITEM_B,
+      savedProductProfileId: null,
+      accessKind: 'session',
+      balance: 5,
+    })
+
+    expect(filterApplicationEligibleProductStockItems([eligible, zeroBalance, legacy])).toEqual([
+      eligible,
+    ])
+  })
+
+  it('keeps kg and ml and different saved profiles separate', () => {
+    const kgItem = buildItem({ id: ITEM_A, baseUnit: 'kg', unit: 'kg' })
+    const mlItem = buildItem({
+      id: ITEM_B,
+      savedProductProfileId: PROFILE_B,
+      baseUnit: 'ml',
+      unit: 'ml',
+      productForm: 'liquid',
+    })
+
+    const filtered = filterApplicationEligibleProductStockItems([kgItem, mlItem])
+    expect(filtered).toHaveLength(2)
+    expect(filtered.map((item) => item.id)).toEqual([ITEM_A, ITEM_B])
+  })
+
+  it('does not merge items by product label or package size', () => {
+    const first = buildItem({ id: ITEM_A, productLabel: 'Same Name', packageSizeValue: 5 })
+    const second = buildItem({
+      id: ITEM_B,
+      savedProductProfileId: PROFILE_B,
+      productLabel: 'Same Name',
+      packageSizeValue: 10,
+    })
+
+    expect(filterApplicationEligibleProductStockItems([first, second])).toHaveLength(2)
+  })
+
+  it('builds home application routes centrally', () => {
+    expect(buildFertilizerApplicationRoute()).toBe('/duengung')
+    expect(buildFertilizerApplicationRoute(ITEM_A)).toBe(`/duengung/${ITEM_A}`)
+    expect(fertilizerHomeApplicationPath()).toBe('/duengung')
+    expect(fertilizerLegacyApplicationPath(ITEM_A)).toBe(
+      `/ausruestung/duenger/${ITEM_A}/anwenden`,
+    )
+    expect(isLegacyFertilizerApplicationPath(`/ausruestung/duenger/${ITEM_A}/anwenden`)).toBe(true)
+  })
+
+  it('redirects legacy route only for eligible canonical items', () => {
+    expect(shouldRedirectLegacyApplicationRoute(buildItem({ balance: 3 }))).toBe(true)
+    expect(shouldRedirectLegacyApplicationRoute(null)).toBe(false)
+    expect(
+      shouldRedirectLegacyApplicationRoute(
+        buildItem({ balance: 0, savedProductProfileId: PROFILE_ID }),
+      ),
+    ).toBe(false)
+  })
+
+  it('maps product options without package size identity', () => {
+    const option = mapToApplicationProductOption(
+      buildItem({ productLabel: 'Test', manufacturer: 'Maker', balance: 2.5 }),
+    )
+    expect(option.inventoryItemId).toBe(ITEM_A)
+    expect(option.productLabel).toBe('Test')
+    expect(option.balanceLabel).toContain('2,5 kg')
+    expect(option.productFormLabel).toBe('Granulat')
+  })
+
+  it('preserves existing application flow phases after product selection', () => {
+    expect(
+      resolveApplicationFlowPhase({ inventoryItemId: ITEM_A, phase: 'product-select' }),
+    ).toBe('form')
+    expect(resolveApplicationFlowPhase({ inventoryItemId: ITEM_A, phase: 'confirm' })).toBe(
+      'confirm',
+    )
+  })
+
+  it('preserves eligibility helper semantics', () => {
+    expect(isFertilizerStockListItemApplicationEligible(buildItem())).toBe(true)
+    expect(isFertilizerStockListItemApplicationEligible(buildItem({ baseUnit: 'g' as 'kg' }))).toBe(
+      false,
+    )
   })
 })

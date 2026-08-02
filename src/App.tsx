@@ -164,10 +164,26 @@ export default function App() {
         }
       />
       <Route
+        path="/duengung"
+        element={
+          <ProtectedRoute>
+            <FertilizerApplicationPage entryPoint="home" />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/duengung/:inventoryItemId"
+        element={
+          <ProtectedRoute>
+            <FertilizerApplicationPage entryPoint="home" />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/ausruestung/duenger/:inventoryItemId/anwenden"
         element={
           <ProtectedRoute>
-            <FertilizerApplicationPage />
+            <FertilizerApplicationPage entryPoint="legacy" />
           </ProtectedRoute>
         }
       />
