@@ -7,12 +7,15 @@ import type {
   FertilizerStockListItem,
 } from '../types/fertilizerInventory'
 import { parseStockStatusPayload } from './fertilizerInventoryCore'
+import { partitionFertilizerStockListItems } from './fertilizerInventoryStockListCore'
 import {
-  FERTILIZER_STOCK_LIST_CONTAINER_SELECT,
-  partitionFertilizerStockListItems,
-  projectFertilizerStockListItem,
-  type FertilizerStockListContainerRow,
-} from './fertilizerInventoryStockListCore'
+  GET_ACTIVE_FERTILIZER_PRODUCT_STOCK_ITEM_RPC,
+  LIST_ACTIVE_FERTILIZER_PRODUCT_STOCK_RPC,
+  mapActiveProductStockRowToListItem,
+  mapActiveProductStockRowsToListItems,
+  parseActiveProductStockItemPayload,
+  parseActiveProductStockListPayload,
+} from './fertilizerProductStockReadCore'
 
 const INVENTORY_ERROR_MESSAGES: Record<string, string> = {
   NOT_AUTHENTICATED: 'Bitte melde dich erneut an.',
@@ -114,63 +117,39 @@ export interface FertilizerStockListView {
 }
 
 export async function fetchFertilizerStockList(): Promise<FertilizerStockListView> {
-  const { data: containers, error: containersError } = await supabase
-    .from('fertilizer_containers')
-    .select(FERTILIZER_STOCK_LIST_CONTAINER_SELECT)
-    .is('archived_at', null)
-    .order('created_at', { ascending: false })
+  const { data, error } = await supabase.rpc(LIST_ACTIVE_FERTILIZER_PRODUCT_STOCK_RPC)
 
-  if (containersError) {
-    throw mapInventoryError(containersError, 'Der Düngerbestand konnte nicht geladen werden.')
+  if (error) {
+    throw mapInventoryError(error, 'Der Düngerbestand konnte nicht geladen werden.')
   }
 
-  const items: FertilizerStockListItem[] = []
-
-  for (const container of (containers ?? []) as FertilizerStockListContainerRow[]) {
-    items.push(await loadProjectedStockListItem(container))
-  }
+  const payload = parseActiveProductStockListPayload(data)
+  const items = mapActiveProductStockRowsToListItems(payload.items)
 
   return partitionFertilizerStockListItems(items)
-}
-
-async function loadProjectedStockListItem(
-  container: FertilizerStockListContainerRow,
-): Promise<FertilizerStockListItem> {
-  const { data: balance, error: balanceError } = await supabase.rpc('fertilizer_container_balance', {
-    p_container_id: container.id,
-  })
-
-  if (balanceError) {
-    throw mapInventoryError(balanceError, 'Der Bestand konnte nicht berechnet werden.')
-  }
-
-  const numericBalance = typeof balance === 'number' ? balance : Number(balance ?? 0)
-  return projectFertilizerStockListItem(container, numericBalance)
 }
 
 export async function fetchFertilizerStockListItem(
   containerId: string,
 ): Promise<FertilizerStockListItem | null> {
-  const { data: container, error: containersError } = await supabase
-    .from('fertilizer_containers')
-    .select(FERTILIZER_STOCK_LIST_CONTAINER_SELECT)
-    .eq('id', containerId)
-    .is('archived_at', null)
-    .maybeSingle()
+  const { data, error } = await supabase.rpc(GET_ACTIVE_FERTILIZER_PRODUCT_STOCK_ITEM_RPC, {
+    p_inventory_item_id: containerId,
+  })
 
-  if (containersError) {
-    throw mapInventoryError(containersError, 'Das Gebinde konnte nicht geladen werden.')
+  if (error) {
+    throw mapInventoryError(error, 'Das Gebinde konnte nicht geladen werden.')
   }
 
-  if (!container) {
+  const row = parseActiveProductStockItemPayload(data)
+  if (!row) {
     return null
   }
 
-  return loadProjectedStockListItem(container as FertilizerStockListContainerRow)
+  return mapActiveProductStockRowToListItem(row)
 }
 
 export {
   FERTILIZER_STOCK_LIST_CONTAINER_SELECT,
-  projectFertilizerStockListItem,
   partitionFertilizerStockListItems,
+  projectFertilizerStockListItem,
 } from './fertilizerInventoryStockListCore'

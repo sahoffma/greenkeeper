@@ -13,10 +13,12 @@ import { FERTILIZER_ROUTES, fertilizerApplicationPath } from '../lib/fertilizerR
 import type { FertilizerStockListItem } from '../types/fertilizerInventory'
 import styles from './FertilizerCategoryPage.module.css'
 
-function formatBalance(value: number, unit: string): string {
+function formatBalance(item: FertilizerStockListItem): string {
+  const unit = item.baseUnit ?? item.unit
+  const value = item.balance
   const formatted = Number.isInteger(value)
     ? String(value)
-    : value.toLocaleString('de-DE', { maximumFractionDigits: 1 })
+    : value.toLocaleString('de-DE', { maximumFractionDigits: 4 })
   return `${formatted} ${unit}`
 }
 
@@ -49,7 +51,7 @@ function StockListItem({ item }: { item: FertilizerStockListItem }) {
         </div>
 
         <div className={styles.stockItemActions}>
-          <span className={styles.stockItemBalance}>{formatBalance(item.balance, item.unit)}</span>
+          <span className={styles.stockItemBalance}>{formatBalance(item)}</span>
           {eligible ? (
             <Link className={styles.applyAction} to={applyPath}>
               Anwenden
