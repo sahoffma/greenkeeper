@@ -4,9 +4,13 @@ import { HomeAppShell } from '../components/home/HomeAppShell'
 import { FertilizerCaptureButton } from '../components/equipment/FertilizerCaptureButton'
 import { SubpageHeader } from '../components/layout/SubpageHeader'
 import { layoutStockListByProductForm } from '../lib/fertilizerCaptureCore'
+import {
+  getFertilizerApplicationIneligibilityMessage,
+  isFertilizerStockListItemApplicationEligible,
+} from '../lib/fertilizerApplicationFlowCore'
 import { fetchFertilizerStockList } from '../lib/fertilizerInventory'
+import { FERTILIZER_ROUTES, fertilizerApplicationPath } from '../lib/fertilizerRoutes'
 import type { FertilizerStockListItem } from '../types/fertilizerInventory'
-import { FERTILIZER_ROUTES } from '../lib/fertilizerRoutes'
 import styles from './FertilizerCategoryPage.module.css'
 
 function formatBalance(value: number, unit: string): string {
@@ -23,25 +27,49 @@ function formatPackageSize(value: number, unit: string): string {
   return `${formatted} ${unit}`
 }
 
+function StockListItem({ item }: { item: FertilizerStockListItem }) {
+  const eligible = isFertilizerStockListItemApplicationEligible(item)
+  const applyPath = fertilizerApplicationPath(item.id)
+
+  return (
+    <li>
+      <div className={styles.stockItem}>
+        <div className={styles.stockItemMain}>
+          <span className={styles.stockItemName}>{item.productLabel}</span>
+          {item.packageSizeValue != null && item.packageSizeUnit && (
+            <span className={styles.stockItemMeta}>
+              Gebinde {formatPackageSize(item.packageSizeValue, item.packageSizeUnit)}
+            </span>
+          )}
+          {!eligible && item.balance > 0 && (
+            <span className={styles.stockItemHint}>
+              {getFertilizerApplicationIneligibilityMessage(item)}
+            </span>
+          )}
+        </div>
+
+        <div className={styles.stockItemActions}>
+          <span className={styles.stockItemBalance}>{formatBalance(item.balance, item.unit)}</span>
+          {eligible ? (
+            <Link className={styles.applyAction} to={applyPath}>
+              Anwenden
+            </Link>
+          ) : (
+            <span className={styles.applyActionDisabled} aria-disabled="true">
+              Anwenden
+            </span>
+          )}
+        </div>
+      </div>
+    </li>
+  )
+}
+
 function StockList({ items }: { items: FertilizerStockListItem[] }) {
   return (
     <ul className={styles.stockList}>
       {items.map((item) => (
-        <li key={item.id}>
-          <Link className={styles.stockItem} to={FERTILIZER_ROUTES.hub}>
-            <span className={styles.stockItemMain}>
-              <span className={styles.stockItemName}>{item.productLabel}</span>
-              {item.packageSizeValue != null && item.packageSizeUnit && (
-                <span className={styles.stockItemMeta}>
-                  Gebinde {formatPackageSize(item.packageSizeValue, item.packageSizeUnit)}
-                </span>
-              )}
-            </span>
-            <span className={styles.stockItemBalance}>
-              {formatBalance(item.balance, item.unit)}
-            </span>
-          </Link>
-        </li>
+        <StockListItem key={item.id} item={item} />
       ))}
     </ul>
   )
