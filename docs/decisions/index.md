@@ -41,6 +41,7 @@ Neue Entscheidung: [Template](./templates/dl-template.md) · [README](./README.m
 | [DL-031](./dl-031.md) | Mehrflächen-Düngeranwendung — gemeinsamer Vorgang, konkrete Flächen, zwei Eingabemodi | ✅ Festgelegt |
 | [DL-032](./dl-032.md) | Flächenlöschung — eigenständige Löschdomäne, geschützte Nachbarsysteme | ✅ Festgelegt |
 | [DL-033](./dl-033.md) | Produktbasierter Düngerbestand ohne Gebindeverwaltung | ✅ Festgelegt |
+| [DL-034](./dl-034.md) | Initialbestand und Bestandsbewegungsgründe für Dünger | ✅ Festgelegt |
 
 ---
 
