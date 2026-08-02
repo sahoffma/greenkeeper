@@ -904,46 +904,115 @@ describeDb('fertilizerProductStockLegacyMigrationDatabase', () => {
     expect(legacyRow[0]?.superseded_by_container_id).toBeNull()
   })
 
-  it('DB-23 dry run class F blocks missing base unit without correction', async () => {
+  it('DB-23 public dry run never returns class F from persistable legacy data and keeps kg/ml separate', async () => {
     state = createEmptyLegacyMigrationDatabaseTestState()
-    const user = await createLegacyMigrationTestUser(state, 'class-f')
+    const user = await createLegacyMigrationTestUser(state, 'class-f-public')
     const authClient = await createLegacyMigrationAuthClient(user)
+    const granularProfile = await insertSavedProductProfileFixture(pgClient, state, {
+      accessKind: 'authenticated_user',
+      userId: user.id,
+      sessionAccessHash: null,
+      productForm: 'granular',
+    })
+    const liquidProfile = await insertSavedProductProfileFixture(pgClient, state, {
+      accessKind: 'authenticated_user',
+      userId: user.id,
+      sessionAccessHash: null,
+      productForm: 'liquid',
+    })
+
+    const granularLegacyId = await insertLegacyContainerFixture(pgClient, state, {
+      userId: user.id,
+      savedProductProfileId: granularProfile.id,
+      baseUnit: 'kg',
+    })
+    const liquidLegacyId = await insertLegacyContainerFixture(pgClient, state, {
+      userId: user.id,
+      savedProductProfileId: liquidProfile.id,
+      baseUnit: 'ml',
+    })
+    await insertLegacyMovementFixture(pgClient, state, {
+      containerId: granularLegacyId,
+      userId: user.id,
+      quantityDelta: 3,
+      unit: 'kg',
+      movementAt: '2026-08-01T10:00:00.000Z',
+    })
+    await insertLegacyMovementFixture(pgClient, state, {
+      containerId: liquidLegacyId,
+      userId: user.id,
+      quantityDelta: 250,
+      unit: 'ml',
+      movementAt: '2026-08-01T10:00:00.000Z',
+    })
+
+    await expect(
+      insertLegacyContainerFixture(pgClient, state, {
+        userId: user.id,
+        savedProductProfileId: granularProfile.id,
+        baseUnit: 'ml',
+      }),
+    ).rejects.toThrow(/INVENTORY_BASE_UNIT_PRODUCT_FORM_MISMATCH|base_unit_check|check constraint/i)
+
+    await expect(
+      pgClient.query(
+        `insert into public.fertilizer_containers (
+          id, user_id, saved_product_profile_id, access_kind, base_unit,
+          package_size_value, package_size_unit
+        ) values ($1, $2, $3, 'authenticated_user', 'lb', 10, 'lb')`,
+        [crypto.randomUUID(), user.id, granularProfile.id],
+      ),
+    ).rejects.toThrow(/INVENTORY_BASE_UNIT_PRODUCT_FORM_MISMATCH|base_unit_check|check constraint/i)
+
+    const beforeReceipts = await countLegacyMigrationReceipts(pgClient)
+    const beforeTakeovers = await countLegacyBalanceMigrationMovements(pgClient)
+
+    const { data, error } = await callAnalyzeLegacyMigrationRpc(authClient, cutoff)
+    expect(error).toBeNull()
+    const dryRun = mapLegacyMigrationDryRunResult(data)
+
+    const granularGroup = await findGroupAnalysis(dryRun, granularProfile.id, 'kg')
+    const liquidGroup = await findGroupAnalysis(dryRun, liquidProfile.id, 'ml')
+
+    expect(granularGroup.classification).not.toBe('F')
+    expect(liquidGroup.classification).not.toBe('F')
+    expect(granularGroup.migrationGroupKey).not.toBe(liquidGroup.migrationGroupKey)
+    expect(dryRun.groups.every((group) => group.classification !== 'F')).toBe(true)
+
+    expect(await countLegacyMigrationReceipts(pgClient)).toBe(beforeReceipts)
+    expect(await countLegacyBalanceMigrationMovements(pgClient)).toBe(beforeTakeovers)
+
+    for (const legacyId of [granularLegacyId, liquidLegacyId]) {
+      const { rows: legacyRow } = await pgClient.query(
+        `select archived_at, superseded_by_container_id, base_unit
+         from public.fertilizer_containers where id = $1`,
+        [legacyId],
+      )
+      expect(legacyRow[0]?.archived_at).toBeNull()
+      expect(legacyRow[0]?.superseded_by_container_id).toBeNull()
+      expect(['kg', 'ml']).toContain(legacyRow[0]?.base_unit)
+    }
+  })
+
+  it('DB-23b internal analyze helper defensively classifies invalid base unit as class F', async () => {
+    state = createEmptyLegacyMigrationDatabaseTestState()
+    const user = await createLegacyMigrationTestUser(state, 'class-f-defensive')
     const profile = await insertSavedProductProfileFixture(pgClient, state, {
       accessKind: 'authenticated_user',
       userId: user.id,
       sessionAccessHash: null,
       productForm: 'granular',
     })
-    const legacyId = await insertLegacyContainerFixture(pgClient, state, {
-      userId: user.id,
-      savedProductProfileId: profile.id,
-      baseUnit: 'kg',
-    })
-    await insertLegacyMovementFixture(pgClient, state, {
-      containerId: legacyId,
-      userId: user.id,
-      quantityDelta: 3,
-      unit: 'kg',
-      movementAt: '2026-08-01T10:00:00.000Z',
-    })
 
-    const beforeReceipts = await countLegacyMigrationReceipts(pgClient)
-    const beforeTakeovers = await countLegacyBalanceMigrationMovements(pgClient)
-
-    const { error: dryRunError } = await callAnalyzeLegacyMigrationRpc(authClient, cutoff)
-    expect(dryRunError).toBeNull()
-
-    const group = await analyzeLegacyMigrationGroupDirect(pgClient, {
+    const nullUnitGroup = await analyzeLegacyMigrationGroupDirect(pgClient, {
       userId: user.id,
       savedProductProfileId: profile.id,
       baseUnit: null,
       migrationCutoffAt: cutoff,
     })
-
-    expect(group.classification).toBe('F')
-    expect(group.autoMigratable).toBe(false)
-    expect(group.blockingReasons).toContain('missing_or_invalid_base_unit')
-    expect(group.expectedTakeoverMovement).toBe(false)
+    expect(nullUnitGroup.classification).toBe('F')
+    expect(nullUnitGroup.autoMigratable).toBe(false)
+    expect(nullUnitGroup.blockingReasons).toContain('missing_or_invalid_base_unit')
 
     const invalidUnitGroup = await analyzeLegacyMigrationGroupDirect(pgClient, {
       userId: user.id,
@@ -953,16 +1022,7 @@ describeDb('fertilizerProductStockLegacyMigrationDatabase', () => {
     })
     expect(invalidUnitGroup.classification).toBe('F')
     expect(invalidUnitGroup.autoMigratable).toBe(false)
-
-    expect(await countLegacyMigrationReceipts(pgClient)).toBe(beforeReceipts)
-    expect(await countLegacyBalanceMigrationMovements(pgClient)).toBe(beforeTakeovers)
-
-    const { rows: legacyRow } = await pgClient.query(
-      `select archived_at, superseded_by_container_id from public.fertilizer_containers where id = $1`,
-      [legacyId],
-    )
-    expect(legacyRow[0]?.archived_at).toBeNull()
-    expect(legacyRow[0]?.superseded_by_container_id).toBeNull()
+    expect(invalidUnitGroup.blockingReasons).toContain('missing_or_invalid_base_unit')
   })
 
   it('DB-24 dry run class H blocks negative balance and write migration rejects partial writes', async () => {
