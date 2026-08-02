@@ -15,6 +15,7 @@ import {
   parseActiveProductStockItemPayload,
   parseActiveProductStockListPayload,
 } from './fertilizerProductStockReadDatabaseTestHarness'
+import { insertDraftProductProfileFixture } from './fertilizerInventoryCreationDatabaseTestHarness'
 import {
   callProductStockIntakeRpc,
   callProductStockOutboundRpc,
@@ -351,6 +352,19 @@ describeDb('fertilizerProductStockOutboundDatabase', () => {
       expect(rpcRows.length).toBe(1)
       expect(rpcRows[0]?.prosecdef).toBe(true)
       expect((rpcRows[0]?.proconfig as string[] | null ?? []).join(' ')).toMatch(/search_path=public/)
+
+      const { rows: sourceRows } = await pgClient.query(
+        `select pg_get_functiondef(p.oid) as definition
+         from pg_proc p
+         join pg_namespace n on n.oid = p.pronamespace
+         where n.nspname = 'public'
+           and p.proname = 'record_fertilizer_product_stock_outbound'`,
+      )
+      expect(sourceRows[0]?.definition).toMatch(/INVENTORY_OUTBOUND_PROFILE_MISSING/)
+      expect(sourceRows[0]?.definition).toMatch(/INVENTORY_OUTBOUND_PROFILE_INVALID/)
+      expect(sourceRows[0]?.definition).toMatch(/INVENTORY_OUTBOUND_PROFILE_ACCESS_DENIED/)
+      expect(sourceRows[0]?.definition).toMatch(/profile_status <> 'saved'/)
+      expect(sourceRows[0]?.definition).toMatch(/source <> 'enrichment'/)
 
       const { rows: rlsRows } = await pgClient.query(
         `select c.relrowsecurity
@@ -953,7 +967,7 @@ describeDb('fertilizerProductStockOutboundDatabase', () => {
       })
     })
 
-    it('DB-O7 rejects foreign profile, invalid profile and invalid base unit', async () => {
+    it('DB-O7 rejects missing, foreign, invalid and cross-user profiles before persistence', async () => {
       state = createEmptyProductStockIntakeDatabaseTestState()
       const legacyState = asLegacyMigrationState(state)
       const user = await createCreationDatabaseTestUser(admin, state, 'profile-eligibility')
@@ -975,113 +989,236 @@ describeDb('fertilizerProductStockOutboundDatabase', () => {
         productForm: 'granular',
       })
 
-      const missingProfileId = await insertLegacyContainerFixture(pgClient, legacyState, {
-        userId: user.id,
-        savedProductProfileId: profile.id,
-        baseUnit: 'kg',
-        stockKind: 'legacy_container',
+      let result: { data: unknown; error: { message: string } | null }
+      const missingProfileItemId = crypto.randomUUID()
+      await pgClient.query(
+        `alter table public.fertilizer_containers
+         drop constraint if exists fertilizer_containers_product_binding_check`,
+      )
+      try {
+        await pgClient.query(
+          `insert into public.fertilizer_containers (
+            id, user_id, saved_product_profile_id, access_kind, base_unit, stock_kind,
+            package_size_value, package_size_unit
+          ) values ($1, $2, null, 'authenticated_user', 'kg', 'product_stock', 10, 'kg')`,
+          [missingProfileItemId, user.id],
+        )
+        state.containerIds.push(missingProfileItemId)
+        await insertLegacyMovementFixture(pgClient, legacyState, {
+          containerId: missingProfileItemId,
+          userId: user.id,
+          quantityDelta: 2,
+          unit: 'kg',
+        })
+        result = await callProductStockOutboundRpc(authClient, {
+          inventoryItemId: missingProfileItemId,
+          quantity: 1,
+          reason: 'gift_given',
+          idempotencyKey: `${PRODUCT_STOCK_DB_TEST_PREFIX}-missing-profile`,
+        })
+        await expectOutboundRejected({
+          pgClient,
+          userId: user.id,
+          itemId: missingProfileItemId,
+          result,
+          expectedCode: 'INVENTORY_OUTBOUND_PROFILE_MISSING',
+          balanceBefore: 2,
+          movementCountBefore: 1,
+        })
+      } finally {
+        await withTestReplicationRole(pgClient, async () => {
+          await pgClient.query(
+            `delete from public.fertilizer_stock_movements where container_id = $1`,
+            [missingProfileItemId],
+          )
+          await pgClient.query(
+            `delete from public.fertilizer_containers where id = $1`,
+            [missingProfileItemId],
+          )
+        })
+        state.containerIds = state.containerIds.filter((id) => id !== missingProfileItemId)
+        await pgClient.query(
+          `alter table public.fertilizer_containers
+           add constraint fertilizer_containers_product_binding_check
+           check (
+             (
+               saved_product_profile_id is null
+               and access_kind is null
+               and user_id is not null
+               and (
+                 (product_id is not null and recognition_candidate_id is null)
+                 or (product_id is null and recognition_candidate_id is not null)
+               )
+             )
+             or (
+               saved_product_profile_id is not null
+               and product_id is null
+               and recognition_candidate_id is null
+               and access_kind is not null
+               and base_unit is not null
+             )
+           )`,
+        )
+      }
+
+      const missingProfileRowId = crypto.randomUUID()
+      await withTestReplicationRole(pgClient, async () => {
+        await pgClient.query(
+          `insert into public.fertilizer_containers (
+            id, user_id, saved_product_profile_id, access_kind, base_unit, stock_kind,
+            package_size_value, package_size_unit
+          ) values ($1, $2, $3, 'authenticated_user', 'kg', 'product_stock', 10, 'kg')`,
+          [missingProfileRowId, user.id, crypto.randomUUID()],
+        )
       })
+      state.containerIds.push(missingProfileRowId)
       await insertLegacyMovementFixture(pgClient, legacyState, {
-        containerId: missingProfileId,
+        containerId: missingProfileRowId,
         userId: user.id,
         quantityDelta: 2,
         unit: 'kg',
       })
-      let result = await callProductStockOutboundRpc(authClient, {
-        inventoryItemId: missingProfileId,
+      result = await callProductStockOutboundRpc(authClient, {
+        inventoryItemId: missingProfileRowId,
         quantity: 1,
         reason: 'gift_given',
-        idempotencyKey: `${PRODUCT_STOCK_DB_TEST_PREFIX}-missing-profile`,
+        idempotencyKey: `${PRODUCT_STOCK_DB_TEST_PREFIX}-missing-profile-row`,
       })
       await expectOutboundRejected({
         pgClient,
         userId: user.id,
-        itemId: missingProfileId,
+        itemId: missingProfileRowId,
         result,
-        expectedCode: 'INVENTORY_OUTBOUND_ITEM_INACTIVE',
+        expectedCode: 'INVENTORY_OUTBOUND_PROFILE_INVALID',
         balanceBefore: 2,
         movementCountBefore: 1,
       })
 
-      const foreignProfileId = crypto.randomUUID()
+      const foreignProfileItemId = crypto.randomUUID()
       await withTestReplicationRole(pgClient, async () => {
         await pgClient.query(
           `insert into public.fertilizer_containers (
-            id, user_id, saved_product_profile_id, access_kind, base_unit, stock_kind
-          ) values ($1, $2, $3, 'authenticated_user', 'kg', 'product_stock')`,
-          [foreignProfileId, user.id, otherProfile.id],
+            id, user_id, saved_product_profile_id, access_kind, base_unit, stock_kind,
+            package_size_value, package_size_unit
+          ) values ($1, $2, $3, 'authenticated_user', 'kg', 'product_stock', 10, 'kg')`,
+          [foreignProfileItemId, user.id, otherProfile.id],
         )
       })
-      state.containerIds.push(foreignProfileId)
+      state.containerIds.push(foreignProfileItemId)
       await insertLegacyMovementFixture(pgClient, legacyState, {
-        containerId: foreignProfileId,
+        containerId: foreignProfileItemId,
         userId: user.id,
         quantityDelta: 4,
         unit: 'kg',
       })
       result = await callProductStockOutboundRpc(authClient, {
-        inventoryItemId: foreignProfileId,
+        inventoryItemId: foreignProfileItemId,
         quantity: 1,
         reason: 'gift_given',
         idempotencyKey: `${PRODUCT_STOCK_DB_TEST_PREFIX}-foreign-profile`,
       })
-      expect(result.error).toBeNull()
-      trackProductStockOutboundResult(state, parseProductStockOutboundRpcSuccess(result.data))
-      expect(await computeEffectiveBalanceDirect(pgClient, foreignProfileId, user.id)).toBe(3)
+      await expectOutboundRejected({
+        pgClient,
+        userId: user.id,
+        itemId: foreignProfileItemId,
+        result,
+        expectedCode: 'INVENTORY_OUTBOUND_PROFILE_ACCESS_DENIED',
+        balanceBefore: 4,
+        movementCountBefore: 1,
+      })
 
-      const invalidProfileId = crypto.randomUUID()
+      const draftProfileId = await insertDraftProductProfileFixture(pgClient, state, user.id)
+      const invalidProfileItemId = crypto.randomUUID()
       await withTestReplicationRole(pgClient, async () => {
         await pgClient.query(
           `insert into public.fertilizer_containers (
-            id, user_id, saved_product_profile_id, access_kind, base_unit, stock_kind
-          ) values ($1, $2, $3, 'authenticated_user', 'kg', 'product_stock')`,
-          [invalidProfileId, user.id, crypto.randomUUID()],
+            id, user_id, saved_product_profile_id, access_kind, base_unit, stock_kind,
+            package_size_value, package_size_unit
+          ) values ($1, $2, $3, 'authenticated_user', 'kg', 'product_stock', 10, 'kg')`,
+          [invalidProfileItemId, user.id, draftProfileId],
         )
       })
-      state.containerIds.push(invalidProfileId)
+      state.containerIds.push(invalidProfileItemId)
       await insertLegacyMovementFixture(pgClient, legacyState, {
-        containerId: invalidProfileId,
+        containerId: invalidProfileItemId,
         userId: user.id,
         quantityDelta: 2,
         unit: 'kg',
       })
       result = await callProductStockOutboundRpc(authClient, {
-        inventoryItemId: invalidProfileId,
+        inventoryItemId: invalidProfileItemId,
         quantity: 1,
         reason: 'gift_given',
         idempotencyKey: `${PRODUCT_STOCK_DB_TEST_PREFIX}-invalid-profile`,
       })
+      await expectOutboundRejected({
+        pgClient,
+        userId: user.id,
+        itemId: invalidProfileItemId,
+        result,
+        expectedCode: 'INVENTORY_OUTBOUND_PROFILE_INVALID',
+        balanceBefore: 2,
+        movementCountBefore: 1,
+      })
+
+      const crossUserItemId = crypto.randomUUID()
+      await withTestReplicationRole(pgClient, async () => {
+        await pgClient.query(
+          `insert into public.fertilizer_containers (
+            id, user_id, saved_product_profile_id, access_kind, base_unit, stock_kind,
+            package_size_value, package_size_unit
+          ) values ($1, $2, $3, 'authenticated_user', 'ml', 'product_stock', 500, 'ml')`,
+          [crossUserItemId, user.id, otherProfile.id],
+        )
+      })
+      state.containerIds.push(crossUserItemId)
+      await insertLegacyMovementFixture(pgClient, legacyState, {
+        containerId: crossUserItemId,
+        userId: user.id,
+        quantityDelta: 3,
+        unit: 'ml',
+      })
+      result = await callProductStockOutboundRpc(authClient, {
+        inventoryItemId: crossUserItemId,
+        quantity: 1,
+        reason: 'gift_given',
+        idempotencyKey: `${PRODUCT_STOCK_DB_TEST_PREFIX}-cross-user-profile`,
+      })
+      await expectOutboundRejected({
+        pgClient,
+        userId: user.id,
+        itemId: crossUserItemId,
+        result,
+        expectedCode: 'INVENTORY_OUTBOUND_PROFILE_ACCESS_DENIED',
+        balanceBefore: 3,
+        movementCountBefore: 1,
+      })
+
+      const validItemId = await seedCanonicalItem({
+        authClient,
+        state,
+        profileId: profile.id,
+        quantity: 5,
+        keySuffix: 'valid-profile',
+      })
+      result = await callProductStockOutboundRpc(authClient, {
+        inventoryItemId: validItemId,
+        quantity: 1,
+        reason: 'gift_given',
+        idempotencyKey: `${PRODUCT_STOCK_DB_TEST_PREFIX}-valid-profile`,
+      })
       expect(result.error).toBeNull()
       trackProductStockOutboundResult(state, parseProductStockOutboundRpcSuccess(result.data))
+      expect(await computeEffectiveBalanceDirect(pgClient, validItemId, user.id)).toBe(4)
 
-      const invalidBaseUnitId = await insertCanonicalProductStockFixture(pgClient, legacyState, {
-        userId: user.id,
-        savedProductProfileId: profile.id,
-        baseUnit: 'kg',
-      })
       await expect(
         withTestReplicationRole(pgClient, async () => {
           await pgClient.query(
             `update public.fertilizer_containers set base_unit = null where id = $1`,
-            [invalidBaseUnitId],
+            [validItemId],
           )
         }),
       ).rejects.toThrow(/product_binding_check/i)
-
-      await insertLegacyMovementFixture(pgClient, legacyState, {
-        containerId: invalidBaseUnitId,
-        userId: user.id,
-        quantityDelta: 3,
-        unit: 'kg',
-      })
-      result = await callProductStockOutboundRpc(authClient, {
-        inventoryItemId: invalidBaseUnitId,
-        quantity: 1,
-        reason: 'gift_given',
-        idempotencyKey: `${PRODUCT_STOCK_DB_TEST_PREFIX}-invalid-base-unit`,
-      })
-      expect(result.error).toBeNull()
-      trackProductStockOutboundResult(state, parseProductStockOutboundRpcSuccess(result.data))
     })
   })
 
