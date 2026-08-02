@@ -38,6 +38,7 @@ Neue Entscheidung: [Template](./templates/dl-template.md) · [README](./README.m
 | [DL-028](./dl-028.md) | Trennung von Gebindegröße und aktuellem Inhalt | ✅ Festgelegt |
 | [DL-029](./dl-029.md) | Trennung von initialer Bestandsanlage und Bestandskorrektur | ✅ Festgelegt |
 | [DL-030](./dl-030.md) | Atomare Dünger-Anwendung — ein Inventory Item, ein Journal, eine Bewegung | ✅ Festgelegt |
+| [DL-031](./dl-031.md) | Mehrflächen-Düngeranwendung — gemeinsamer Vorgang, konkrete Flächen, zwei Eingabemodi | ✅ Festgelegt |
 
 ---
 
