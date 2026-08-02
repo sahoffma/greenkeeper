@@ -217,8 +217,28 @@ function assertAreaSizeSqm(value: number | null): number {
   return unscaleAreaSizeSqm(scaleAreaSizeSqm(value))
 }
 
+function normalizeAreaIdForSort(areaId: string): string {
+  return areaId.toLowerCase()
+}
+
+/** Canonical area-id order — matches SQL `ORDER BY lower(area_id::text)` (DL-032). */
+function compareAreaIdsAscending(leftAreaId: string, rightAreaId: string): number {
+  const left = normalizeAreaIdForSort(leftAreaId)
+  const right = normalizeAreaIdForSort(rightAreaId)
+
+  if (left < right) {
+    return -1
+  }
+
+  if (left > right) {
+    return 1
+  }
+
+  return 0
+}
+
 function sortAreasById<T extends { areaId: string }>(areas: readonly T[]): T[] {
-  return [...areas].sort((left, right) => left.areaId.localeCompare(right.areaId))
+  return [...areas].sort((left, right) => compareAreaIdsAscending(left.areaId, right.areaId))
 }
 
 function roundToInventoryQuantityScale(value: number): number {
@@ -293,7 +313,7 @@ function distributeTotalAmountProportionally(
       return right.areaSizeScaled - left.areaSizeScaled
     }
 
-    return right.areaId.localeCompare(left.areaId)
+    return compareAreaIdsAscending(right.areaId, left.areaId)
   })
 
   const shareByAreaId = new Map<string, number>()

@@ -399,7 +399,24 @@ describe('fertilizerMultiAreaApplicationCore', () => {
     expect(buildCanonicalFertilizerMultiAreaApplicationPayload(result)).toBe(result.canonicalPayload)
   })
 
-  it('28 — single-area mode matches the existing absolute amount contract', () => {
+  it('28 — sorts area ids by normalized lowercase ordinal order', () => {
+    const earlier = '00000000-0000-4000-8000-000000000001'
+    const laterMixedCase = '00000000-0000-4000-8000-000000000002'.toUpperCase()
+
+    const result = normalizeFertilizerMultiAreaApplication(
+      buildInput({
+        areas: [
+          { areaId: laterMixedCase, areaName: 'Later', areaSizeSqm: 50 },
+          { areaId: earlier, areaName: 'Earlier', areaSizeSqm: 100 },
+        ],
+      }),
+    )
+
+    expect(result.areaSnapshots.map((snapshot) => snapshot.areaId)).toEqual([earlier, laterMixedCase])
+    expect(result.areaSnapshots.map((snapshot) => snapshot.sortOrder)).toEqual([0, 1])
+  })
+
+  it('29 — single-area mode matches the existing absolute amount contract', () => {
     const result = normalizeFertilizerMultiAreaApplication(
       buildInput({
         areas: [{ areaId: AREA_A, areaName: 'Vorgarten', areaSizeSqm: 120 }],
