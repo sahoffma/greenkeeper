@@ -39,6 +39,10 @@ function stockItem(
     catalogProductId: null,
     recognitionCandidateId: null,
     productForm: 'granular',
+    manufacturer: null,
+    packageSizeValue: null,
+    packageSizeUnit: null,
+    savedProductProfileId: null,
     ...overrides,
   }
 }
