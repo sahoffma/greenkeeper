@@ -9,7 +9,7 @@ import {
   FERTILIZER_SAVED_PRODUCT_PROFILE_STATUS,
 } from '../types/fertilizerProductProfile'
 import { computeInventoryItemBalance } from './fertilizerInventoryBalanceCore'
-import { saveFertilizerCapture } from './fertilizerInventory'
+import { saveFertilizerCaptureToInventoryCore } from './fertilizerCaptureInventorySaveCore'
 import {
   buildRecognitionIdentityFingerprint,
   computePurchaseAmount,
@@ -481,7 +481,8 @@ describe('fertilizerInventoryCoreIntegration', () => {
     expect(legacyCaptureMigration).toContain('create or replace function public.save_fertilizer_capture')
 
     expect(String(createPersistentFertilizerInventoryRepository)).not.toContain('save_fertilizer_capture')
-    expect(typeof saveFertilizerCapture).toBe('function')
+    expect(typeof saveFertilizerCaptureToInventoryCore).toBe('function')
+    expect(String(saveFertilizerCaptureToInventoryCore)).not.toContain('save_fertilizer_capture')
     expect(typeof computePurchaseAmount).toBe('function')
     expect(typeof buildRecognitionIdentityFingerprint).toBe('function')
   })

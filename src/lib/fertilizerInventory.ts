@@ -1,9 +1,7 @@
 import { supabase } from './supabase'
 import { getErrorMessage } from './errors'
 import type {
-  FertilizerCaptureSaveResult,
   FertilizerProductStockStatus,
-  FertilizerRecognitionCandidatePayload,
   FertilizerStockListItem,
 } from '../types/fertilizerInventory'
 import { parseStockStatusPayload } from './fertilizerInventoryCore'
@@ -41,30 +39,6 @@ function mapInventoryError(error: unknown, fallback: string): Error {
   return new Error(fallback)
 }
 
-function parseSaveResult(payload: unknown): FertilizerCaptureSaveResult {
-  const record = payload as Record<string, unknown>
-
-  return {
-    receiptId: String(record.receipt_id ?? ''),
-    containerId: String(record.container_id ?? ''),
-    catalogProductId:
-      typeof record.catalog_product_id === 'string' ? record.catalog_product_id : null,
-    recognitionCandidateId:
-      typeof record.recognition_candidate_id === 'string'
-        ? record.recognition_candidate_id
-        : null,
-    productProfileId:
-      typeof record.product_profile_id === 'string' ? record.product_profile_id : null,
-    productLabel: String(record.product_label ?? 'Dünger'),
-    purchaseQuantity: Number(record.purchase_quantity ?? 0),
-    purchaseUnit: String(record.purchase_unit ?? 'kg'),
-    previousRemainder:
-      typeof record.previous_remainder === 'number' ? record.previous_remainder : null,
-    resultingBalance: Number(record.resulting_balance ?? 0),
-    idempotentReplay: record.idempotent_replay === true,
-  }
-}
-
 export async function fetchFertilizerProductStockStatus(input: {
   catalogProductId?: string | null
   identityFingerprint?: string | null
@@ -81,34 +55,6 @@ export async function fetchFertilizerProductStockStatus(input: {
   }
 
   return parseStockStatusPayload(data)
-}
-
-export async function saveFertilizerCapture(input: {
-  idempotencyKey: string
-  catalogProductId?: string | null
-  candidate?: FertilizerRecognitionCandidatePayload | null
-  purchaseQuantity: number
-  purchaseUnit: string
-  previousRemainder?: number | null
-  packageCount?: number
-  productLabel: string
-}): Promise<FertilizerCaptureSaveResult> {
-  const { data, error } = await supabase.rpc('save_fertilizer_capture', {
-    p_idempotency_key: input.idempotencyKey,
-    p_catalog_product_id: input.catalogProductId ?? null,
-    p_candidate: input.candidate ?? null,
-    p_purchase_quantity: input.purchaseQuantity,
-    p_purchase_unit: input.purchaseUnit,
-    p_previous_remainder: input.previousRemainder ?? null,
-    p_package_count: input.packageCount ?? 1,
-    p_product_label: input.productLabel,
-  })
-
-  if (error) {
-    throw mapInventoryError(error, 'Der Dünger konnte nicht gespeichert werden.')
-  }
-
-  return parseSaveResult(data)
 }
 
 export interface FertilizerStockListView {
