@@ -31,7 +31,6 @@ import {
   mapToApplicationProductOption,
   resolveApplicationFlowPhase,
   resolveInitialDraftSelection,
-  shouldRedirectLegacyApplicationRoute,
   switchToManualAreaSelection,
   toggleAreaSelection,
   type FertilizerApplicationDraft,
@@ -50,15 +49,7 @@ import type { CareGroupSummary } from '../types/careGroup'
 import type { FertilizerStockListItem } from '../types/fertilizerInventory'
 import styles from './FertilizerApplicationPage.module.css'
 
-export type FertilizerApplicationEntryPoint = 'home' | 'legacy'
-
-interface FertilizerApplicationPageProps {
-  entryPoint?: FertilizerApplicationEntryPoint
-}
-
-export function FertilizerApplicationPage({
-  entryPoint = 'home',
-}: FertilizerApplicationPageProps) {
+export function FertilizerApplicationPage() {
   const { inventoryItemId } = useParams<{ inventoryItemId?: string }>()
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -93,12 +84,12 @@ export function FertilizerApplicationPage({
     inventoryItemId,
     phase,
   })
-  const isProductSelect = entryPoint === 'home' && resolvedPhase === 'product-select'
-  const backTo = entryPoint === 'home' ? '/' : FERTILIZER_ROUTES.hub
-  const backLabel = entryPoint === 'home' ? 'Zurück zur Startseite' : 'Zurück zu Dünger'
+  const isProductSelect = resolvedPhase === 'product-select'
+  const backTo = '/'
+  const backLabel = 'Zurück zur Startseite'
 
   useEffect(() => {
-    if (entryPoint !== 'home' || inventoryItemId) {
+    if (inventoryItemId) {
       return
     }
 
@@ -138,10 +129,10 @@ export function FertilizerApplicationPage({
     return () => {
       cancelled = true
     }
-  }, [entryPoint, inventoryItemId])
+  }, [inventoryItemId])
 
   useEffect(() => {
-    if (entryPoint === 'home' && !inventoryItemId) {
+    if (!inventoryItemId) {
       return
     }
 
@@ -165,11 +156,6 @@ export function FertilizerApplicationPage({
         ])
 
         if (cancelled) {
-          return
-        }
-
-        if (entryPoint === 'legacy' && shouldRedirectLegacyApplicationRoute(loadedItem)) {
-          navigate(fertilizerHomeApplicationPath(inventoryItemId!), { replace: true })
           return
         }
 
@@ -210,7 +196,7 @@ export function FertilizerApplicationPage({
     return () => {
       cancelled = true
     }
-  }, [entryPoint, inventoryItemId, navigate])
+  }, [inventoryItemId])
 
   const applicableAreas = useMemo(() => getApplicableAreas(areas), [areas])
   const unitLabel = item?.baseUnit ?? item?.unit ?? 'kg'
@@ -344,7 +330,7 @@ export function FertilizerApplicationPage({
       <main className={styles.screen}>
         <SubpageHeader
           title={isProductSelect ? 'Düngung erfassen' : 'Dünger anwenden'}
-          backTo={isProductSelect ? '/' : entryPoint === 'home' ? FERTILIZER_ROUTES.homeApplication : backTo}
+          backTo={isProductSelect ? '/' : FERTILIZER_ROUTES.homeApplication}
           backLabel={isProductSelect ? 'Zurück zur Startseite' : backLabel}
         />
 
@@ -652,13 +638,7 @@ export function FertilizerApplicationPage({
                         type="button"
                         className={styles.secondaryAction}
                         disabled={submitting}
-                        onClick={() =>
-                          navigate(
-                            entryPoint === 'home'
-                              ? FERTILIZER_ROUTES.homeApplication
-                              : FERTILIZER_ROUTES.hub,
-                          )
-                        }
+                        onClick={() => navigate(FERTILIZER_ROUTES.homeApplication)}
                       >
                         Verwerfen
                       </button>
@@ -698,9 +678,9 @@ export function FertilizerApplicationPage({
                 <button
                   type="button"
                   className={styles.primaryAction}
-                  onClick={() => navigate(entryPoint === 'home' ? '/' : FERTILIZER_ROUTES.hub)}
+                  onClick={() => navigate('/')}
                 >
-                  {entryPoint === 'home' ? 'Zurück zur Startseite' : 'Zurück zum Düngerbestand'}
+                  Zurück zur Startseite
                 </button>
               </div>
             </div>

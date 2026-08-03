@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   FERTILIZER_ROUTES,
+  fertilizerHomeApplicationPath,
   fertilizerStockIntakePath,
   fertilizerStockOutboundPath,
   isFertilizerStockIntakePath,
@@ -9,6 +10,7 @@ import {
   parseFertilizerStockIntakeInventoryItemId,
   parseFertilizerStockOutboundInventoryItemId,
   resolveFertilizerEquipmentEntryPoint,
+  resolveLegacyApplicationRedirectPath,
 } from './fertilizerRoutes'
 
 const ITEM_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
@@ -17,6 +19,17 @@ describe('fertilizerRoutes', () => {
   it('exposes capture route without home route', () => {
     expect(FERTILIZER_ROUTES.capture).toBe('/ausruestung/duenger/erfassen')
     expect(FERTILIZER_ROUTES.homeApplication).toBe('/duengung')
+  })
+
+  it('builds canonical home application paths', () => {
+    expect(fertilizerHomeApplicationPath()).toBe('/duengung')
+    expect(fertilizerHomeApplicationPath(ITEM_ID)).toBe(`/duengung/${ITEM_ID}`)
+  })
+
+  it('resolves legacy application redirect to canonical path', () => {
+    expect(resolveLegacyApplicationRedirectPath(ITEM_ID)).toBe(`/duengung/${ITEM_ID}`)
+    expect(resolveLegacyApplicationRedirectPath('not-a-uuid')).toBe('/duengung')
+    expect(resolveLegacyApplicationRedirectPath(undefined)).toBe('/duengung')
   })
 
   it('builds intake and outbound paths', () => {

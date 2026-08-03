@@ -118,12 +118,6 @@ export function buildFertilizerApplicationRoute(inventoryItemId?: string): strin
   return fertilizerHomeApplicationPath(inventoryItemId)
 }
 
-export function shouldRedirectLegacyApplicationRoute(
-  item: FertilizerStockListItem | null,
-): boolean {
-  return item != null && isFertilizerStockListItemApplicationEligible(item)
-}
-
 export function mapToApplicationProductOption(
   item: FertilizerStockListItem,
 ): FertilizerApplicationProductOption {

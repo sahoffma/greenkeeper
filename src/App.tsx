@@ -1,4 +1,5 @@
-import { Navigate, Routes, Route } from 'react-router-dom'
+import { Navigate, Routes, Route, useParams } from 'react-router-dom'
+import { resolveLegacyApplicationRedirectPath } from './lib/fertilizerRoutes'
 import { AuthRecoveryRedirect } from './components/AuthRecoveryRedirect'
 import { FertilizerCaptureRouteLifecycle } from './components/fertilizer/FertilizerCaptureRouteLifecycle'
 import { EmailConfirmationRoute } from './components/EmailConfirmationRoute'
@@ -36,6 +37,11 @@ import { RootPage } from './pages/RootPage'
 import { TimelinePage } from './pages/TimelinePage'
 import { NewActivityPage } from './pages/NewActivityPage'
 import { ProductRecognizeSpikePage } from './pages/dev/ProductRecognizeSpikePage'
+
+function LegacyFertilizerApplicationRedirect() {
+  const { inventoryItemId } = useParams<{ inventoryItemId: string }>()
+  return <Navigate to={resolveLegacyApplicationRedirectPath(inventoryItemId)} replace />
+}
 
 export default function App() {
   return (
@@ -169,7 +175,7 @@ export default function App() {
         path="/duengung"
         element={
           <ProtectedRoute>
-            <FertilizerApplicationPage entryPoint="home" />
+            <FertilizerApplicationPage />
           </ProtectedRoute>
         }
       />
@@ -177,7 +183,7 @@ export default function App() {
         path="/duengung/:inventoryItemId"
         element={
           <ProtectedRoute>
-            <FertilizerApplicationPage entryPoint="home" />
+            <FertilizerApplicationPage />
           </ProtectedRoute>
         }
       />
@@ -185,7 +191,7 @@ export default function App() {
         path="/ausruestung/duenger/:inventoryItemId/anwenden"
         element={
           <ProtectedRoute>
-            <FertilizerApplicationPage entryPoint="legacy" />
+            <LegacyFertilizerApplicationRedirect />
           </ProtectedRoute>
         }
       />

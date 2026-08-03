@@ -4,9 +4,6 @@ export const FERTILIZER_ROUTES = {
   homeApplication: '/duengung',
 } as const
 
-const LEGACY_APPLICATION_PATH_PATTERN =
-  /^\/ausruestung\/duenger\/([^/]+)\/anwenden$/
-
 const STOCK_INTAKE_PATH_PATTERN =
   /^\/ausruestung\/duenger\/([^/]+)\/zugang$/
 
@@ -28,15 +25,6 @@ export function fertilizerStockOutboundPath(inventoryItemId: string): string {
   return `/ausruestung/duenger/${inventoryItemId}/abgang`
 }
 
-export function fertilizerLegacyApplicationPath(inventoryItemId: string): string {
-  return `/ausruestung/duenger/${inventoryItemId}/anwenden`
-}
-
-/** @deprecated Prefer fertilizerHomeApplicationPath for new application flows. */
-export function fertilizerApplicationPath(inventoryItemId: string): string {
-  return fertilizerLegacyApplicationPath(inventoryItemId)
-}
-
 export function fertilizerHomeApplicationPath(inventoryItemId?: string): string {
   if (inventoryItemId) {
     return `${FERTILIZER_ROUTES.homeApplication}/${inventoryItemId}`
@@ -45,12 +33,16 @@ export function fertilizerHomeApplicationPath(inventoryItemId?: string): string 
   return FERTILIZER_ROUTES.homeApplication
 }
 
-export function isValidFertilizerInventoryItemRouteId(value: string | null | undefined): boolean {
-  return typeof value === 'string' && INVENTORY_ITEM_ID_PATTERN.test(value.trim())
+export function resolveLegacyApplicationRedirectPath(
+  inventoryItemId: string | null | undefined,
+): string {
+  return isValidFertilizerInventoryItemRouteId(inventoryItemId)
+    ? fertilizerHomeApplicationPath(inventoryItemId!)
+    : FERTILIZER_ROUTES.homeApplication
 }
 
-export function isLegacyFertilizerApplicationPath(pathname: string): boolean {
-  return LEGACY_APPLICATION_PATH_PATTERN.test(pathname)
+export function isValidFertilizerInventoryItemRouteId(value: string | null | undefined): boolean {
+  return typeof value === 'string' && INVENTORY_ITEM_ID_PATTERN.test(value.trim())
 }
 
 export function isFertilizerStockIntakePath(pathname: string): boolean {
@@ -59,13 +51,6 @@ export function isFertilizerStockIntakePath(pathname: string): boolean {
 
 export function isFertilizerStockOutboundPath(pathname: string): boolean {
   return STOCK_OUTBOUND_PATH_PATTERN.test(pathname)
-}
-
-export function parseLegacyFertilizerApplicationInventoryItemId(
-  pathname: string,
-): string | null {
-  const match = LEGACY_APPLICATION_PATH_PATTERN.exec(pathname)
-  return match?.[1] ?? null
 }
 
 export function parseFertilizerStockIntakeInventoryItemId(pathname: string): string | null {

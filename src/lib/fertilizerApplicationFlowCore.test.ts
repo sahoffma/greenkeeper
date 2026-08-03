@@ -18,16 +18,11 @@ import {
   resolveApplicationFlowPhase,
   resolveInitialDraftSelection,
   shouldDiscardIdempotencyKey,
-  shouldRedirectLegacyApplicationRoute,
   switchToManualAreaSelection,
   toggleAreaSelection,
   validateFertilizerApplicationDraft,
 } from './fertilizerApplicationFlowCore'
-import {
-  fertilizerHomeApplicationPath,
-  fertilizerLegacyApplicationPath,
-  isLegacyFertilizerApplicationPath,
-} from './fertilizerRoutes'
+import { fertilizerHomeApplicationPath } from './fertilizerRoutes'
 
 const PROFILE_ID = '22222222-2222-4222-8222-222222222222'
 const AREA_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
@@ -458,20 +453,6 @@ describe('fertilizerApplicationFlowCore phase five home entry', () => {
     expect(buildFertilizerApplicationRoute()).toBe('/duengung')
     expect(buildFertilizerApplicationRoute(ITEM_A)).toBe(`/duengung/${ITEM_A}`)
     expect(fertilizerHomeApplicationPath()).toBe('/duengung')
-    expect(fertilizerLegacyApplicationPath(ITEM_A)).toBe(
-      `/ausruestung/duenger/${ITEM_A}/anwenden`,
-    )
-    expect(isLegacyFertilizerApplicationPath(`/ausruestung/duenger/${ITEM_A}/anwenden`)).toBe(true)
-  })
-
-  it('redirects legacy route only for eligible canonical items', () => {
-    expect(shouldRedirectLegacyApplicationRoute(buildItem({ balance: 3 }))).toBe(true)
-    expect(shouldRedirectLegacyApplicationRoute(null)).toBe(false)
-    expect(
-      shouldRedirectLegacyApplicationRoute(
-        buildItem({ balance: 0, savedProductProfileId: PROFILE_ID }),
-      ),
-    ).toBe(false)
   })
 
   it('maps product options without package size identity', () => {
