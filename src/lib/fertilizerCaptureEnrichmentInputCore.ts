@@ -4,6 +4,7 @@ import type {
   FertilizerEnrichmentSourceHint,
 } from '../types/fertilizerEnrichmentOrchestration'
 import type { FertilizerCaptureDraft } from './fertilizerCaptureCore'
+import { appendCaptureRecognitionPackagingToEnrichmentInput } from './fertilizerCaptureRecognitionPackagingCore'
 import {
   buildRecognitionIdentityFingerprint,
   fingerprintFromCandidate,
@@ -133,15 +134,18 @@ export function buildFertilizerEnrichmentOrchestrationInputFromCaptureDraft(
     )
   }
 
-  return {
-    objectCategory: 'fertilizer',
-    identity,
-    references: {
-      catalogProfileHint: draft.catalogProductId,
-      existingProductProfileId: draft.productProfileId,
+  return appendCaptureRecognitionPackagingToEnrichmentInput(
+    {
+      objectCategory: 'fertilizer',
+      identity,
+      references: {
+        catalogProfileHint: draft.catalogProductId,
+        existingProductProfileId: draft.productProfileId,
+      },
+      allowedInputChannels: ['capture_flow'],
+      sourceHints: buildSourceHints(draft),
+      idempotencyKey: options.enrichmentIdempotencyKey,
     },
-    allowedInputChannels: ['capture_flow'],
-    sourceHints: buildSourceHints(draft),
-    idempotencyKey: options.enrichmentIdempotencyKey,
-  }
+    draft,
+  )
 }

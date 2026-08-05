@@ -84,7 +84,7 @@ describe('fertilizerEnrichmentServerCompositionCore', () => {
     persistentSpy.mockRestore()
   })
 
-  it('AR-5: production runtime wires orchestration without productive source adapters', () => {
+  it('AR-5: production runtime wires orchestration with production source adapters without storage bucket', () => {
     const adapterSpy = vi.spyOn(
       adapterCompositionModule,
       'createFertilizerEnrichmentOrchestrationDependencies',
@@ -96,8 +96,14 @@ describe('fertilizerEnrichmentServerCompositionCore', () => {
       authValidator: { validateBearerToken: async () => null },
     })
 
-    expect(adapterSpy).toHaveBeenCalledWith({})
-    expect(adapterSpy.mock.results[0]?.value.adapters).toHaveLength(0)
+    expect(adapterSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fetchManufacturerDocument: expect.any(Function),
+        resolvePackagingSource: expect.any(Function),
+        resolveUserDocumentSource: expect.any(Function),
+      }),
+    )
+    expect(adapterSpy.mock.results[0]?.value.adapters.length).toBeGreaterThan(0)
     adapterSpy.mockRestore()
   })
 

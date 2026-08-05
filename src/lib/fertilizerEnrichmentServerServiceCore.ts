@@ -223,6 +223,20 @@ function validateOrchestrationInput(value: unknown): FertilizerEnrichmentOrchest
     sourceHints: Array.isArray(record.sourceHints)
       ? record.sourceHints.map((entry) => validateSourceHint(entry))
       : undefined,
+    captureInlineSourceTexts:
+      record.captureInlineSourceTexts &&
+      typeof record.captureInlineSourceTexts === 'object' &&
+      !Array.isArray(record.captureInlineSourceTexts)
+        ? Object.fromEntries(
+            Object.entries(record.captureInlineSourceTexts as Record<string, unknown>)
+              .map(([key, value]) =>
+                typeof value === 'string' && value.trim().length > 0
+                  ? ([key.trim(), value] as const)
+                  : null,
+              )
+              .filter((entry): entry is readonly [string, string] => entry != null),
+          )
+        : undefined,
     priorOrchestrationRunId:
       typeof record.priorOrchestrationRunId === 'string' ? record.priorOrchestrationRunId : null,
     idempotencyKey: typeof record.idempotencyKey === 'string' ? record.idempotencyKey : null,

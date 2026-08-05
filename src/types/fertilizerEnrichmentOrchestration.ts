@@ -359,6 +359,8 @@ export interface FertilizerEnrichmentOrchestrationInput {
   userProvidedSources?: FertilizerUserProvidedSourceRef[]
   allowedInputChannels: FertilizerEnrichmentInputChannel[]
   sourceHints?: FertilizerEnrichmentSourceHint[]
+  /** Capture-only inline packaging/label text keyed by referenceId — not persisted as product truth. */
+  captureInlineSourceTexts?: Record<string, string>
   priorOrchestrationRunId?: string | null
   idempotencyKey?: string | null
   orchestrationRunId?: string | null
