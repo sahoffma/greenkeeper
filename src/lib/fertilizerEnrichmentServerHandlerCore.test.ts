@@ -14,7 +14,15 @@ import type { FertilizerSourceAdapter } from './fertilizerEnrichmentOrchestratio
 
 const ACCESS = { kind: 'session' as const, sessionId: 'session-1' }
 const FIXED_NOW = '2026-07-29T10:00:00.000Z'
-const TEST_EXPIRES_AT = '2026-08-05T10:00:00.000Z'
+
+function testExpiresAtFromFixedNow(daysAfter = 7): string {
+  const date = new Date(FIXED_NOW)
+  date.setUTCDate(date.getUTCDate() + daysAfter)
+  return date.toISOString()
+}
+
+const TEST_EXPIRES_AT = testExpiresAtFromFixedNow()
+const testNow = () => FIXED_NOW
 
 function emptyTimeoutState() {
   return {
@@ -35,6 +43,7 @@ function buildHandlers(adapters: FertilizerSourceAdapter[] = [], enabled = true)
     createJobId: () => 'job-handler-1',
     createOrchestrationRunId: () => 'orch-handler-1',
     resolveExpiresAt: createTestResolveExpiresAt(TEST_EXPIRES_AT),
+    now: testNow,
   })
 
   return createFertilizerEnrichmentHttpHandlers({
@@ -139,6 +148,7 @@ describe('fertilizerEnrichmentServerHandlerCore', () => {
       resolveOrchestrationDependencies: () => createTestOrchestrationDependencies([]),
       createJobId: () => 'job-status-1',
       resolveExpiresAt: createTestResolveExpiresAt(TEST_EXPIRES_AT),
+      now: testNow,
     })
     const handlers = createFertilizerEnrichmentHttpHandlers({
       service,
@@ -221,6 +231,7 @@ describe('fertilizerEnrichmentServerHandlerCore', () => {
       repository,
       resolveOrchestrationDependencies: () => createTestOrchestrationDependencies([]),
       resolveExpiresAt: createTestResolveExpiresAt(TEST_EXPIRES_AT),
+      now: testNow,
     })
     const handlers = createFertilizerEnrichmentHttpHandlers({
       service,
@@ -298,6 +309,7 @@ describe('fertilizerEnrichmentServerHandlerCore', () => {
         resolveOrchestrationDependencies: () => createTestOrchestrationDependencies([]),
         createJobId: () => 'job-leak-status',
         resolveExpiresAt: createTestResolveExpiresAt(TEST_EXPIRES_AT),
+        now: testNow,
       })
       const handlers = createFertilizerEnrichmentHttpHandlers({
         service,
@@ -380,6 +392,7 @@ describe('fertilizerEnrichmentServerHandlerCore', () => {
         resolveOrchestrationDependencies: () => createTestOrchestrationDependencies([]),
         createOrchestrationRunId: () => 'orch-leak-additional-2',
         resolveExpiresAt: createTestResolveExpiresAt(TEST_EXPIRES_AT),
+        now: testNow,
       })
       const handlers = createFertilizerEnrichmentHttpHandlers({
         service,
@@ -446,6 +459,7 @@ describe('fertilizerEnrichmentServerHandlerCore', () => {
         repository,
         resolveOrchestrationDependencies: () => createTestOrchestrationDependencies([]),
         resolveExpiresAt: createTestResolveExpiresAt(TEST_EXPIRES_AT),
+        now: testNow,
       })
       const handlers = createFertilizerEnrichmentHttpHandlers({
         service,
