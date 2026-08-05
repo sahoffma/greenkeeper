@@ -39,6 +39,10 @@ import {
   webSourcesToRecords,
 } from './productRecognizeSearchCore'
 import { mergeWebExtractionIntoRecognition } from './productRecognizeWebCore'
+import {
+  logProductRecognizePipeline,
+  logProductRecognizePipelineError,
+} from './productRecognizePipelineLogCore'
 
 export interface ProductRecognizeInput {
   imageBase64: string
@@ -131,9 +135,15 @@ function emptyResultBase(): Pick<
   }
 }
 
+export interface ProductRecognizePipelineContext {
+  requestParseMs?: number
+  imageDecodeMs?: number
+}
+
 export async function runProductRecognition(
   input: ProductRecognizeInput,
   deps: ProductRecognizeDeps,
+  pipelineContext: ProductRecognizePipelineContext = {},
 ): Promise<ProductRecognizeResult> {
   const startedAt = Date.now()
   const now = deps.now ?? (() => new Date().toISOString())
@@ -151,10 +161,13 @@ export async function runProductRecognition(
   const sources: ProductRecognizeSourceRecord[] = []
   const prepare = deps.prepareImage ?? prepareProductRecognizeImage
   const pipelineLatencies = {
+    requestParseMs: pipelineContext.requestParseMs ?? 0,
+    imageDecodeMs: pipelineContext.imageDecodeMs ?? 0,
     imagePrepMs: 0,
     imageAnalysisMs: 0,
     catalogSearchMs: 0,
     webEnrichmentMs: 0,
+    enrichmentMs: 0,
     decisionMs: 0,
     totalMs: 0,
   }
@@ -191,6 +204,11 @@ export async function runProductRecognition(
         latencyMs: Date.now() - startedAt,
         estimatedCost: null,
         warnings: [message],
+        pipelineLatencies: {
+          ...pipelineLatencies,
+          imagePrepMs: Date.now() - prepStartedAt,
+          totalMs: Date.now() - startedAt,
+        },
       },
       steps,
       spike: true,
@@ -213,11 +231,22 @@ export async function runProductRecognition(
   const analysisStartedAt = Date.now()
 
   try {
+    logProductRecognizePipeline('openai_analysis_start', {
+      mimeType: prepared.mimeType,
+      processedBytes: prepared.prep.processedBytes,
+    })
     imageAnalysis = await deps.analyzeImage({
       base64: prepared.base64,
       mimeType: prepared.mimeType,
     })
+    logProductRecognizePipeline('openai_analysis_complete', {
+      durationMs: Date.now() - analysisStartedAt,
+    })
   } catch (error) {
+    logProductRecognizePipelineError('openai_analysis_failed', {
+      durationMs: Date.now() - analysisStartedAt,
+      message: error instanceof Error ? error.message : String(error),
+    })
     updateStep(steps, 'image_analysis', {
       status: 'failed',
       summary: 'Bildanalyse fehlgeschlagen',
@@ -237,6 +266,12 @@ export async function runProductRecognition(
         warnings: ['OpenAI-Bildanalyse fehlgeschlagen.'],
         imagePrep: prepared.prep,
         searchProvider: deps.searchProvider.name,
+        pipelineLatencies: {
+          ...pipelineLatencies,
+          imagePrepMs: pipelineLatencies.imagePrepMs,
+          imageAnalysisMs: Date.now() - analysisStartedAt,
+          totalMs: Date.now() - startedAt,
+        },
       },
       steps,
       spike: true,
@@ -346,6 +381,7 @@ export async function runProductRecognition(
     }
 
     pipelineLatencies.webEnrichmentMs = Date.now() - webStartedAt
+    pipelineLatencies.enrichmentMs = pipelineLatencies.webEnrichmentMs
 
     updateStep(steps, 'web_enrichment', {
       status: webExtraction.failed ? 'failed' : 'completed',
@@ -390,6 +426,14 @@ export async function runProductRecognition(
 
   pipelineLatencies.decisionMs = Date.now() - decisionStartedAt
   pipelineLatencies.totalMs = Date.now() - startedAt
+  pipelineLatencies.enrichmentMs = pipelineLatencies.webEnrichmentMs
+
+  logProductRecognizePipeline('pipeline_complete', {
+    totalMs: pipelineLatencies.totalMs,
+    imagePrepMs: pipelineLatencies.imagePrepMs,
+    imageAnalysisMs: pipelineLatencies.imageAnalysisMs,
+    enrichmentMs: pipelineLatencies.enrichmentMs,
+  })
 
   updateStep(steps, 'decision', {
     status: 'completed',

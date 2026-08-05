@@ -1,4 +1,7 @@
 import type { ProductRecognizeResult } from '../types/productRecognize'
+import {
+  ProductRecognizeClientError,
+} from './productRecognizeClient'
 import type {
   FertilizerRecognitionCandidate,
   FertilizerRecognitionCandidateField,
@@ -19,7 +22,7 @@ import {
 } from './fertilizerProductDisplay'
 import { createRandomId } from './randomId'
 
-export const RECOGNITION_CLIENT_TIMEOUT_MS = 30_000
+export const RECOGNITION_CLIENT_TIMEOUT_MS = 90_000
 export const RECOGNITION_SLOW_HINT_MS = 12_000
 
 export const RECOGNITION_UI_PROGRESS_STEPS = [
@@ -33,6 +36,12 @@ export const RECOGNITION_SLOW_HINT_MESSAGE =
 
 export const RECOGNITION_ERROR_FALLBACK_MESSAGE =
   'Die automatische Erkennung ist gerade nicht verfügbar. Du kannst das Produkt suchen oder das Foto erneut versuchen.'
+
+export const RECOGNITION_UNREACHABLE_MESSAGE =
+  'Der Erkennungsdienst ist gerade nicht erreichbar. Starte lokal npm run dev:netlify oder versuche es später erneut.'
+
+export const RECOGNITION_NOT_CONFIGURED_MESSAGE =
+  'Der Erkennungsdienst ist noch nicht konfiguriert. Du kannst das Produkt suchen oder das Foto erneut versuchen.'
 
 export const RECOGNITION_PRIVACY_HINT =
   'Das Foto wird zur Produkterkennung verarbeitet und nicht dauerhaft gespeichert.'
@@ -300,4 +309,90 @@ export function catalogProductIdFromResult(result: ProductRecognizeResult): stri
 
 export function assertNoCatalogPersist(result: ProductRecognizeResult): boolean {
   return result.stockCapture.persistToCatalog === false
+}
+
+export function resolveRecognitionResultFailureMessage(
+  result: ProductRecognizeResult,
+): string {
+  const warning = result.diagnostics.warnings.find((entry) => entry.trim().length > 0)
+  if (warning) {
+    return warning
+  }
+
+  if (result.nextAction.message) {
+    return result.nextAction.message
+  }
+
+  if (result.status === 'not_identified') {
+    return 'Ich konnte das Produkt auf dem Foto nicht sicher erkennen. Bitte versuche ein klareres Foto oder suche das Produkt manuell.'
+  }
+
+  return RECOGNITION_ERROR_FALLBACK_MESSAGE
+}
+
+export function resolveRecognitionClientErrorMessage(error: ProductRecognizeClientError): string {
+  switch (error.kind) {
+    case 'not_configured':
+      return RECOGNITION_NOT_CONFIGURED_MESSAGE
+    case 'unreachable':
+    case 'network':
+      return RECOGNITION_UNREACHABLE_MESSAGE
+    case 'timeout':
+      return error.message
+    case 'invalid_image':
+      return error.message
+    case 'invalid_response':
+    case 'server':
+    default:
+      return RECOGNITION_ERROR_FALLBACK_MESSAGE
+  }
+}
+
+export function resolveRecognitionFailureMessage(input: {
+  result?: ProductRecognizeResult | null
+  error?: unknown
+}): string {
+  if (input.result) {
+    return resolveRecognitionResultFailureMessage(input.result)
+  }
+
+  if (input.error instanceof ProductRecognizeClientError) {
+    return resolveRecognitionClientErrorMessage(input.error)
+  }
+
+  if (input.error instanceof Error && input.error.message.trim()) {
+    return RECOGNITION_ERROR_FALLBACK_MESSAGE
+  }
+
+  return RECOGNITION_ERROR_FALLBACK_MESSAGE
+}
+
+export function logRecognitionFailureDiagnostic(input: {
+  error?: unknown
+  result?: ProductRecognizeResult | null
+  requestId?: string | null
+}): void {
+  if (input.error instanceof ProductRecognizeClientError) {
+    console.error('[fertilizer-recognition]', {
+      requestId: input.requestId ?? null,
+      kind: input.error.kind,
+      statusCode: input.error.statusCode,
+      message: input.error.message,
+    })
+    return
+  }
+
+  if (input.result) {
+    console.error('[fertilizer-recognition]', {
+      requestId: input.requestId ?? null,
+      status: input.result.status,
+      warnings: input.result.diagnostics.warnings,
+      steps: input.result.steps.map((step) => ({
+        id: step.id,
+        status: step.status,
+        summary: step.summary,
+        detail: step.detail ?? null,
+      })),
+    })
+  }
 }

@@ -196,13 +196,18 @@ export interface ProductRecognizeImagePrepDiagnostics {
   conversionMs: number
   compressionMs: number
   converted: boolean
+  heicDetected?: boolean
+  heicRetryUsed?: boolean
 }
 
 export interface ProductRecognizePipelineLatencies {
+  requestParseMs?: number
+  imageDecodeMs?: number
   imagePrepMs: number
   imageAnalysisMs: number
   catalogSearchMs: number
   webEnrichmentMs: number
+  enrichmentMs?: number
   decisionMs: number
   totalMs: number
 }

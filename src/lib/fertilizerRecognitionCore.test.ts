@@ -15,6 +15,8 @@ import {
   recognitionAllowsAcceptance,
   recognitionNeedsClarification,
   RECOGNITION_ERROR_FALLBACK_MESSAGE,
+  resolveRecognitionClientErrorMessage,
+  resolveRecognitionResultFailureMessage,
 } from './fertilizerRecognitionCore'
 import {
   clearFertilizerRecognitionTelemetryLog,
@@ -23,6 +25,7 @@ import {
   telemetryPayloadIsSafe,
   trackFertilizerRecognition,
 } from './fertilizerRecognitionTelemetry'
+import { ProductRecognizeClientError } from './productRecognizeClient'
 import { runProductRecognition, type ProductRecognizeDeps } from './productRecognizeCore'
 import type {
   ProductRecognizeImageAnalysis,
@@ -313,6 +316,36 @@ describe('fertilizerRecognitionCore integration', () => {
 
   it('13 — Timeout-Fallback-Text ist verständlich', () => {
     expect(RECOGNITION_ERROR_FALLBACK_MESSAGE).toMatch(/Produkt suchen/)
+  })
+
+  it('14 — Server-Fehlerantworten werden verständlich gemappt', async () => {
+    const result = await runRasendoktor({
+      analyzeImage: async () => {
+        throw new Error('OpenAI down')
+      },
+    })
+
+    expect(resolveRecognitionResultFailureMessage(result)).toMatch(/OpenAI-Bildanalyse fehlgeschlagen|nicht verfügbar|nicht erkennen/)
+  })
+
+  it('15 — Client-Fehler werden differenziert', () => {
+    expect(
+      resolveRecognitionClientErrorMessage(
+        new ProductRecognizeClientError('missing key', {
+          kind: 'not_configured',
+          statusCode: 503,
+        }),
+      ),
+    ).toMatch(/nicht konfiguriert/)
+
+    expect(
+      resolveRecognitionClientErrorMessage(
+        new ProductRecognizeClientError('offline', {
+          kind: 'unreachable',
+          statusCode: 404,
+        }),
+      ),
+    ).toMatch(/nicht erreichbar/)
   })
 
   it('1 — deaktiviertes Flag: Prototyp-Hinweis unverändert', () => {

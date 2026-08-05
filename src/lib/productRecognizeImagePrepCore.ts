@@ -1,4 +1,15 @@
 import type { PreparedProductRecognizeImage } from '../types/productRecognize'
+import {
+  detectHeicContainerFromBytes,
+  isHeicOrHeifRecognitionMimeType,
+  isSupportedRecognitionInputMimeType,
+  normalizeRecognitionInputMimeType,
+  RECOGNITION_HEIC_MIME_TYPES,
+} from './productRecognizeImageInputCore'
+import {
+  logProductRecognizePipeline,
+  logProductRecognizePipelineError,
+} from './productRecognizePipelineLogCore'
 
 export const PRODUCT_RECOGNIZE_MAX_INPUT_BYTES = 8 * 1024 * 1024
 export const PRODUCT_RECOGNIZE_MAX_PROCESSED_BYTES = 4 * 1024 * 1024
@@ -13,7 +24,11 @@ export const SUPPORTED_INPUT_MIME_TYPES = [
   'image/heif',
 ] as const
 
-export const HEIC_MIME_TYPES = new Set(['image/heic', 'image/heif'])
+export const HEIC_MIME_TYPES = RECOGNITION_HEIC_MIME_TYPES
+
+export function detectHeicContainerFromBuffer(buffer: Buffer): boolean {
+  return detectHeicContainerFromBytes(buffer)
+}
 
 export class ProductRecognizeImagePrepError extends Error {
   statusCode: number
@@ -30,27 +45,8 @@ function estimateBase64Bytes(base64: string): number {
   return Math.floor((base64.length * 3) / 4) - padding
 }
 
-function normalizeMimeType(mimeType: string, fileName?: string): string {
-  const trimmed = mimeType.trim().toLowerCase()
-
-  if (trimmed && trimmed !== 'application/octet-stream') {
-    return trimmed
-  }
-
-  const lowerName = fileName?.toLowerCase() ?? ''
-
-  if (lowerName.endsWith('.heic')) return 'image/heic'
-  if (lowerName.endsWith('.heif')) return 'image/heif'
-  if (lowerName.endsWith('.png')) return 'image/png'
-  if (lowerName.endsWith('.webp')) return 'image/webp'
-
-  return 'image/jpeg'
-}
-
 export function isSupportedInputMimeType(mimeType: string): boolean {
-  return SUPPORTED_INPUT_MIME_TYPES.includes(
-    mimeType.toLowerCase() as (typeof SUPPORTED_INPUT_MIME_TYPES)[number],
-  )
+  return isSupportedRecognitionInputMimeType(mimeType)
 }
 
 async function convertHeicToJpeg(buffer: Buffer): Promise<Buffer> {
@@ -71,6 +67,88 @@ export interface OptimizeImageBufferResult {
   processedWidth: number | null
   processedHeight: number | null
   compressionMs: number
+}
+
+function isJpegBuffer(buffer: Buffer): boolean {
+  return buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xd8
+}
+
+function logSharpOptimizeFailure(error: unknown): void {
+  logProductRecognizePipelineError('optimize_image_buffer_failed', {
+    message: error instanceof Error ? error.message : String(error),
+  })
+}
+
+function buildPreparedFromBuffer(input: {
+  inputBuffer: Buffer
+  effectiveFormat: string
+  originalBytes: number
+  converted: boolean
+  conversionMs: number
+  compressionMs?: number
+  heicDetected: boolean
+  heicRetryUsed: boolean
+}): PreparedProductRecognizeImage {
+  const processedFormat =
+    input.converted || isJpegBuffer(input.inputBuffer) ? 'image/jpeg' : input.effectiveFormat
+
+  if (input.inputBuffer.length > PRODUCT_RECOGNIZE_MAX_PROCESSED_BYTES) {
+    throw new ProductRecognizeImagePrepError(
+      'Das verarbeitete Foto ist zu groß (maximal 4 MB nach der Verarbeitung).',
+    )
+  }
+
+  return {
+    base64: input.inputBuffer.toString('base64'),
+    mimeType: processedFormat === 'image/jpeg' ? 'image/jpeg' : input.effectiveFormat,
+    prep: {
+      originalFormat: input.effectiveFormat,
+      processedFormat,
+      originalBytes: input.originalBytes,
+      processedBytes: input.inputBuffer.length,
+      originalWidth: null,
+      originalHeight: null,
+      processedWidth: null,
+      processedHeight: null,
+      conversionMs: input.conversionMs,
+      compressionMs: input.compressionMs ?? 0,
+      converted: input.converted,
+      heicDetected: input.heicDetected,
+      heicRetryUsed: input.heicRetryUsed,
+    },
+  }
+}
+
+function canUseOriginalProcessedFallback(input: {
+  inputBuffer: Buffer
+  effectiveFormat: string
+  converted: boolean
+}): boolean {
+  if (input.converted) {
+    return true
+  }
+
+  if (input.effectiveFormat === 'image/jpeg' && isJpegBuffer(input.inputBuffer)) {
+    return true
+  }
+
+  return false
+}
+
+function shouldAttemptHeicConversionRetry(input: {
+  converted: boolean
+  inputBuffer: Buffer
+  effectiveFormat: string
+}): boolean {
+  return !input.converted && !isJpegBuffer(input.inputBuffer) && input.effectiveFormat === 'image/jpeg'
+}
+
+async function attemptHeicConversionRetry(buffer: Buffer): Promise<Buffer | null> {
+  try {
+    return await convertHeicToJpeg(buffer)
+  } catch {
+    return null
+  }
 }
 
 export async function optimizeImageBuffer(inputBuffer: Buffer): Promise<OptimizeImageBufferResult> {
@@ -120,9 +198,16 @@ export interface PrepareProductRecognizeImageInput {
 export async function prepareProductRecognizeImage(
   input: PrepareProductRecognizeImageInput,
 ): Promise<PreparedProductRecognizeImage> {
+  const prepStartedAt = Date.now()
+  logProductRecognizePipeline('image_prep_start', {
+    declaredMimeType: input.mimeType,
+    fileName: input.fileName ?? null,
+    base64Length: input.base64.replace(/^data:[^;]+;base64,/, '').length,
+  })
+
   const base64 = input.base64.replace(/^data:[^;]+;base64,/, '')
   const originalBytes = estimateBase64Bytes(base64)
-  const originalFormat = normalizeMimeType(input.mimeType, input.fileName)
+  const originalFormat = normalizeRecognitionInputMimeType(input.mimeType, input.fileName)
 
   if (originalBytes < 32) {
     throw new ProductRecognizeImagePrepError('Die Bilddatei ist ungültig oder leer.')
@@ -143,8 +228,17 @@ export async function prepareProductRecognizeImage(
   const conversionStartedAt = Date.now()
   let inputBuffer = Buffer.from(base64, 'base64')
   let converted = false
+  let heicRetryUsed = false
+  let effectiveFormat = originalFormat
+  let heicDetected =
+    isHeicOrHeifRecognitionMimeType(effectiveFormat) ||
+    detectHeicContainerFromBuffer(inputBuffer)
 
-  if (HEIC_MIME_TYPES.has(originalFormat)) {
+  if (!isHeicOrHeifRecognitionMimeType(effectiveFormat) && detectHeicContainerFromBuffer(inputBuffer)) {
+    effectiveFormat = 'image/heic'
+  }
+
+  if (isHeicOrHeifRecognitionMimeType(effectiveFormat)) {
     try {
       inputBuffer = await convertHeicToJpeg(inputBuffer)
       converted = true
@@ -161,14 +255,92 @@ export async function prepareProductRecognizeImage(
 
   const conversionMs = Date.now() - conversionStartedAt
 
-  let optimized: OptimizeImageBufferResult
+  let optimized: OptimizeImageBufferResult | null = null
 
   try {
     optimized = await optimizeImageBuffer(inputBuffer)
-  } catch {
-    throw new ProductRecognizeImagePrepError(
-      'Das Foto konnte nicht für die Erkennung vorbereitet werden.',
-    )
+  } catch (sharpError) {
+    logSharpOptimizeFailure(sharpError)
+
+    if (
+      shouldAttemptHeicConversionRetry({
+        converted,
+        inputBuffer,
+        effectiveFormat,
+      })
+    ) {
+      const retriedBuffer = await attemptHeicConversionRetry(inputBuffer)
+
+      if (retriedBuffer) {
+        heicRetryUsed = true
+        inputBuffer = retriedBuffer
+        converted = true
+        effectiveFormat = 'image/heic'
+        heicDetected = true
+
+        try {
+          optimized = await optimizeImageBuffer(inputBuffer)
+        } catch (retrySharpError) {
+          logSharpOptimizeFailure(retrySharpError)
+
+          const result = buildPreparedFromBuffer({
+            inputBuffer,
+            effectiveFormat,
+            originalBytes,
+            converted,
+            conversionMs,
+            heicDetected,
+            heicRetryUsed,
+          })
+          logProductRecognizePipeline('image_prep_complete', {
+            durationMs: Date.now() - prepStartedAt,
+            effectiveFormat: result.prep.originalFormat,
+            processedFormat: result.prep.processedFormat,
+            originalBytes: result.prep.originalBytes,
+            processedBytes: result.prep.processedBytes,
+            heicDetected,
+            heicRetryUsed,
+            converted: result.prep.converted,
+          })
+          return result
+        }
+      }
+    }
+
+    if (!optimized) {
+      if (
+        canUseOriginalProcessedFallback({
+          inputBuffer,
+          effectiveFormat,
+          converted,
+        })
+      ) {
+        const result = buildPreparedFromBuffer({
+          inputBuffer,
+          effectiveFormat,
+          originalBytes,
+          converted,
+          conversionMs,
+          heicDetected,
+          heicRetryUsed,
+        })
+        logProductRecognizePipeline('image_prep_complete', {
+          durationMs: Date.now() - prepStartedAt,
+          effectiveFormat: result.prep.originalFormat,
+          processedFormat: result.prep.processedFormat,
+          originalBytes: result.prep.originalBytes,
+          processedBytes: result.prep.processedBytes,
+          heicDetected,
+          heicRetryUsed,
+          converted: result.prep.converted,
+        })
+        return result
+      }
+
+      throw new ProductRecognizeImagePrepError(
+        'Das Foto konnte nicht für die Erkennung vorbereitet werden.',
+      )
+    }
   }
 
   if (optimized.buffer.length > PRODUCT_RECOGNIZE_MAX_PROCESSED_BYTES) {
@@ -177,11 +349,11 @@ export async function prepareProductRecognizeImage(
     )
   }
 
-  return {
+  const result: PreparedProductRecognizeImage = {
     base64: optimized.buffer.toString('base64'),
     mimeType: 'image/jpeg',
     prep: {
-      originalFormat,
+      originalFormat: effectiveFormat,
       processedFormat: 'image/jpeg',
       originalBytes,
       processedBytes: optimized.buffer.length,
@@ -192,6 +364,21 @@ export async function prepareProductRecognizeImage(
       conversionMs,
       compressionMs: optimized.compressionMs,
       converted,
+      heicDetected,
+      heicRetryUsed,
     },
   }
+
+  logProductRecognizePipeline('image_prep_complete', {
+    durationMs: Date.now() - prepStartedAt,
+    effectiveFormat: result.prep.originalFormat,
+    processedFormat: result.prep.processedFormat,
+    originalBytes: result.prep.originalBytes,
+    processedBytes: result.prep.processedBytes,
+    heicDetected,
+    heicRetryUsed,
+    converted: result.prep.converted,
+  })
+
+  return result
 }

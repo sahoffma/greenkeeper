@@ -3,9 +3,15 @@
   publish = "dist"
   functions = "netlify/functions"
 
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
 [functions]
   node_bundler = "esbuild"
-  included_files = ["shared/**"]
+  external_node_modules = ["sharp"]
+  included_files = ["shared/**", "node_modules/@img/**"]
 
 [dev]
   command = "npm run dev"

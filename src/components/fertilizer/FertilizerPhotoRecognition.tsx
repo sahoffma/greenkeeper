@@ -2,6 +2,7 @@ import { useEffect, useId, useRef } from 'react'
 import { CameraIcon } from '../icons/CameraIcon'
 import {
   formatRecognizedProductDisplay,
+  logRecognitionFailureDiagnostic,
   RECOGNITION_CLIENT_TIMEOUT_MS,
   RECOGNITION_ERROR_FALLBACK_MESSAGE,
   RECOGNITION_PRIVACY_HINT,
@@ -10,6 +11,8 @@ import {
   RECOGNITION_UI_PROGRESS_STEPS,
   recognitionAllowsAcceptance,
   recognitionNeedsClarification,
+  resolveRecognitionFailureMessage,
+  resolveRecognitionResultFailureMessage,
 } from '../../lib/fertilizerRecognitionCore'
 import { formatRecognitionResultScreenCopy } from '../../lib/fertilizerProductDisplay'
 import {
@@ -19,7 +22,6 @@ import {
 } from '../../lib/fertilizerRecognitionFlight'
 import type { PhotoRecognitionSessionState } from '../../lib/fertilizerCaptureSessionCore'
 import {
-  ProductRecognizeClientError,
   recognizeProductFromImage,
 } from '../../lib/productRecognizeClient'
 import { trackFertilizerRecognition } from '../../lib/fertilizerRecognitionTelemetry'
@@ -27,24 +29,13 @@ import { createRandomId } from '../../lib/randomId'
 import type { ProductRecognizeResult } from '../../types/productRecognize'
 import styles from './FertilizerPhotoRecognition.module.css'
 
-function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-
-    reader.onload = () => {
-      const result = typeof reader.result === 'string' ? reader.result : ''
-      const [, meta, base64] = /^data:([^;]+);base64,(.+)$/.exec(result) ?? []
-
-      resolve({
-        mimeType: meta ?? (file.type || 'image/jpeg'),
-        base64: base64 ?? result,
-      })
-    }
-
-    reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden.'))
-    reader.readAsDataURL(file)
-  })
-}
+import {
+  encodeRecognitionFileForUpload,
+} from '../../lib/productRecognizeImagePrepClientCore'
+import {
+  buildRecognitionClientPreFetchDiagnostics,
+  logRecognitionClientPreFetch,
+} from '../../lib/productRecognizeClientDiagnosticsCore'
 
 export interface FertilizerPhotoRecognitionProps {
   session: PhotoRecognitionSessionState
@@ -64,6 +55,11 @@ export function FertilizerPhotoRecognition({
   const startedAtRef = useRef<number | null>(null)
   const sessionRef = useRef(session)
   sessionRef.current = session
+
+  const commitSessionChange = (next: PhotoRecognitionSessionState) => {
+    sessionRef.current = next
+    onSessionChange(next)
+  }
 
   useEffect(() => {
     if (session.phase !== 'analyzing' || !session.inFlightRequestId) {
@@ -102,7 +98,7 @@ export function FertilizerPhotoRecognition({
     }
 
     const stepTimer = window.setInterval(() => {
-      onSessionChange({
+      commitSessionChange({
         ...sessionRef.current,
         progressIndex: Math.min(
           sessionRef.current.progressIndex + 1,
@@ -112,7 +108,7 @@ export function FertilizerPhotoRecognition({
     }, 4000)
 
     const slowTimer = window.setTimeout(() => {
-      onSessionChange({
+      commitSessionChange({
         ...sessionRef.current,
         slowHint: true,
       })
@@ -135,7 +131,7 @@ export function FertilizerPhotoRecognition({
     )
 
     if (recognitionAllowsAcceptance(response)) {
-      onSessionChange({
+      commitSessionChange({
         ...sessionRef.current,
         phase: 'result',
         result: response,
@@ -161,7 +157,7 @@ export function FertilizerPhotoRecognition({
     }
 
     if (recognitionNeedsClarification(response)) {
-      onSessionChange({
+      commitSessionChange({
         ...sessionRef.current,
         phase: 'unclear',
         result: response,
@@ -183,11 +179,14 @@ export function FertilizerPhotoRecognition({
       return
     }
 
-    onSessionChange({
+    const failureMessage = resolveRecognitionResultFailureMessage(response)
+    logRecognitionFailureDiagnostic({ result: response, requestId })
+
+    commitSessionChange({
       ...sessionRef.current,
       phase: 'error',
       result: response,
-      errorMessage: RECOGNITION_ERROR_FALLBACK_MESSAGE,
+      errorMessage: failureMessage,
       inFlightRequestId: null,
     })
     trackFertilizerRecognition({
@@ -233,7 +232,7 @@ export function FertilizerPhotoRecognition({
       })
 
       if (reason !== 'superseded') {
-        onSessionChange({
+        commitSessionChange({
           ...sessionRef.current,
           phase: 'select',
           inFlightRequestId: null,
@@ -244,10 +243,13 @@ export function FertilizerPhotoRecognition({
       return
     }
 
-    onSessionChange({
+    const failureMessage = resolveRecognitionFailureMessage({ error: caught })
+    logRecognitionFailureDiagnostic({ error: caught, requestId })
+
+    commitSessionChange({
       ...sessionRef.current,
       phase: 'error',
-      errorMessage: RECOGNITION_ERROR_FALLBACK_MESSAGE,
+      errorMessage: failureMessage,
       inFlightRequestId: null,
     })
     trackFertilizerRecognition({
@@ -262,22 +264,13 @@ export function FertilizerPhotoRecognition({
       userAccepted: null,
       userDiscarded: null,
     })
-
-    if (caught instanceof ProductRecognizeClientError) {
-      onSessionChange({
-        ...sessionRef.current,
-        phase: 'error',
-        errorMessage: RECOGNITION_ERROR_FALLBACK_MESSAGE,
-        inFlightRequestId: null,
-      })
-    }
   }
 
   async function analyzeFile(file: File) {
     const requestId = createRandomId()
     startedAtRef.current = Date.now()
 
-    onSessionChange({
+    commitSessionChange({
       ...sessionRef.current,
       phase: 'analyzing',
       result: null,
@@ -294,13 +287,29 @@ export function FertilizerPhotoRecognition({
 
     try {
       const response = await startRecognitionFlight(requestId, async (signal) => {
-        const encoded = await fileToBase64(file)
+        const encodeStartedAt = Date.now()
+        const encoded = await encodeRecognitionFileForUpload(file)
+        const encodeMs = Date.now() - encodeStartedAt
+        const fetchStartedAt = new Date().toISOString()
+        const preFetchDiagnostics = buildRecognitionClientPreFetchDiagnostics({
+          fileName: file.name,
+          browserMimeType: file.type || 'image/jpeg',
+          originalBytes: file.size,
+          resolvedUploadMimeType: encoded.mimeType,
+          base64Length: encoded.base64.length,
+          imageBase64: encoded.base64,
+          encodeMs,
+          fetchStartedAt,
+        })
+        logRecognitionClientPreFetch(preFetchDiagnostics)
+
         return recognizeProductFromImage({
           imageBase64: encoded.base64,
           mimeType: encoded.mimeType,
           fileName: file.name,
           signal,
           timeoutMs: RECOGNITION_CLIENT_TIMEOUT_MS,
+          preFetchDiagnostics,
         })
       })
 
@@ -325,8 +334,8 @@ export function FertilizerPhotoRecognition({
 
   function handleCancelAnalysis() {
     cancelRecognitionFlight(session.inFlightRequestId)
-    onSessionChange({
-      ...sessionRef.current,
+    commitSessionChange({
+      ...createInitialPhotoSessionFrom(sessionRef.current),
       phase: 'select',
       inFlightRequestId: null,
       errorMessage: null,
@@ -374,8 +383,8 @@ export function FertilizerPhotoRecognition({
       })
     }
 
-    onSessionChange({
-      ...createInitialPhotoSessionFrom(session),
+    commitSessionChange({
+      ...createInitialPhotoSessionFrom(sessionRef.current),
       phase: 'select',
       result: null,
       errorMessage: null,
@@ -393,8 +402,8 @@ export function FertilizerPhotoRecognition({
   }
 
   function resetToSelect() {
-    onSessionChange({
-      ...createInitialPhotoSessionFrom(session),
+    commitSessionChange({
+      ...createInitialPhotoSessionFrom(sessionRef.current),
       phase: 'select',
       result: null,
       errorMessage: null,
