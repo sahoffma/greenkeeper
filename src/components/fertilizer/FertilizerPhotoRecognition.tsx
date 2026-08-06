@@ -30,17 +30,20 @@ import type { ProductRecognizeResult } from '../../types/productRecognize'
 import styles from './FertilizerPhotoRecognition.module.css'
 
 import {
-  encodeRecognitionFileForUpload,
-} from '../../lib/productRecognizeImagePrepClientCore'
+  resolvePhotoRecognitionAcceptInvocation,
+  storePhotoRecognitionAnalysisResult,
+  type RecognitionClientHandoffTrace,
+} from '../../lib/fertilizerCaptureRecognitionClientHandoffCore'
 import {
   buildRecognitionClientPreFetchDiagnostics,
   logRecognitionClientPreFetch,
 } from '../../lib/productRecognizeClientDiagnosticsCore'
+import { encodeRecognitionFileForUpload } from '../../lib/productRecognizeImagePrepClientCore'
 
 export interface FertilizerPhotoRecognitionProps {
   session: PhotoRecognitionSessionState
   onSessionChange: (next: PhotoRecognitionSessionState) => void
-  onAccept: (result: ProductRecognizeResult) => void
+  onAccept: (result: ProductRecognizeResult, clientHandoffTrace: RecognitionClientHandoffTrace) => void
   onCancel: () => void
 }
 
@@ -131,12 +134,14 @@ export function FertilizerPhotoRecognition({
     )
 
     if (recognitionAllowsAcceptance(response)) {
+      const stored = storePhotoRecognitionAnalysisResult(
+        sessionRef.current,
+        response,
+        sessionRef.current.clientHandoffTrace,
+      )
       commitSessionChange({
-        ...sessionRef.current,
-        phase: 'result',
-        result: response,
-        errorMessage: null,
-        inFlightRequestId: null,
+        ...stored.session,
+        clientHandoffTrace: stored.trace,
       })
       trackFertilizerRecognition({
         outcome: 'success',
@@ -345,26 +350,30 @@ export function FertilizerPhotoRecognition({
   }
 
   function handleAccept() {
-    if (!session.result) {
+    const acceptInvocation = resolvePhotoRecognitionAcceptInvocation(
+      session,
+      session.clientHandoffTrace,
+    )
+    if (!acceptInvocation) {
       return
     }
 
     trackFertilizerRecognition({
       outcome: 'success',
-      catalogHit: session.result.catalogMatch.matched,
-      webSourceFound: session.result.sources.some((source) =>
+      catalogHit: acceptInvocation.result.catalogMatch.matched,
+      webSourceFound: acceptInvocation.result.sources.some((source) =>
         ['official_manufacturer', 'official_brand'].includes(source.type),
       ),
       backPhotoRequested: false,
       totalLatencyMs: startedAtRef.current ? Date.now() - startedAtRef.current : null,
-      fileFormat: session.result.diagnostics.imagePrep?.originalFormat ?? null,
-      identityConfidence: session.result.identityConfidence,
-      dataCompleteness: session.result.dataCompleteness,
+      fileFormat: acceptInvocation.result.diagnostics.imagePrep?.originalFormat ?? null,
+      identityConfidence: acceptInvocation.result.identityConfidence,
+      dataCompleteness: acceptInvocation.result.dataCompleteness,
       userAccepted: true,
       userDiscarded: false,
     })
 
-    onAccept(session.result)
+    onAccept(acceptInvocation.result, acceptInvocation.trace)
   }
 
   function handleDiscard() {

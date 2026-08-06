@@ -4,6 +4,7 @@ import type {
   FertilizerCaptureSaveResult,
 } from '../types/fertilizerInventory'
 import type { ProductRecognizeResult } from '../types/productRecognize'
+import type { RecognitionClientHandoffTrace } from './fertilizerCaptureRecognitionClientHandoffCore'
 import {
   createInitialCaptureDraft,
   type FertilizerCaptureDraft,
@@ -34,6 +35,8 @@ export interface PhotoRecognitionSessionState {
   slowHint: boolean
   inFlightRequestId: string | null
   imageMeta: PhotoRecognitionImageMeta | null
+  /** Diagnostic-only client package handoff trace for the active photo session. */
+  clientHandoffTrace?: RecognitionClientHandoffTrace | null
 }
 
 export interface FertilizerCaptureUiState {

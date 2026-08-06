@@ -574,6 +574,18 @@ export function buildCaptureDraftPackageDiagnostics(
       draft.selectedPackageQuantity != null && draft.selectedPackageQuantity > 0,
     acceptOutputRecognitionPackageSizePresent:
       recognitionResultPackage?.value != null && recognitionResultPackage.value > 0,
+    recognitionHttpResponsePackageSizePresent:
+      draft.recognitionClientHandoffTrace?.recognitionHttpResponsePackageSizePresent === true,
+    recognitionClientParsedPackageSizePresent:
+      draft.recognitionClientHandoffTrace?.recognitionClientParsedPackageSizePresent === true,
+    recognitionStateStoredPackageSizePresent:
+      draft.recognitionClientHandoffTrace?.recognitionStateStoredPackageSizePresent === true,
+    recognitionAcceptHandlerPackageSizePresent:
+      draft.recognitionClientHandoffTrace?.recognitionAcceptHandlerPackageSizePresent === true,
+    recognitionAcceptArgumentKind:
+      draft.recognitionClientHandoffTrace?.recognitionAcceptArgumentKind ?? 'missing',
+    clientPackageSizeLossStage:
+      draft.recognitionClientHandoffTrace?.clientPackageSizeLossStage ?? 'missing',
   }
 }
 

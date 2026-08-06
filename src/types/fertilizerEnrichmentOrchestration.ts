@@ -397,6 +397,26 @@ export interface CaptureDraftPackageDiagnostics {
   acceptInputPackageSizePresent: boolean
   acceptOutputSelectedPackagePresent: boolean
   acceptOutputRecognitionPackageSizePresent: boolean
+  recognitionHttpResponsePackageSizePresent: boolean
+  recognitionClientParsedPackageSizePresent: boolean
+  recognitionStateStoredPackageSizePresent: boolean
+  recognitionAcceptHandlerPackageSizePresent: boolean
+  recognitionAcceptArgumentKind:
+    | 'full_result'
+    | 'recognition_only'
+    | 'candidate'
+    | 'reconstructed'
+    | 'unknown'
+    | 'missing'
+  clientPackageSizeLossStage:
+    | 'response_parse'
+    | 'state_storage'
+    | 'accept_handler'
+    | 'result_reconstruction'
+    | 'draft_accept'
+    | 'none'
+    | 'unknown'
+    | 'missing'
 }
 
 export interface FertilizerEnrichmentOrchestrationInput {

@@ -10,7 +10,6 @@ import {
   applyFreeQuantityEntry,
   applyStockRemainderAmount,
   applyStockRemainderAnswer,
-  acceptRecognitionResult,
   buildCaptureSummary,
   canProceedToConfirm,
   createHomePurchaseHandoffDraft,
@@ -66,6 +65,8 @@ import {
   type FertilizerCaptureUiState,
   type PhotoRecognitionSessionState,
 } from '../../lib/fertilizerCaptureSessionCore'
+import type { RecognitionClientHandoffTrace } from '../../lib/fertilizerCaptureRecognitionClientHandoffCore'
+import { runCaptureFlowRecognitionAccept } from '../../lib/fertilizerCaptureRecognitionClientHandoffCore'
 import type { ProductRecognizeResult } from '../../types/productRecognize'
 import { FertilizerPhotoRecognition } from './FertilizerPhotoRecognition'
 import { SubpageHeader } from '../layout/SubpageHeader'
@@ -391,7 +392,10 @@ export function FertilizerCaptureFlow() {
     showPrototypeNotice('photo')
   }
 
-  async function handleRecognitionAccept(result: ProductRecognizeResult) {
+  async function handleRecognitionAccept(
+    result: ProductRecognizeResult,
+    clientHandoffTrace: RecognitionClientHandoffTrace,
+  ) {
     pushNavigationSnapshot()
     setPhotoRecognitionOpen(false)
     setPhotoRecognitionSession(null)
@@ -400,20 +404,25 @@ export function FertilizerCaptureFlow() {
     try {
       const catalogProductId = catalogProductIdFromResult(result)
       const identityFingerprint = catalogProductId ? null : fingerprintFromRecognitionResult(result)
-      const unit = result.recognition.packageSize.unit ?? 'kg'
 
-      const stockStatus = await fetchFertilizerProductStockStatus({
+      const acceptInvocation = {
+        result,
+        trace: clientHandoffTrace,
+        acceptArgumentKind: clientHandoffTrace.recognitionAcceptArgumentKind,
+      }
+
+      const accepted = await runCaptureFlowRecognitionAccept({
+        draft,
+        acceptInvocation,
         catalogProductId,
         identityFingerprint,
-        unit,
+        fetchStockStatus: fetchFertilizerProductStockStatus,
       })
 
-      let nextDraft = acceptRecognitionResult(draft, result, { stockStatus })
+      setDraft(accepted.draft)
 
-      setDraft(nextDraft)
-
-      if (nextDraft.quantity != null) {
-        setQuantityInput(String(nextDraft.quantity).replace('.', ','))
+      if (accepted.draft.quantity != null) {
+        setQuantityInput(String(accepted.draft.quantity).replace('.', ','))
       } else {
         setQuantityInput('')
       }

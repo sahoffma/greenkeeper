@@ -66,7 +66,8 @@ export function hasRecognitionPackageSize(
   recognition: ProductRecognizeRecognition | null | undefined,
 ): boolean {
   return (
-    recognition?.packageSize.normalizedValue != null && recognition.packageSize.normalizedValue > 0
+    recognition?.packageSize?.normalizedValue != null &&
+    recognition.packageSize.normalizedValue > 0
   )
 }
 
@@ -97,9 +98,9 @@ export function buildPackageSizeHandoffDiagnostics(input: {
       : input.acceptOutputSelectedPackagePresent === true
 
   const unit =
-    input.acceptOutputRecognition?.packageSize.unit ??
-    input.clientRecognition?.packageSize.unit ??
-    input.finalRecognition?.packageSize.unit ??
+    input.acceptOutputRecognition?.packageSize?.unit ??
+    input.clientRecognition?.packageSize?.unit ??
+    input.finalRecognition?.packageSize?.unit ??
     input.imageAnalysis?.packageSizeUnit
 
   return {

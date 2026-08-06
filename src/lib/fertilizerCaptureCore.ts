@@ -29,6 +29,11 @@ import {
   buildPackageSizeHandoffDiagnostics,
   logCapturePackageHandoffDiagnostic,
 } from './productRecognizePackageHandoffDiagnosticsCore'
+import type { RecognitionClientHandoffTrace } from './fertilizerCaptureRecognitionClientHandoffCore'
+import {
+  cloneProductRecognizeResultForClientHandoff,
+  mergeRecognitionClientHandoffTrace,
+} from './fertilizerCaptureRecognitionClientHandoffCore'
 
 function finalizeAcceptRecognitionDraft(
   result: ProductRecognizeResult,
@@ -91,6 +96,8 @@ export interface FertilizerCaptureDraft {
   homeHandoffNotice: string | null
   /** Erkennungsergebnis — kein Katalog-Write. */
   recognitionResult: ProductRecognizeResult | null
+  /** Diagnostic-only client recognition package handoff trace. */
+  recognitionClientHandoffTrace: RecognitionClientHandoffTrace | null
   recognitionCandidate: FertilizerRecognitionCandidate | null
   /** Fachliches Produktwissen — unabhängig vom persönlichen Recognition Candidate. */
   productProfileId: string | null
@@ -199,6 +206,7 @@ export function createInitialCaptureDraft(): FertilizerCaptureDraft {
     clarifyOptions: [],
     homeHandoffNotice: null,
     recognitionResult: null,
+    recognitionClientHandoffTrace: null,
     recognitionCandidate: null,
     productProfileId: null,
     catalogProductId: null,
@@ -617,6 +625,7 @@ export function acceptRecognitionResult(
   options: {
     stockStatus: FertilizerProductStockStatus
     packageCount?: number | null
+    clientHandoffTrace?: RecognitionClientHandoffTrace | null
   },
 ): FertilizerCaptureDraft {
   logCapturePackageHandoffDiagnostic(
@@ -632,9 +641,10 @@ export function acceptRecognitionResult(
   const label = buildRecognitionProductLabel(result)
   const form = result.recognition.form.normalizedValue
   const customForm = form === 'granular' || form === 'liquid' ? form : null
-  const resolvedPackage = resolveRecognitionPackageSizeFromRecognition(result.recognition)
+  const canonicalResult = cloneProductRecognizeResultForClientHandoff(result)
+  const resolvedPackage = resolveRecognitionPackageSizeFromRecognition(canonicalResult.recognition)
   const packageSize = resolvedPackage.value
-  const packageUnit = resolvedPackage.unit ?? result.recognition.packageSize.unit
+  const packageUnit = resolvedPackage.unit ?? canonicalResult.recognition.packageSize.unit
   const normalizedUnit: FertilizerQuantityUnit =
     packageUnit === 'l' || packageUnit === 'ml' || packageUnit === 'g' ? packageUnit : 'kg'
   const packageCount = options.packageCount ?? 1
@@ -645,7 +655,7 @@ export function acceptRecognitionResult(
   })
 
   const transition = planRecognitionStockTransition({
-    result,
+    result: canonicalResult,
     stockStatus: options.stockStatus,
     purchaseAmount: purchaseAmount ?? undefined,
     unit: normalizedUnit,
@@ -653,7 +663,14 @@ export function acceptRecognitionResult(
 
   const base = {
     ...draft,
-    recognitionResult: result,
+    recognitionResult: canonicalResult,
+    recognitionClientHandoffTrace:
+      options.clientHandoffTrace != null
+        ? mergeRecognitionClientHandoffTrace(
+            draft.recognitionClientHandoffTrace,
+            options.clientHandoffTrace,
+          )
+        : draft.recognitionClientHandoffTrace,
     recognitionCandidate: candidate,
     catalogProductId,
     customProductLabel: catalogProductId ? null : label,
@@ -671,7 +688,7 @@ export function acceptRecognitionResult(
 
   if (transition.kind === 'add_to_existing') {
     return finalizeAcceptRecognitionDraft(
-      result,
+      canonicalResult,
       proceedToConfirm({
         ...base,
         quantity: transition.totalStock ?? null,
@@ -681,7 +698,7 @@ export function acceptRecognitionResult(
   }
 
   if (transition.kind === 'remainder_question') {
-    return finalizeAcceptRecognitionDraft(result, {
+    return finalizeAcceptRecognitionDraft(canonicalResult, {
       ...base,
       step: 'stock-remainder',
       quantity: null,
@@ -689,7 +706,7 @@ export function acceptRecognitionResult(
   }
 
   if (purchaseAmount == null && packageSize != null) {
-    return finalizeAcceptRecognitionDraft(result, {
+    return finalizeAcceptRecognitionDraft(canonicalResult, {
       ...base,
       step: 'stock-package-count',
       quantity: null,
@@ -697,7 +714,7 @@ export function acceptRecognitionResult(
   }
 
   return finalizeAcceptRecognitionDraft(
-    result,
+    canonicalResult,
     proceedToConfirm({
       ...base,
       quantity: purchaseAmount,

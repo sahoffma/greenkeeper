@@ -144,6 +144,26 @@ export interface FertilizerEnrichmentStartFormDiagnostic {
   acceptInputPackageSizePresent: boolean
   acceptOutputSelectedPackagePresent: boolean
   acceptOutputRecognitionPackageSizePresent: boolean
+  recognitionHttpResponsePackageSizePresent: boolean
+  recognitionClientParsedPackageSizePresent: boolean
+  recognitionStateStoredPackageSizePresent: boolean
+  recognitionAcceptHandlerPackageSizePresent: boolean
+  recognitionAcceptArgumentKind:
+    | 'full_result'
+    | 'recognition_only'
+    | 'candidate'
+    | 'reconstructed'
+    | 'unknown'
+    | 'missing'
+  clientPackageSizeLossStage:
+    | 'response_parse'
+    | 'state_storage'
+    | 'accept_handler'
+    | 'result_reconstruction'
+    | 'draft_accept'
+    | 'none'
+    | 'unknown'
+    | 'missing'
 }
 
 export interface FertilizerEnrichmentStartOutcomeWarningDiagnostic {
@@ -550,6 +570,14 @@ function readBooleanDiagnosticField(record: Record<string, unknown> | null, key:
   return record?.[key] === true
 }
 
+function readStringDiagnosticField(
+  record: Record<string, unknown> | null,
+  key: string,
+): string | null {
+  const value = record?.[key]
+  return typeof value === 'string' ? value : null
+}
+
 function readPackageSizeSourceDiagnostic(
   record: Record<string, unknown> | null,
 ): FertilizerEnrichmentStartFormDiagnostic['preparedDraftPackageSizeSource'] {
@@ -885,6 +913,30 @@ export function buildFertilizerEnrichmentStartFormDiagnostic(input: {
       draftPackageDiagnostics,
       'acceptOutputRecognitionPackageSizePresent',
     ),
+    recognitionHttpResponsePackageSizePresent: readBooleanDiagnosticField(
+      draftPackageDiagnostics,
+      'recognitionHttpResponsePackageSizePresent',
+    ),
+    recognitionClientParsedPackageSizePresent: readBooleanDiagnosticField(
+      draftPackageDiagnostics,
+      'recognitionClientParsedPackageSizePresent',
+    ),
+    recognitionStateStoredPackageSizePresent: readBooleanDiagnosticField(
+      draftPackageDiagnostics,
+      'recognitionStateStoredPackageSizePresent',
+    ),
+    recognitionAcceptHandlerPackageSizePresent: readBooleanDiagnosticField(
+      draftPackageDiagnostics,
+      'recognitionAcceptHandlerPackageSizePresent',
+    ),
+    recognitionAcceptArgumentKind:
+      (readStringDiagnosticField(draftPackageDiagnostics, 'recognitionAcceptArgumentKind') as
+        | FertilizerEnrichmentStartFormDiagnostic['recognitionAcceptArgumentKind']
+        | null) ?? 'missing',
+    clientPackageSizeLossStage:
+      (readStringDiagnosticField(draftPackageDiagnostics, 'clientPackageSizeLossStage') as
+        | FertilizerEnrichmentStartFormDiagnostic['clientPackageSizeLossStage']
+        | null) ?? 'missing',
   }
 }
 

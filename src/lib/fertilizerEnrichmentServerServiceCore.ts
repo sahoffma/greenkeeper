@@ -289,6 +289,32 @@ function validateCaptureDraftPackageDiagnostics(
     acceptOutputSelectedPackagePresent: record.acceptOutputSelectedPackagePresent === true,
     acceptOutputRecognitionPackageSizePresent:
       record.acceptOutputRecognitionPackageSizePresent === true,
+    recognitionHttpResponsePackageSizePresent:
+      record.recognitionHttpResponsePackageSizePresent === true,
+    recognitionClientParsedPackageSizePresent:
+      record.recognitionClientParsedPackageSizePresent === true,
+    recognitionStateStoredPackageSizePresent:
+      record.recognitionStateStoredPackageSizePresent === true,
+    recognitionAcceptHandlerPackageSizePresent:
+      record.recognitionAcceptHandlerPackageSizePresent === true,
+    recognitionAcceptArgumentKind:
+      record.recognitionAcceptArgumentKind === 'full_result' ||
+      record.recognitionAcceptArgumentKind === 'recognition_only' ||
+      record.recognitionAcceptArgumentKind === 'candidate' ||
+      record.recognitionAcceptArgumentKind === 'reconstructed' ||
+      record.recognitionAcceptArgumentKind === 'unknown'
+        ? record.recognitionAcceptArgumentKind
+        : 'missing',
+    clientPackageSizeLossStage:
+      record.clientPackageSizeLossStage === 'response_parse' ||
+      record.clientPackageSizeLossStage === 'state_storage' ||
+      record.clientPackageSizeLossStage === 'accept_handler' ||
+      record.clientPackageSizeLossStage === 'result_reconstruction' ||
+      record.clientPackageSizeLossStage === 'draft_accept' ||
+      record.clientPackageSizeLossStage === 'none' ||
+      record.clientPackageSizeLossStage === 'unknown'
+        ? record.clientPackageSizeLossStage
+        : 'missing',
   }
 }
 
