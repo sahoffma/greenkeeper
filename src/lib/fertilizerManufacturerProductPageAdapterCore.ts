@@ -119,7 +119,6 @@ export async function runFertilizerManufacturerProductPageAdapter(
             attempt: context.attempt,
           }),
       },
-      now,
     })
 
     context.input.manufacturerResearchDiagnostics = research.diagnostics
