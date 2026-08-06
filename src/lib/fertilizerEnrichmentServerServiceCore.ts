@@ -238,6 +238,12 @@ function validateCaptureRecognitionPackagingBasis(
     npk,
     packageSizeValue: typeof record.packageSizeValue === 'number' ? record.packageSizeValue : null,
     packageSizeUnit: typeof record.packageSizeUnit === 'string' ? record.packageSizeUnit : null,
+    recognitionFormLabel:
+      typeof record.recognitionFormLabel === 'string' ? record.recognitionFormLabel : null,
+    recognitionDescriptorLabel:
+      typeof record.recognitionDescriptorLabel === 'string'
+        ? record.recognitionDescriptorLabel
+        : null,
   }
 }
 
@@ -1169,4 +1175,11 @@ export function createTestOrchestrationDependencies(
     }),
     ...overrides,
   }
+}
+
+/** Test-only export for orchestration input validation parity with handleStart. */
+export function validateFertilizerEnrichmentOrchestrationInputForTests(
+  value: unknown,
+): FertilizerEnrichmentOrchestrationInput {
+  return validateOrchestrationInput(value)
 }

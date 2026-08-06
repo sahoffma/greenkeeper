@@ -16,6 +16,7 @@ import {
 } from './fertilizerUserProvidedSourceAdapterCore'
 import { buildRawFertilizerDeclarationInput } from './fertilizerSourceAdapterMergeCore'
 import { recognitionFromImageAnalysis } from './productRecognizeIdentityCore'
+import { parseImageAnalysisResponse } from './productRecognizeImageCore'
 import { FERTILIZER_NUTRIENT_MATRIX_KEYS } from '../types/fertilizerDeclarationNormalization'
 
 const FIXED_NOW = '2026-07-29T10:00:00.000Z'
@@ -227,11 +228,31 @@ describe('fertilizerSourceAdapterMergeCore recognition packaging basis', () => {
   })
 
   it('maps live-like Stress-Manager form label Rasendünger / granular to intake_ready', () => {
-    const input = buildCaptureInput(
-      stressManagerRecognition({ form: 'unknown', formLabel: 'Rasendünger / granular' }),
-    )
+    const analysis = parseImageAnalysisResponse({
+      brand: 'Rasendoktor',
+      productLine: 'Professional',
+      productName: 'Stress-Manager',
+      variant: '0-0-30',
+      productDescriptor: 'Rasendünger',
+      manufacturer: null,
+      npkLabel: '0-0-30',
+      nitrogen: 0,
+      phosphate: 0,
+      potash: 30,
+      packageSizeValue: 5,
+      packageSizeUnit: 'kg',
+      form: 'Rasendünger / granular',
+      gtin: null,
+      textFragments: [],
+      fieldConfidence: { form: 0.9 },
+    })
+    const input = buildCaptureInput({
+      ...stressManagerRecognition({ form: 'unknown' }),
+      recognition: recognitionFromImageAnalysis(analysis),
+    })
 
     expect(input.captureRecognitionPackagingBasis?.productForm).toBe('granular')
+    expect(input.captureRecognitionPackagingBasis?.recognitionFormLabel).toBe('Rasendünger / granular')
     const result = evaluateCaptureRecognitionMerge(input)
 
     expect(result.readinessResult.status).toBe('ready')

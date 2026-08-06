@@ -359,7 +359,11 @@ export interface FertilizerCaptureRecognitionPackagingBasis {
   officialName: string | null
   productLine: string | null
   variant: string | null
-  productForm: FertilizerEnrichmentProductFormValue
+  productForm: 'granular' | 'liquid' | null
+  /** Raw recognition form label preserved through JSON transport for merge fallback. */
+  recognitionFormLabel?: string | null
+  /** Raw recognition descriptor label preserved through JSON transport for merge fallback. */
+  recognitionDescriptorLabel?: string | null
   npk: {
     nitrogen: number
     phosphate: number

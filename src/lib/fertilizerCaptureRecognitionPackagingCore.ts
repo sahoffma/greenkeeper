@@ -3,6 +3,7 @@ import type { FertilizerCaptureDraft } from './fertilizerCaptureCore'
 import {
   buildCaptureRecognitionPackagingBasis,
   mapRecognitionProductFormToEnrichment,
+  resolveRecognitionFormEvidence,
   resolveRecognitionManufacturer,
   resolveRecognitionProductFormLabel,
   resolveNpkTriplet,
@@ -57,10 +58,16 @@ export function buildCaptureRecognitionPackagingDeclarationText(
       phosphate: recognition.npk.phosphate,
       potash: recognition.npk.potash,
     })
+    const formEvidence = resolveRecognitionFormEvidence({
+      formRawValue: recognition.form.rawValue,
+      formNormalizedValue: recognition.form.normalizedValue,
+      descriptorRawValue: recognition.productDescriptor.rawValue,
+      descriptorNormalizedValue: recognition.productDescriptor.normalizedValue,
+    })
     const form = resolveRecognitionProductFormLabel(
       mapRecognitionProductFormToEnrichment(
-        recognition.form.normalizedValue,
-        recognition.productDescriptor.normalizedValue,
+        formEvidence.formLabel,
+        formEvidence.descriptorLabel,
       ),
     )
 

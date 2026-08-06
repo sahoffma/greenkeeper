@@ -47,10 +47,7 @@ export const productRecognizeImageSchema = {
     packageSizeValue: { type: ['number', 'null'] },
     packageSizeUnit: { type: ['string', 'null'] },
     form: {
-      anyOf: [
-        { type: 'string', enum: ['granular', 'liquid', 'unknown'] },
-        { type: 'null' },
-      ],
+      anyOf: [{ type: 'string' }, { type: 'null' }],
     },
     gtin: { type: ['string', 'null'] },
     textFragments: { type: 'array', items: { type: 'string' } },
@@ -100,6 +97,31 @@ function parseForm(value: unknown): ProductRecognizeFormValue | null {
   return null
 }
 
+function parseFormField(value: unknown): {
+  form: ProductRecognizeFormValue | null
+  formLabel: string | null
+} {
+  if (value == null) {
+    return { form: null, formLabel: null }
+  }
+
+  if (typeof value !== 'string') {
+    return { form: null, formLabel: null }
+  }
+
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return { form: null, formLabel: null }
+  }
+
+  const parsedEnum = parseForm(trimmed)
+  if (parsedEnum != null) {
+    return { form: parsedEnum, formLabel: null }
+  }
+
+  return { form: null, formLabel: trimmed }
+}
+
 export function parseImageAnalysisResponse(
   record: Record<string, unknown>,
 ): ProductRecognizeImageAnalysis {
@@ -142,7 +164,7 @@ export function parseImageAnalysisResponse(
       typeof record.packageSizeValue === 'number' ? record.packageSizeValue : null,
     packageSizeUnit:
       typeof record.packageSizeUnit === 'string' ? record.packageSizeUnit.trim() || null : null,
-    form: parseForm(record.form),
+    ...parseFormField(record.form),
     gtin: typeof record.gtin === 'string' ? record.gtin.replace(/\D/g, '') || null : null,
     textFragments: Array.isArray(record.textFragments)
       ? record.textFragments.filter((item): item is string => typeof item === 'string')

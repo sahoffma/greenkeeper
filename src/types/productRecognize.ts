@@ -266,6 +266,8 @@ export interface ProductRecognizeImageAnalysis {
   packageSizeValue: number | null
   packageSizeUnit: string | null
   form: ProductRecognizeFormValue | null
+  /** Free-text form label when the vision model returns a non-enum value. */
+  formLabel?: string | null
   gtin: string | null
   textFragments: string[]
   fieldConfidence: Record<string, number>

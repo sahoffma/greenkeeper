@@ -681,4 +681,72 @@ describe('fertilizerEnrichmentStartDiagnosticCore', () => {
     expect(serialized).not.toContain('captureRecognitionLabel')
     expect(serialized).not.toContain('Manufacturer:')
   })
+
+  it('includes safe form diagnostics without raw request content', () => {
+    const warning = buildFertilizerEnrichmentStartOutcomeWarningDiagnostic({
+      requestId: '494afcd9',
+      httpStatus: 200,
+      requestBody: JSON.stringify({
+        input: {
+          captureRecognitionPackagingBasis: {
+            sourceId: 'captureRecognitionLabel',
+            manufacturer: 'PlantCo',
+            officialName: 'Herbst-Boost',
+            productLine: null,
+            variant: null,
+            productForm: null,
+            recognitionFormLabel: 'Rasendünger / granular',
+            recognitionDescriptorLabel: 'Rasendünger',
+            npk: null,
+          },
+        },
+      }),
+      responseBody: buildStartResponseBody({
+        status: 'needs_input',
+        recommendedNextAction: 'confirm_product_form',
+        attemptedAdapters: ['packaging'],
+        successfulAdapters: ['packaging'],
+        failedAdapters: [],
+        pipelineResult: {
+          readinessResult: {
+            status: 'needs_input',
+            missingRequirements: ['basis.product_form'],
+            fulfilledRequirements: [],
+            blockingIssues: [],
+            suggestedInputActions: ['confirm_product_form'],
+            evaluatedAt: '2026-08-06T08:20:10.000Z',
+            specificationVersion: 'fertilizer-readiness-v1',
+          },
+          rawDeclarationInput: {
+            productForm: { value: null },
+          },
+        },
+        partialAdapterResults: [
+          {
+            adapterType: 'packaging',
+            status: 'success',
+            sourceId: 'captureRecognitionLabel',
+            extraction: {
+              extractedProductForm: 'unknown',
+            },
+          },
+        ],
+      }),
+      inputCounts: INPUT_COUNTS,
+    })
+
+    expect(warning?.formDiagnostic).toEqual(
+      expect.objectContaining({
+        recognitionFormPresent: true,
+        recognitionFormField: 'form',
+        recognitionFormCategory: 'granular',
+        packagingBasisPresent: true,
+        packagingBasisFormCategory: 'granular',
+        adapterFormCategory: 'unknown',
+        mergedFormCategory: 'missing',
+        formFallbackUsed: false,
+        formFallbackRejectedReason: 'missing',
+      }),
+    )
+  })
 })

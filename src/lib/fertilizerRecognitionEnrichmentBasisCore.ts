@@ -141,20 +141,124 @@ export function mapAdapterExtractedProductFormToEnrichment(
     return form
   }
 
-  const mapped = mapDeclarationProductFormLabelToEnrichment(form)
-  if (mapped === 'granular' || mapped === 'liquid') {
-    return mapped
+  if (form != null && form !== 'unknown') {
+    const mapped = mapDeclarationProductFormLabelToEnrichment(form)
+    if (mapped === 'granular' || mapped === 'liquid') {
+      return mapped
+    }
   }
 
   return resolveOrchestrationRecognitionProductForm(input)
 }
 
+export function resolveRecognitionFormEvidence(input: {
+  formRawValue?: string | null
+  formNormalizedValue?: string | null
+  descriptorRawValue?: string | null
+  descriptorNormalizedValue?: string | null
+}): {
+  formLabel: string | null
+  descriptorLabel: string | null
+} {
+  const formLabel =
+    normalizedText(input.formRawValue) ??
+    (input.formNormalizedValue != null && input.formNormalizedValue !== 'unknown'
+      ? normalizedText(input.formNormalizedValue)
+      : null)
+  const descriptorLabel =
+    normalizedText(input.descriptorRawValue) ?? normalizedText(input.descriptorNormalizedValue)
+
+  return { formLabel, descriptorLabel }
+}
+
+export type EnrichmentFormEvidenceCategory =
+  | 'granular'
+  | 'liquid'
+  | 'ambiguous'
+  | 'unknown'
+  | 'missing'
+
+export function classifyEnrichmentFormEvidenceCategory(
+  form: string | null | undefined,
+  descriptor: string | null | undefined = null,
+): EnrichmentFormEvidenceCategory {
+  if (!normalizedText(form) && !normalizedText(descriptor)) {
+    return 'missing'
+  }
+
+  const fragments = fragmentsFromValues(form, descriptor)
+  const { granular, liquid } = classifyFormFragments(fragments)
+
+  if (liquid && granular) {
+    return 'ambiguous'
+  }
+
+  const mapped = mapRecognitionProductFormToEnrichment(form, descriptor)
+  if (mapped === 'granular') {
+    return 'granular'
+  }
+
+  if (mapped === 'liquid') {
+    return 'liquid'
+  }
+
+  return 'unknown'
+}
+
+export type RecognitionFormEvidenceSourceField =
+  | 'form'
+  | 'normalizedValue'
+  | 'productDescriptor'
+  | 'packagingBasis'
+  | 'none'
+
+export function resolveRecognitionFormEvidenceSourceField(input: {
+  formRawValue?: string | null
+  formNormalizedValue?: string | null
+  descriptorRawValue?: string | null
+  descriptorNormalizedValue?: string | null
+  packagingBasisProductForm?: 'granular' | 'liquid' | null
+}): RecognitionFormEvidenceSourceField {
+  if (input.packagingBasisProductForm === 'granular' || input.packagingBasisProductForm === 'liquid') {
+    return 'packagingBasis'
+  }
+
+  if (
+    classifyEnrichmentFormEvidenceCategory(input.formRawValue, null) === 'granular' ||
+    classifyEnrichmentFormEvidenceCategory(input.formRawValue, null) === 'liquid'
+  ) {
+    return 'form'
+  }
+
+  if (
+    input.formNormalizedValue === 'granular' ||
+    input.formNormalizedValue === 'liquid'
+  ) {
+    return 'normalizedValue'
+  }
+
+  const descriptorCategory = classifyEnrichmentFormEvidenceCategory(null, input.descriptorRawValue ?? input.descriptorNormalizedValue)
+  if (descriptorCategory === 'granular' || descriptorCategory === 'liquid') {
+    return 'productDescriptor'
+  }
+
+  return 'none'
+}
+
 export function resolveOrchestrationRecognitionProductForm(
   input: FertilizerEnrichmentOrchestrationInput,
 ): 'granular' | 'liquid' | null {
-  const basisForm = input.captureRecognitionPackagingBasis?.productForm
-  if (basisForm === 'granular' || basisForm === 'liquid') {
-    return basisForm
+  const basis = input.captureRecognitionPackagingBasis
+  if (basis?.productForm === 'granular' || basis?.productForm === 'liquid') {
+    return basis.productForm
+  }
+
+  const remappedFromBasis = mapRecognitionProductFormToEnrichment(
+    basis?.recognitionFormLabel,
+    basis?.recognitionDescriptorLabel,
+  )
+  if (remappedFromBasis === 'granular' || remappedFromBasis === 'liquid') {
+    return remappedFromBasis
   }
 
   const inlineText = input.captureInlineSourceTexts?.[CAPTURE_RECOGNITION_PACKAGING_SOURCE_ID]
@@ -252,9 +356,15 @@ export function buildCaptureRecognitionPackagingBasis(
       normalizedText(recognition.variant.normalizedValue)
     const productLine = normalizedText(recognition.productLine.normalizedValue)
     const variant = normalizedText(recognition.variant.normalizedValue)
+    const formEvidence = resolveRecognitionFormEvidence({
+      formRawValue: recognition.form.rawValue,
+      formNormalizedValue: recognition.form.normalizedValue,
+      descriptorRawValue: recognition.productDescriptor.rawValue,
+      descriptorNormalizedValue: recognition.productDescriptor.normalizedValue,
+    })
     const productForm = mapRecognitionProductFormToEnrichment(
-      recognition.form.normalizedValue,
-      recognition.productDescriptor.normalizedValue,
+      formEvidence.formLabel,
+      formEvidence.descriptorLabel,
     )
     const npk = resolveNpkTriplet({
       rawLabel: recognition.npk.rawLabel,
@@ -274,6 +384,8 @@ export function buildCaptureRecognitionPackagingBasis(
       productLine,
       variant,
       productForm: productForm === 'unknown' ? null : productForm,
+      recognitionFormLabel: formEvidence.formLabel,
+      recognitionDescriptorLabel: formEvidence.descriptorLabel,
       npk,
       packageSizeValue: recognition.packageSize.normalizedValue,
       packageSizeUnit: recognition.packageSize.unit,
@@ -312,6 +424,8 @@ export function buildCaptureRecognitionPackagingBasis(
     productLine,
     variant,
     productForm: productForm === 'unknown' ? null : productForm,
+    recognitionFormLabel: normalizedText(candidate.productForm),
+    recognitionDescriptorLabel: null,
     npk: null,
     packageSizeValue: candidate.packageSizeValue,
     packageSizeUnit: candidate.packageSizeUnit,

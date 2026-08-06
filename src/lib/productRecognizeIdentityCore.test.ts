@@ -22,6 +22,7 @@ const rasendoktorRawVision: ProductRecognizeImageAnalysis = {
   packageSizeValue: 5,
   packageSizeUnit: 'KG',
   form: 'granular',
+  formLabel: null,
   gtin: null,
   textFragments: [],
   fieldConfidence: {

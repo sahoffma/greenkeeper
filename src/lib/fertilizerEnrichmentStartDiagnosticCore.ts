@@ -4,6 +4,10 @@ import { FertilizerEnrichmentOrchestrationContractError } from './fertilizerEnri
 import { FertilizerEnrichmentServerConfigurationError } from './fertilizerEnrichmentServerEnvironmentCore'
 import { FertilizerEnrichmentServerApiError } from './fertilizerEnrichmentServerServiceCore'
 import type { FertilizerEnrichmentApiErrorCode } from '../types/fertilizerEnrichmentOrchestration'
+import {
+  classifyEnrichmentFormEvidenceCategory,
+  resolveRecognitionFormEvidenceSourceField,
+} from './fertilizerRecognitionEnrichmentBasisCore'
 
 export const FERTILIZER_ENRICHMENT_START_FUNCTION_NAME = 'fertilizer-enrichment-start'
 
@@ -56,6 +60,40 @@ export interface FertilizerEnrichmentStartReadinessDiagnostic {
   failedCheck: string | null
 }
 
+export type FertilizerEnrichmentStartRecognitionFormField =
+  | 'form'
+  | 'normalizedValue'
+  | 'productDescriptor'
+  | 'packagingBasis'
+  | 'none'
+
+export type FertilizerEnrichmentStartFormCategory =
+  | 'granular'
+  | 'liquid'
+  | 'ambiguous'
+  | 'unknown'
+  | 'missing'
+
+export type FertilizerEnrichmentStartFormFallbackRejectedReason =
+  | 'missing'
+  | 'ambiguous'
+  | 'invalid_mapping'
+  | 'overwritten_by_unknown'
+  | 'lost_during_serialization'
+  | 'none'
+
+export interface FertilizerEnrichmentStartFormDiagnostic {
+  recognitionFormPresent: boolean
+  recognitionFormField: FertilizerEnrichmentStartRecognitionFormField
+  recognitionFormCategory: FertilizerEnrichmentStartFormCategory
+  packagingBasisPresent: boolean
+  packagingBasisFormCategory: FertilizerEnrichmentStartFormCategory
+  adapterFormCategory: FertilizerEnrichmentStartFormCategory
+  mergedFormCategory: FertilizerEnrichmentStartFormCategory
+  formFallbackUsed: boolean
+  formFallbackRejectedReason: FertilizerEnrichmentStartFormFallbackRejectedReason
+}
+
 export interface FertilizerEnrichmentStartOutcomeWarningDiagnostic {
   functionName: typeof FERTILIZER_ENRICHMENT_START_FUNCTION_NAME
   requestId: string | null
@@ -78,6 +116,7 @@ export interface FertilizerEnrichmentStartOutcomeWarningDiagnostic {
   }
   packagingInlineProcessed: boolean
   manufacturerHttpFetchAttempted: boolean
+  formDiagnostic: FertilizerEnrichmentStartFormDiagnostic | null
 }
 
 export interface FertilizerEnrichmentStartStackFrameDiagnostic {
@@ -359,10 +398,213 @@ export function resolveFertilizerEnrichmentStartReadinessFailedCheck(
   return null
 }
 
+function readCaptureRecognitionPackagingBasisFromRequest(
+  requestBody: string | null | undefined,
+): Record<string, unknown> | null {
+  if (!requestBody?.trim()) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(requestBody) as Record<string, unknown>
+    const input = parsed.input
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      return null
+    }
+
+    const basis = (input as Record<string, unknown>).captureRecognitionPackagingBasis
+    return readObjectRecord(basis)
+  } catch {
+    return null
+  }
+}
+
+function readAdapterPackagingFormCategory(
+  jobResult: Record<string, unknown>,
+): FertilizerEnrichmentStartFormCategory {
+  const partialAdapterResults = jobResult.partialAdapterResults
+  if (!Array.isArray(partialAdapterResults)) {
+    return 'missing'
+  }
+
+  for (const item of partialAdapterResults) {
+    const record = readObjectRecord(item)
+    if (!record || record.adapterType !== 'packaging') {
+      continue
+    }
+
+    const extraction = readObjectRecord(record.extraction)
+    const extractedProductForm = extraction?.extractedProductForm
+    if (extractedProductForm === 'granular' || extractedProductForm === 'liquid') {
+      return extractedProductForm
+    }
+
+    if (extractedProductForm === 'unknown') {
+      return 'unknown'
+    }
+  }
+
+  return 'missing'
+}
+
+function readMergedFormCategory(jobResult: Record<string, unknown>): FertilizerEnrichmentStartFormCategory {
+  const pipelineResult = readObjectRecord(jobResult.pipelineResult)
+  const rawDeclarationInput =
+    readObjectRecord(jobResult.rawDeclarationInput) ??
+    (pipelineResult ? readObjectRecord(pipelineResult.rawDeclarationInput) : null)
+  const productForm = readObjectRecord(rawDeclarationInput?.productForm)
+  const value = productForm?.value
+
+  if (value === 'granular' || value === 'liquid') {
+    return value
+  }
+
+  if (value === 'unknown') {
+    return 'unknown'
+  }
+
+  return 'missing'
+}
+
+function resolveFormFallbackRejectedReason(input: {
+  recognitionFormCategory: FertilizerEnrichmentStartFormCategory
+  packagingBasisFormCategory: FertilizerEnrichmentStartFormCategory
+  adapterFormCategory: FertilizerEnrichmentStartFormCategory
+  mergedFormCategory: FertilizerEnrichmentStartFormCategory
+  formFallbackUsed: boolean
+  packagingBasisPresent: boolean
+  recognitionFormPresent: boolean
+  requestHasBasisPayload: boolean
+}): FertilizerEnrichmentStartFormFallbackRejectedReason {
+  if (
+    (input.adapterFormCategory === 'granular' || input.adapterFormCategory === 'liquid') &&
+    input.mergedFormCategory !== 'granular' &&
+    input.mergedFormCategory !== 'liquid'
+  ) {
+    return 'overwritten_by_unknown'
+  }
+
+  if (input.formFallbackUsed || input.mergedFormCategory === 'granular' || input.mergedFormCategory === 'liquid') {
+    return 'none'
+  }
+
+  if (
+    input.requestHasBasisPayload &&
+    !input.packagingBasisPresent &&
+    input.recognitionFormPresent
+  ) {
+    return 'lost_during_serialization'
+  }
+
+  if (input.recognitionFormCategory === 'ambiguous') {
+    return 'ambiguous'
+  }
+
+  if (
+    input.recognitionFormPresent &&
+    input.recognitionFormCategory === 'unknown' &&
+    input.packagingBasisFormCategory === 'unknown'
+  ) {
+    return 'invalid_mapping'
+  }
+
+  return 'missing'
+}
+
+export function buildFertilizerEnrichmentStartFormDiagnostic(input: {
+  requestBody?: string | null
+  jobResult: Record<string, unknown>
+}): FertilizerEnrichmentStartFormDiagnostic | null {
+  const basis = readCaptureRecognitionPackagingBasisFromRequest(input.requestBody)
+  const requestHasBasisPayload = Boolean(
+    input.requestBody?.includes('captureRecognitionPackagingBasis'),
+  )
+  const packagingBasisPresent = basis != null
+
+  const recognitionFormLabel =
+    typeof basis?.recognitionFormLabel === 'string' ? basis.recognitionFormLabel : null
+  const recognitionDescriptorLabel =
+    typeof basis?.recognitionDescriptorLabel === 'string'
+      ? basis.recognitionDescriptorLabel
+      : null
+  const basisProductForm = basis?.productForm
+
+  const recognitionFormCategory = classifyEnrichmentFormEvidenceCategory(
+    recognitionFormLabel,
+    recognitionDescriptorLabel,
+  )
+  const packagingBasisFormCategory =
+    basisProductForm === 'granular' || basisProductForm === 'liquid'
+      ? basisProductForm
+      : classifyEnrichmentFormEvidenceCategory(recognitionFormLabel, recognitionDescriptorLabel)
+
+  const adapterFormCategory = readAdapterPackagingFormCategory(input.jobResult)
+  const mergedFormCategory = readMergedFormCategory(input.jobResult)
+
+  const recognitionFormPresent =
+    recognitionFormCategory !== 'missing' ||
+    packagingBasisFormCategory !== 'missing' ||
+    Boolean(recognitionFormLabel || recognitionDescriptorLabel)
+
+  const recognitionFormField = resolveRecognitionFormEvidenceSourceField({
+    formRawValue: recognitionFormLabel,
+    formNormalizedValue:
+      basisProductForm === 'granular' || basisProductForm === 'liquid' ? basisProductForm : null,
+    descriptorRawValue: recognitionDescriptorLabel,
+    descriptorNormalizedValue: recognitionDescriptorLabel,
+    packagingBasisProductForm:
+      basisProductForm === 'granular' || basisProductForm === 'liquid'
+        ? basisProductForm
+        : null,
+  })
+
+  const formFallbackUsed =
+    (mergedFormCategory === 'granular' || mergedFormCategory === 'liquid') &&
+    adapterFormCategory !== 'granular' &&
+    adapterFormCategory !== 'liquid' &&
+    (packagingBasisFormCategory === 'granular' ||
+      packagingBasisFormCategory === 'liquid' ||
+      recognitionFormCategory === 'granular' ||
+      recognitionFormCategory === 'liquid')
+
+  const formFallbackRejectedReason = resolveFormFallbackRejectedReason({
+    recognitionFormCategory,
+    packagingBasisFormCategory,
+    adapterFormCategory,
+    mergedFormCategory,
+    formFallbackUsed,
+    packagingBasisPresent,
+    recognitionFormPresent,
+    requestHasBasisPayload,
+  })
+
+  if (
+    !recognitionFormPresent &&
+    !packagingBasisPresent &&
+    adapterFormCategory === 'missing' &&
+    mergedFormCategory === 'missing'
+  ) {
+    return null
+  }
+
+  return {
+    recognitionFormPresent,
+    recognitionFormField,
+    recognitionFormCategory,
+    packagingBasisPresent,
+    packagingBasisFormCategory,
+    adapterFormCategory,
+    mergedFormCategory,
+    formFallbackUsed,
+    formFallbackRejectedReason,
+  }
+}
+
 export function buildFertilizerEnrichmentStartOutcomeWarningDiagnostic(input: {
   requestId: string | null
   httpStatus: number
   responseBody?: string | null
+  requestBody?: string | null
   inputCounts: FertilizerEnrichmentStartInputCounts
 }): FertilizerEnrichmentStartOutcomeWarningDiagnostic | null {
   if (!input.responseBody?.trim()) {
@@ -419,6 +661,10 @@ export function buildFertilizerEnrichmentStartOutcomeWarningDiagnostic(input: {
       input.inputCounts.captureInlineSourceTextCount > 0 &&
       selectedAdapterTypes.includes('packaging'),
     manufacturerHttpFetchAttempted: selectedAdapterTypes.includes('manufacturer_product_document'),
+    formDiagnostic: buildFertilizerEnrichmentStartFormDiagnostic({
+      requestBody: input.requestBody,
+      jobResult,
+    }),
   }
 }
 
@@ -1075,6 +1321,7 @@ export function diagnoseFertilizerEnrichmentStartResponse(input: {
   requestId: string | null
   httpStatus: number
   responseBody?: string | null
+  requestBody?: string | null
   inputCounts: FertilizerEnrichmentStartInputCounts
   error?: unknown
   phaseOverride?: FertilizerEnrichmentStartFailurePhase
@@ -1097,6 +1344,7 @@ export function diagnoseFertilizerEnrichmentStartResponse(input: {
       requestId: input.requestId,
       httpStatus: input.httpStatus,
       responseBody: input.responseBody,
+      requestBody: input.requestBody,
       inputCounts: input.inputCounts,
     })
 

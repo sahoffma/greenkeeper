@@ -277,6 +277,14 @@ export function recognitionFromImageAnalysis(
       source: 'image',
       evidence: sanitized.form,
     }
+  } else if (sanitized.formLabel) {
+    recognition.form = {
+      rawValue: sanitized.formLabel,
+      normalizedValue: 'unknown',
+      confidence: sanitized.fieldConfidence.form ?? 0,
+      source: 'image',
+      evidence: sanitized.formLabel,
+    }
   }
 
   if (sanitized.packageSizeValue != null) {

@@ -124,6 +124,7 @@ export function createFertilizerEnrichmentNetlifyHandler(
             requestId,
             httpStatus: response.statusCode,
             responseBody: response.body,
+            requestBody: event.body,
             inputCounts: inputCounts ?? extractSafeFertilizerEnrichmentStartInputCounts(event.body),
             error: response.diagnosticError,
           })
