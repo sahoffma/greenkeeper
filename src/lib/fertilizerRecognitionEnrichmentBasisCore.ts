@@ -3,6 +3,7 @@ import type {
   FertilizerCaptureRecognitionPackagingBasis,
   FertilizerEnrichmentOrchestrationInput,
 } from '../types/fertilizerEnrichmentOrchestration'
+import type { ProductRecognizeRecognition } from '../types/productRecognize'
 import type { FertilizerCaptureDraft } from './fertilizerCaptureCore'
 
 export const CAPTURE_RECOGNITION_PACKAGING_SOURCE_ID = 'captureRecognitionLabel'
@@ -425,11 +426,121 @@ export function resolveRecognitionProductFormLabel(
   return null
 }
 
+export function classifyRecognitionPackageSizeUnitCategory(
+  unit: string | null | undefined,
+): 'mass' | 'volume' | 'unknown' | 'missing' {
+  const normalized = normalizePackageSizeUnit(unit)
+  if (!normalized) {
+    return 'missing'
+  }
+
+  if (normalized === 'kg' || normalized === 'g') {
+    return 'mass'
+  }
+
+  if (normalized === 'l' || normalized === 'ml') {
+    return 'volume'
+  }
+
+  return 'unknown'
+}
+
+export function resolveCaptureDraftRecognition(
+  draft: FertilizerCaptureDraft,
+): ProductRecognizeRecognition | null {
+  if (draft.recognitionResult?.recognition) {
+    return draft.recognitionResult.recognition
+  }
+
+  return draft.recognitionCandidate?.recognitionSnapshot ?? null
+}
+
+export function resolveCaptureDraftPackageSize(draft: FertilizerCaptureDraft): {
+  value: number | null
+  unit: string | null
+} {
+  const recognition = resolveCaptureDraftRecognition(draft)
+
+  if (
+    recognition?.packageSize.normalizedValue != null &&
+    recognition.packageSize.normalizedValue > 0
+  ) {
+    return {
+      value: recognition.packageSize.normalizedValue,
+      unit: recognition.packageSize.unit,
+    }
+  }
+
+  const candidate = draft.recognitionCandidate
+  if (candidate?.packageSizeValue != null && candidate.packageSizeValue > 0) {
+    return {
+      value: candidate.packageSizeValue,
+      unit: candidate.packageSizeUnit,
+    }
+  }
+
+  if (draft.selectedPackageQuantity != null && draft.selectedPackageQuantity > 0) {
+    const draftUnit = draft.selectedPackageUnit ?? draft.unit ?? 'kg'
+
+    return {
+      value: draft.selectedPackageQuantity,
+      unit: draftUnit,
+    }
+  }
+
+  return { value: null, unit: null }
+}
+
+export function prepareCaptureDraftForEnrichment(
+  draft: FertilizerCaptureDraft,
+): FertilizerCaptureDraft {
+  if (draft.recognitionResult?.recognition) {
+    return draft
+  }
+
+  const snapshot = draft.recognitionCandidate?.recognitionSnapshot
+  const candidate = draft.recognitionCandidate
+  if (!snapshot || !candidate) {
+    return draft
+  }
+
+  return {
+    ...draft,
+    recognitionResult: {
+      status: 'identified',
+      identityConfidence: candidate.identityConfidence ?? 0,
+      dataCompleteness: candidate.dataCompleteness ?? 0,
+      recognition: snapshot,
+      catalogMatch: { matched: false, productId: null, matchType: 'none', confidence: 0 },
+      sources: candidate.sources ?? [],
+      missingRequiredFields: [],
+      nextAction: { type: 'none', message: null },
+      stockCapture: {
+        allowed: true,
+        recognitionCandidate: true,
+        persistToCatalog: false,
+        message: null,
+      },
+      diagnostics: {
+        model: 'capture-draft-rehydrate',
+        latencyMs: 0,
+        estimatedCost: null,
+        warnings: [],
+      },
+      steps: [],
+      spike: true,
+    },
+  }
+}
+
 export function buildCaptureRecognitionPackagingBasis(
   draft: FertilizerCaptureDraft,
 ): FertilizerCaptureRecognitionPackagingBasis | null {
-  if (draft.recognitionResult) {
-    const recognition = draft.recognitionResult.recognition
+  const preparedDraft = prepareCaptureDraftForEnrichment(draft)
+  const recognition = resolveCaptureDraftRecognition(preparedDraft)
+  const resolvedPackageSize = resolveCaptureDraftPackageSize(preparedDraft)
+
+  if (recognition) {
     const manufacturer = resolveRecognitionManufacturer({
       manufacturer: recognition.manufacturer.normalizedValue,
       brand: recognition.brand.normalizedValue,
@@ -456,7 +567,13 @@ export function buildCaptureRecognitionPackagingBasis(
       potash: recognition.npk.potash,
     })
 
-    if (!officialName && !manufacturer && !npk && productForm == null && recognition.packageSize.normalizedValue == null) {
+    if (
+      !officialName &&
+      !manufacturer &&
+      !npk &&
+      productForm === 'unknown' &&
+      resolvedPackageSize.value == null
+    ) {
       return null
     }
 
@@ -470,12 +587,14 @@ export function buildCaptureRecognitionPackagingBasis(
       recognitionFormLabel: formEvidence.formLabel,
       recognitionDescriptorLabel: formEvidence.descriptorLabel,
       npk,
-      packageSizeValue: recognition.packageSize.normalizedValue,
-      packageSizeUnit: recognition.packageSize.unit,
+      packageSizeValue: resolvedPackageSize.value,
+      packageSizeUnit: resolvedPackageSize.unit
+        ? normalizePackageSizeUnit(resolvedPackageSize.unit) ?? resolvedPackageSize.unit
+        : null,
     }
   }
 
-  const candidate = draft.recognitionCandidate
+  const candidate = preparedDraft.recognitionCandidate
   if (!candidate) {
     return null
   }
@@ -495,8 +614,14 @@ export function buildCaptureRecognitionPackagingBasis(
     candidate.variant?.value != null ? String(candidate.variant.value) : null,
   )
   const productForm = mapRecognitionProductFormToEnrichment(candidate.productForm, null)
+  const npk = resolveNpkTriplet({
+    rawLabel: candidate.npk?.value != null ? String(candidate.npk.value) : null,
+    nitrogen: null,
+    phosphate: null,
+    potash: null,
+  })
 
-  if (!officialName && !manufacturer) {
+  if (!officialName && !manufacturer && !npk && resolvedPackageSize.value == null) {
     return null
   }
 
@@ -509,8 +634,10 @@ export function buildCaptureRecognitionPackagingBasis(
     productForm: productForm === 'unknown' ? null : productForm,
     recognitionFormLabel: normalizedText(candidate.productForm),
     recognitionDescriptorLabel: null,
-    npk: null,
-    packageSizeValue: candidate.packageSizeValue,
-    packageSizeUnit: candidate.packageSizeUnit,
+    npk,
+    packageSizeValue: resolvedPackageSize.value,
+    packageSizeUnit: resolvedPackageSize.unit
+      ? normalizePackageSizeUnit(resolvedPackageSize.unit) ?? resolvedPackageSize.unit
+      : null,
   }
 }

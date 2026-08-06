@@ -6,8 +6,10 @@ import { FertilizerEnrichmentServerApiError } from './fertilizerEnrichmentServer
 import type { FertilizerEnrichmentApiErrorCode } from '../types/fertilizerEnrichmentOrchestration'
 import {
   classifyEnrichmentFormEvidenceCategory,
+  classifyRecognitionPackageSizeUnitCategory,
   resolveRecognitionFormEvidenceSourceField,
 } from './fertilizerRecognitionEnrichmentBasisCore'
+import { CAPTURE_RECOGNITION_PACKAGING_REFERENCE_ID } from './fertilizerCaptureRecognitionPackagingCore'
 
 export const FERTILIZER_ENRICHMENT_START_FUNCTION_NAME = 'fertilizer-enrichment-start'
 
@@ -82,6 +84,26 @@ export type FertilizerEnrichmentStartFormFallbackRejectedReason =
   | 'lost_during_serialization'
   | 'none'
 
+export type FertilizerEnrichmentStartPackagingBasisRejectedReason =
+  | 'recognition_missing'
+  | 'package_size_missing'
+  | 'builder_returned_null'
+  | 'omitted_from_request'
+  | 'rejected_by_validation'
+  | 'overwritten'
+  | 'none'
+
+export type FertilizerEnrichmentStartRecognitionPackageSizeUnitCategory =
+  | 'mass'
+  | 'volume'
+  | 'unknown'
+  | 'missing'
+
+export type FertilizerEnrichmentStartEnrichmentInputBuilderPath =
+  | 'canonical_capture'
+  | 'legacy_capture'
+  | 'unknown'
+
 export interface FertilizerEnrichmentStartFormDiagnostic {
   recognitionFormPresent: boolean
   recognitionFormField: FertilizerEnrichmentStartRecognitionFormField
@@ -92,6 +114,15 @@ export interface FertilizerEnrichmentStartFormDiagnostic {
   mergedFormCategory: FertilizerEnrichmentStartFormCategory
   formFallbackUsed: boolean
   formFallbackRejectedReason: FertilizerEnrichmentStartFormFallbackRejectedReason
+  recognitionResultPresent: boolean
+  recognitionPackageSizePresent: boolean
+  recognitionPackageSizeUnitCategory: FertilizerEnrichmentStartRecognitionPackageSizeUnitCategory
+  captureDraftRecognitionPresent: boolean
+  packagingBasisBuilt: boolean
+  packagingBasisIncludedInRequest: boolean
+  packagingBasisAcceptedByServer: boolean
+  packagingBasisRejectedReason: FertilizerEnrichmentStartPackagingBasisRejectedReason
+  enrichmentInputBuilderPath: FertilizerEnrichmentStartEnrichmentInputBuilderPath
 }
 
 export interface FertilizerEnrichmentStartOutcomeWarningDiagnostic {
@@ -398,7 +429,7 @@ export function resolveFertilizerEnrichmentStartReadinessFailedCheck(
   return null
 }
 
-function readCaptureRecognitionPackagingBasisFromRequest(
+function readCaptureOrchestrationInputFromRequest(
   requestBody: string | null | undefined,
 ): Record<string, unknown> | null {
   if (!requestBody?.trim()) {
@@ -412,11 +443,114 @@ function readCaptureRecognitionPackagingBasisFromRequest(
       return null
     }
 
-    const basis = (input as Record<string, unknown>).captureRecognitionPackagingBasis
-    return readObjectRecord(basis)
+    return input as Record<string, unknown>
   } catch {
     return null
   }
+}
+
+function readCaptureRecognitionPackagingBasisFromRequest(
+  requestBody: string | null | undefined,
+): Record<string, unknown> | null {
+  const input = readCaptureOrchestrationInputFromRequest(requestBody)
+  if (!input) {
+    return null
+  }
+
+  return readObjectRecord(input.captureRecognitionPackagingBasis)
+}
+
+function readCaptureInlinePackagingProcessed(requestBody: string | null | undefined): boolean {
+  const input = readCaptureOrchestrationInputFromRequest(requestBody)
+  if (!input) {
+    return false
+  }
+
+  const inlineTexts = readObjectRecord(input.captureInlineSourceTexts)
+  const inlineText = inlineTexts?.[CAPTURE_RECOGNITION_PACKAGING_REFERENCE_ID]
+  return typeof inlineText === 'string' && inlineText.trim().length > 0
+}
+
+function readCaptureDraftRecognitionPresent(requestBody: string | null | undefined): boolean {
+  if (readCaptureInlinePackagingProcessed(requestBody)) {
+    return true
+  }
+
+  const basis = readCaptureRecognitionPackagingBasisFromRequest(requestBody)
+  if (!basis) {
+    return false
+  }
+
+  return (
+    typeof basis.manufacturer === 'string' ||
+    typeof basis.officialName === 'string' ||
+    basis.npk != null
+  )
+}
+
+function resolveEnrichmentInputBuilderPath(
+  requestBody: string | null | undefined,
+): FertilizerEnrichmentStartEnrichmentInputBuilderPath {
+  const input = readCaptureOrchestrationInputFromRequest(requestBody)
+  const builderPath = input?.captureEnrichmentInputBuilderPath
+
+  if (builderPath === 'canonical_capture' || builderPath === 'legacy_capture') {
+    return builderPath
+  }
+
+  const userProvidedSources = input?.userProvidedSources
+  if (Array.isArray(userProvidedSources)) {
+    for (const entry of userProvidedSources) {
+      const record = readObjectRecord(entry)
+      if (
+        record?.kind === 'packaging_back_photo' &&
+        record.referenceId === CAPTURE_RECOGNITION_PACKAGING_REFERENCE_ID
+      ) {
+        return 'canonical_capture'
+      }
+    }
+  }
+
+  return 'unknown'
+}
+
+function resolvePackagingBasisRejectedReason(input: {
+  captureDraftRecognitionPresent: boolean
+  packagingBasisIncludedInRequest: boolean
+  packagingBasisAcceptedByServer: boolean
+  packagingBasisPresent: boolean
+  recognitionPackageSizePresent: boolean
+  inlinePackagingProcessed: boolean
+}): FertilizerEnrichmentStartPackagingBasisRejectedReason {
+  if (input.packagingBasisPresent && input.recognitionPackageSizePresent) {
+    return 'none'
+  }
+
+  if (input.packagingBasisPresent && !input.recognitionPackageSizePresent) {
+    return 'package_size_missing'
+  }
+
+  if (!input.captureDraftRecognitionPresent) {
+    return 'recognition_missing'
+  }
+
+  if (input.inlinePackagingProcessed && !input.packagingBasisIncludedInRequest) {
+    return 'builder_returned_null'
+  }
+
+  if (input.packagingBasisIncludedInRequest && !input.packagingBasisAcceptedByServer) {
+    return 'rejected_by_validation'
+  }
+
+  if (input.packagingBasisIncludedInRequest && !input.packagingBasisPresent) {
+    return 'overwritten'
+  }
+
+  if (!input.packagingBasisIncludedInRequest && input.captureDraftRecognitionPresent) {
+    return 'omitted_from_request'
+  }
+
+  return 'none'
 }
 
 function readAdapterPackagingFormCategory(
@@ -519,7 +653,32 @@ export function buildFertilizerEnrichmentStartFormDiagnostic(input: {
   const requestHasBasisPayload = Boolean(
     input.requestBody?.includes('captureRecognitionPackagingBasis'),
   )
+  const packagingBasisIncludedInRequest = requestHasBasisPayload
   const packagingBasisPresent = basis != null
+  const packagingBasisAcceptedByServer = packagingBasisPresent
+  const inlinePackagingProcessed = readCaptureInlinePackagingProcessed(input.requestBody)
+  const captureDraftRecognitionPresent = readCaptureDraftRecognitionPresent(input.requestBody)
+  const recognitionResultPresent = captureDraftRecognitionPresent
+  const basisPackageSizeValue = basis?.packageSizeValue
+  const basisPackageSizeUnit = basis?.packageSizeUnit
+  const recognitionPackageSizePresent =
+    typeof basisPackageSizeValue === 'number' &&
+    basisPackageSizeValue > 0 &&
+    typeof basisPackageSizeUnit === 'string' &&
+    basisPackageSizeUnit.trim().length > 0
+  const recognitionPackageSizeUnitCategory = classifyRecognitionPackageSizeUnitCategory(
+    typeof basisPackageSizeUnit === 'string' ? basisPackageSizeUnit : null,
+  )
+  const packagingBasisBuilt = packagingBasisIncludedInRequest && packagingBasisPresent
+  const enrichmentInputBuilderPath = resolveEnrichmentInputBuilderPath(input.requestBody)
+  const packagingBasisRejectedReason = resolvePackagingBasisRejectedReason({
+    captureDraftRecognitionPresent,
+    packagingBasisIncludedInRequest,
+    packagingBasisAcceptedByServer,
+    packagingBasisPresent,
+    recognitionPackageSizePresent,
+    inlinePackagingProcessed,
+  })
 
   const recognitionFormLabel =
     typeof basis?.recognitionFormLabel === 'string' ? basis.recognitionFormLabel : null
@@ -597,6 +756,15 @@ export function buildFertilizerEnrichmentStartFormDiagnostic(input: {
     mergedFormCategory,
     formFallbackUsed,
     formFallbackRejectedReason,
+    recognitionResultPresent,
+    recognitionPackageSizePresent,
+    recognitionPackageSizeUnitCategory,
+    captureDraftRecognitionPresent,
+    packagingBasisBuilt,
+    packagingBasisIncludedInRequest,
+    packagingBasisAcceptedByServer,
+    packagingBasisRejectedReason,
+    enrichmentInputBuilderPath,
   }
 }
 

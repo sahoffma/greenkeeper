@@ -3,6 +3,8 @@ import type { FertilizerCaptureDraft } from './fertilizerCaptureCore'
 import {
   buildCaptureRecognitionPackagingBasis,
   mapRecognitionProductFormToEnrichment,
+  prepareCaptureDraftForEnrichment,
+  resolveCaptureDraftRecognition,
   resolveRecognitionFormEvidence,
   resolveRecognitionManufacturer,
   resolveRecognitionProductFormLabel,
@@ -42,8 +44,10 @@ function resolveNpkLabel(input: {
 export function buildCaptureRecognitionPackagingDeclarationText(
   draft: FertilizerCaptureDraft,
 ): string | null {
-  if (draft.recognitionResult) {
-    const recognition = draft.recognitionResult.recognition
+  const preparedDraft = prepareCaptureDraftForEnrichment(draft)
+  const recognition = resolveCaptureDraftRecognition(preparedDraft)
+
+  if (recognition) {
     const manufacturer = resolveRecognitionManufacturer({
       manufacturer: recognition.manufacturer.normalizedValue,
       brand: recognition.brand.normalizedValue,
@@ -105,7 +109,7 @@ export function buildCaptureRecognitionPackagingDeclarationText(
     return lines.join('\n')
   }
 
-  const candidate = draft.recognitionCandidate
+  const candidate = preparedDraft.recognitionCandidate
   if (!candidate) {
     return null
   }
@@ -149,8 +153,9 @@ export function buildCaptureRecognitionPackagingDeclarationText(
 export function appendCaptureRecognitionPackagingToEnrichmentInput<
   T extends FertilizerEnrichmentOrchestrationInput,
 >(input: T, draft: FertilizerCaptureDraft): T {
-  const declarationText = buildCaptureRecognitionPackagingDeclarationText(draft)
-  const packagingBasis = buildCaptureRecognitionPackagingBasis(draft)
+  const preparedDraft = prepareCaptureDraftForEnrichment(draft)
+  const declarationText = buildCaptureRecognitionPackagingDeclarationText(preparedDraft)
+  const packagingBasis = buildCaptureRecognitionPackagingBasis(preparedDraft)
 
   if (!declarationText && !packagingBasis) {
     return input

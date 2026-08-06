@@ -746,6 +746,15 @@ describe('fertilizerEnrichmentStartDiagnosticCore', () => {
         mergedFormCategory: 'missing',
         formFallbackUsed: false,
         formFallbackRejectedReason: 'missing',
+        recognitionResultPresent: true,
+        recognitionPackageSizePresent: false,
+        recognitionPackageSizeUnitCategory: 'missing',
+        captureDraftRecognitionPresent: true,
+        packagingBasisBuilt: true,
+        packagingBasisIncludedInRequest: true,
+        packagingBasisAcceptedByServer: true,
+        packagingBasisRejectedReason: 'package_size_missing',
+        enrichmentInputBuilderPath: 'unknown',
       }),
     )
   })

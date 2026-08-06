@@ -384,6 +384,8 @@ export interface FertilizerEnrichmentOrchestrationInput {
   captureInlineSourceTexts?: Record<string, string>
   /** Capture-only structured recognition basis for merge fallbacks — not persisted as product truth. */
   captureRecognitionPackagingBasis?: FertilizerCaptureRecognitionPackagingBasis
+  /** Diagnostic-only hint for capture enrichment input builder path — not used in orchestration. */
+  captureEnrichmentInputBuilderPath?: 'canonical_capture' | 'legacy_capture' | 'unknown'
   priorOrchestrationRunId?: string | null
   idempotencyKey?: string | null
   orchestrationRunId?: string | null

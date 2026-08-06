@@ -322,6 +322,12 @@ function validateOrchestrationInput(value: unknown): FertilizerEnrichmentOrchest
     captureRecognitionPackagingBasis: validateCaptureRecognitionPackagingBasis(
       record.captureRecognitionPackagingBasis,
     ),
+    captureEnrichmentInputBuilderPath:
+      record.captureEnrichmentInputBuilderPath === 'canonical_capture' ||
+      record.captureEnrichmentInputBuilderPath === 'legacy_capture' ||
+      record.captureEnrichmentInputBuilderPath === 'unknown'
+        ? record.captureEnrichmentInputBuilderPath
+        : undefined,
     priorOrchestrationRunId:
       typeof record.priorOrchestrationRunId === 'string' ? record.priorOrchestrationRunId : null,
     idempotencyKey: typeof record.idempotencyKey === 'string' ? record.idempotencyKey : null,

@@ -10,7 +10,16 @@ import {
   fingerprintFromCandidate,
   fingerprintFromRecognitionResult,
 } from './fertilizerInventoryCore'
-import { resolveRecognitionManufacturer } from './fertilizerRecognitionEnrichmentBasisCore'
+import {
+  prepareCaptureDraftForEnrichment,
+  resolveRecognitionManufacturer,
+} from './fertilizerRecognitionEnrichmentBasisCore'
+
+export const FERTILIZER_CAPTURE_ENRICHMENT_INPUT_BUILDER_PATH = 'canonical_capture' as const
+export type FertilizerCaptureEnrichmentInputBuilderPath =
+  | typeof FERTILIZER_CAPTURE_ENRICHMENT_INPUT_BUILDER_PATH
+  | 'legacy_capture'
+  | 'unknown'
 
 export class FertilizerCaptureEnrichmentInputError extends Error {
   constructor(message: string) {
@@ -128,12 +137,13 @@ export function buildFertilizerEnrichmentOrchestrationInputFromCaptureDraft(
   draft: FertilizerCaptureDraft,
   options: { enrichmentIdempotencyKey: string },
 ): FertilizerEnrichmentOrchestrationInput {
-  const identity = draft.recognitionResult
-    ? identityFromRecognition(draft)
-    : draft.recognitionCandidate
-      ? identityFromCandidate(draft)
-      : draft.catalogProductId && draft.selectedProduct
-        ? identityFromCatalogProduct(draft)
+  const preparedDraft = prepareCaptureDraftForEnrichment(draft)
+  const identity = preparedDraft.recognitionResult
+    ? identityFromRecognition(preparedDraft)
+    : preparedDraft.recognitionCandidate
+      ? identityFromCandidate(preparedDraft)
+      : preparedDraft.catalogProductId && preparedDraft.selectedProduct
+        ? identityFromCatalogProduct(preparedDraft)
         : null
 
   if (!identity) {
@@ -147,13 +157,14 @@ export function buildFertilizerEnrichmentOrchestrationInputFromCaptureDraft(
       objectCategory: 'fertilizer',
       identity,
       references: {
-        catalogProfileHint: draft.catalogProductId,
-        existingProductProfileId: draft.productProfileId,
+        catalogProfileHint: preparedDraft.catalogProductId,
+        existingProductProfileId: preparedDraft.productProfileId,
       },
       allowedInputChannels: ['capture_flow'],
-      sourceHints: buildSourceHints(draft),
+      sourceHints: buildSourceHints(preparedDraft),
       idempotencyKey: options.enrichmentIdempotencyKey,
+      captureEnrichmentInputBuilderPath: FERTILIZER_CAPTURE_ENRICHMENT_INPUT_BUILDER_PATH,
     },
-    draft,
+    preparedDraft,
   )
 }
