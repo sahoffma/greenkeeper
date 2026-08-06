@@ -5,6 +5,13 @@ import {
   type FertilizerEnrichmentServerRuntime,
 } from './fertilizerEnrichmentServerCompositionCore'
 import type { FertilizerEnrichmentHttpRequest } from './fertilizerEnrichmentServerHandlerCore'
+import {
+  diagnoseFertilizerEnrichmentStartResponse,
+  extractSafeFertilizerEnrichmentStartInputCounts,
+  logFertilizerEnrichmentStartFailure,
+  buildFertilizerEnrichmentStartFailureDiagnostic,
+  resolveFertilizerEnrichmentStartRequestId,
+} from './fertilizerEnrichmentStartDiagnosticCore'
 
 export type FertilizerEnrichmentNetlifyOperation =
   | 'start'
@@ -82,24 +89,66 @@ export function createFertilizerEnrichmentNetlifyHandler(
       }
     }
 
+    const isStartOperation = operation === 'start'
+    const requestId = isStartOperation ? resolveFertilizerEnrichmentStartRequestId(event) : null
+    const inputCounts = isStartOperation
+      ? extractSafeFertilizerEnrichmentStartInputCounts(event.body)
+      : null
+
     let runtime: FertilizerEnrichmentServerRuntime
     try {
       runtime = getRuntime()
     } catch (error) {
+      if (isStartOperation) {
+        logFertilizerEnrichmentStartFailure(
+          buildFertilizerEnrichmentStartFailureDiagnostic({
+            requestId,
+            phase: 'runtime_init',
+            error,
+            httpStatus: 500,
+            inputCounts: inputCounts ?? undefined,
+          }),
+        )
+      }
+
       return mapConfigurationError(error)
     }
 
     const request = toHttpRequest(event)
 
-    switch (operation) {
-      case 'start':
-        return runtime.handlers.handleStart(request)
-      case 'status':
-        return runtime.handlers.handleStatus(request)
-      case 'additionalSource':
-        return runtime.handlers.handleAdditionalSource(request)
-      case 'cancel':
-        return runtime.handlers.handleCancel(request)
+    try {
+      switch (operation) {
+        case 'start': {
+          const response = await runtime.handlers.handleStart(request)
+          diagnoseFertilizerEnrichmentStartResponse({
+            requestId,
+            httpStatus: response.statusCode,
+            responseBody: response.body,
+            inputCounts: inputCounts ?? extractSafeFertilizerEnrichmentStartInputCounts(event.body),
+          })
+          return response
+        }
+        case 'status':
+          return runtime.handlers.handleStatus(request)
+        case 'additionalSource':
+          return runtime.handlers.handleAdditionalSource(request)
+        case 'cancel':
+          return runtime.handlers.handleCancel(request)
+      }
+    } catch (error) {
+      if (isStartOperation) {
+        logFertilizerEnrichmentStartFailure(
+          buildFertilizerEnrichmentStartFailureDiagnostic({
+            requestId,
+            phase: 'unknown',
+            error,
+            httpStatus: 500,
+            inputCounts: inputCounts ?? undefined,
+          }),
+        )
+      }
+
+      throw error
     }
   }
 }

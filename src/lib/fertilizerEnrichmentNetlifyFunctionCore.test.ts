@@ -224,4 +224,95 @@ describe('fertilizerEnrichmentNetlifyFunctionCore', () => {
     expect(serialized).not.toContain('orchestrationInput')
     expect(serialized).not.toContain('sessionAccessHash')
   })
+
+  it('logs structured start failure diagnostics without leaking secrets', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const runtime = createMockRuntime()
+    runtime.handlers.handleStart.mockResolvedValue({
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        job: {
+          jobId: 'job-1',
+          result: {
+            status: 'failed',
+            failureReason: 'no_viable_source',
+            attemptedAdapters: ['packaging'],
+            successfulAdapters: [],
+            failedAdapters: [],
+          },
+        },
+      }),
+    })
+
+    const handler = createFertilizerEnrichmentNetlifyHandler('start', () => runtime)
+    await handler(
+      {
+        httpMethod: 'POST',
+        body: JSON.stringify({
+          idempotencyKey: 'idem-1',
+          input: {
+            objectCategory: 'fertilizer',
+            sourceHints: [{ adapterType: 'packaging' }],
+            userProvidedSources: [{ kind: 'packaging_back_photo', referenceId: 'captureRecognitionLabel' }],
+            captureInlineSourceTexts: {
+              captureRecognitionLabel: 'Manufacturer: SecretCo\nNPK 0-0-30',
+            },
+          },
+        }),
+        headers: {
+          authorization: 'Bearer secret-token',
+          'x-nf-request-id': '40392437',
+        },
+      } as never,
+      {} as never,
+    )
+
+    expect(consoleError).toHaveBeenCalledTimes(1)
+    const diagnostic = consoleError.mock.calls[0]?.[1] as Record<string, unknown>
+    expect(diagnostic).toEqual(
+      expect.objectContaining({
+        functionName: 'fertilizer-enrichment-start',
+        requestId: '40392437',
+        phase: 'source_selection',
+        errorCode: 'enrichment_no_viable_source',
+        httpStatus: 200,
+      }),
+    )
+
+    const serialized = JSON.stringify(diagnostic)
+    expect(serialized).not.toContain('secret-token')
+    expect(serialized).not.toContain('SecretCo')
+    expect(serialized).not.toContain('NPK 0-0-30')
+  })
+
+  it('logs runtime_init diagnostics for configuration failures', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const handler = createFertilizerEnrichmentNetlifyHandler('start', () => {
+      throw new FertilizerEnrichmentServerConfigurationError(
+        'Fertilizer enrichment server configuration is incomplete (SUPABASE_SERVICE_ROLE_KEY).',
+      )
+    })
+
+    await handler(
+      {
+        httpMethod: 'POST',
+        body: '{}',
+        headers: { 'x-nf-request-id': '40392437' },
+      } as never,
+      {} as never,
+    )
+
+    expect(consoleError).toHaveBeenCalledTimes(1)
+    expect(consoleError.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        functionName: 'fertilizer-enrichment-start',
+        requestId: '40392437',
+        phase: 'runtime_init',
+        errorCode: 'internal_server_error',
+        httpStatus: 500,
+      }),
+    )
+    expect(JSON.stringify(consoleError.mock.calls[0])).not.toContain('SUPABASE_SERVICE_ROLE_KEY')
+  })
 })
