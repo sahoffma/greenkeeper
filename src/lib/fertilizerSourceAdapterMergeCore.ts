@@ -19,7 +19,10 @@ import type { FertilizerNutrientMatrixKey } from '../types/fertilizerReadiness'
 import {
   CAPTURE_RECOGNITION_PACKAGING_SOURCE_ID,
   mapAdapterExtractedProductFormToEnrichment,
-  resolveOrchestrationRecognitionProductForm,
+  PRODUCT_FORM_UNIT_CONFLICT_ID,
+  resolveCapturePackageUnitInferredFormProvenanceId,
+  resolveExplicitOrchestrationRecognitionProductForm,
+  resolveProductFormFromCapturePackageUnit,
 } from './fertilizerRecognitionEnrichmentBasisCore'
 
 const OFFICIAL_SOURCE_CATEGORIES = new Set<FertilizerEnrichmentSourceCategory>([
@@ -511,7 +514,16 @@ function buildIdentity(
 function selectProductForm(
   input: FertilizerEnrichmentOrchestrationInput,
   extractions: Array<{ result: Extract<FertilizerSourceAdapterResult, { status: 'success' | 'partial' }>; order: number }>,
-): RawFertilizerDeclarationInput['productForm'] {
+): {
+  productForm: RawFertilizerDeclarationInput['productForm']
+  conflicts: FertilizerDeclarationConflict[]
+} {
+  const basisSourceId =
+    input.captureRecognitionPackagingBasis?.sourceId ?? CAPTURE_RECOGNITION_PACKAGING_SOURCE_ID
+  const explicitRecognition = resolveExplicitOrchestrationRecognitionProductForm(input)
+  const unitInferred = resolveProductFormFromCapturePackageUnit(input)
+  const unitProvenanceId = resolveCapturePackageUnitInferredFormProvenanceId(input)
+
   const sorted = [...extractions].sort((left, right) => {
     const leftRank = sourceCategoryRank(left.result.sourceCategory)
     const rightRank = sourceCategoryRank(right.result.sourceCategory)
@@ -519,30 +531,82 @@ function selectProductForm(
     return left.order - right.order
   })
 
+  let adapterForm: 'granular' | 'liquid' | null = null
+  let adapterProvenanceId: string | null = null
+
   for (const entry of sorted) {
     const mapped = mapAdapterExtractedProductFormToEnrichment(
       entry.result.extraction.extractedProductForm ?? null,
-      input,
     )
     if (mapped != null) {
-      return {
-        value: mapped,
-        provenanceIds: [entry.result.sourceId],
-      }
+      adapterForm = mapped
+      adapterProvenanceId = entry.result.sourceId
+      break
     }
   }
 
-  const resolved = resolveOrchestrationRecognitionProductForm(input)
-  const basisSourceId =
-    input.captureRecognitionPackagingBasis?.sourceId ?? CAPTURE_RECOGNITION_PACKAGING_SOURCE_ID
-  if (resolved != null) {
+  const selectedBeforeUnit = explicitRecognition ?? adapterForm
+
+  if (selectedBeforeUnit && unitInferred && selectedBeforeUnit !== unitInferred) {
+    const explicitSourceId = explicitRecognition ? basisSourceId : (adapterProvenanceId ?? basisSourceId)
     return {
-      value: resolved,
-      provenanceIds: [basisSourceId],
+      productForm: {
+        value: null,
+        conflictIds: [PRODUCT_FORM_UNIT_CONFLICT_ID],
+      },
+      conflicts: [
+        {
+          conflictId: PRODUCT_FORM_UNIT_CONFLICT_ID,
+          type: 'product_form_conflict',
+          fieldPath: 'basis.product_form',
+          sourceIds: [explicitSourceId, unitProvenanceId],
+          values: [
+            { sourceId: explicitSourceId, value: selectedBeforeUnit },
+            { sourceId: unitProvenanceId, value: unitInferred },
+          ],
+          blocking: true,
+          resolvable: true,
+          resolutionStatus: 'requires_user_input',
+          reasonCode: 'form_unit_mismatch',
+        },
+      ],
     }
   }
 
-  return { value: null }
+  if (explicitRecognition) {
+    return {
+      productForm: {
+        value: explicitRecognition,
+        provenanceIds: [basisSourceId],
+      },
+      conflicts: [],
+    }
+  }
+
+  if (adapterForm && adapterProvenanceId) {
+    return {
+      productForm: {
+        value: adapterForm,
+        provenanceIds: [adapterProvenanceId],
+      },
+      conflicts: [],
+    }
+  }
+
+  if (unitInferred) {
+    return {
+      productForm: {
+        value: unitInferred,
+        provenanceIds: [unitProvenanceId],
+      },
+      conflicts: [],
+    }
+  }
+
+  return {
+    productForm: { value: null },
+    conflicts: [],
+  }
 }
 
 export function mergeFertilizerSourceAdapterResults(
@@ -657,7 +721,37 @@ export function buildRawFertilizerDeclarationInput(
     ),
   ].flat()
 
-  const sourceConflicts = [...merged.conflicts, ...fieldConflicts]
+  const productFormSelection = selectProductForm(input, merged.extractions)
+  const unitInferredProvenanceId = resolveCapturePackageUnitInferredFormProvenanceId(input)
+  if (
+    productFormSelection.productForm.provenanceIds?.includes(unitInferredProvenanceId) &&
+    !provenanceRecords[unitInferredProvenanceId]
+  ) {
+    const basis = input.captureRecognitionPackagingBasis
+    provenanceRecords[unitInferredProvenanceId] = {
+      provenanceId: unitInferredProvenanceId,
+      fieldPath: 'basis.product_form',
+      sourceType: 'packaging',
+      sourceCategory: 'packaging_evidence',
+      sourceUrl: null,
+      sourceTitle: 'Package unit inferred product form',
+      evidence:
+        basis?.packageSizeValue != null && basis.packageSizeUnit
+          ? `${basis.packageSizeValue} ${basis.packageSizeUnit}`
+          : basis?.packageSizeUnit ?? null,
+      retrievedAt: options.extractedAt,
+      confidence: null,
+      productVariantReference: basis?.variant ?? null,
+      sourceVersion: null,
+      isPrimary: false,
+    }
+  }
+
+  const sourceConflicts = [
+    ...merged.conflicts,
+    ...fieldConflicts,
+    ...productFormSelection.conflicts,
+  ]
   const coverageMetadata = mergeCoverageMetadata(merged.extractions, sourceConflicts)
 
   const nutrientMatrix = applyRecognitionPackagingMatrixCompletion(
@@ -690,7 +784,7 @@ export function buildRawFertilizerDeclarationInput(
   return {
     objectCategory: input.objectCategory,
     identity: buildIdentity(input, merged.extractions).identity,
-    productForm: selectProductForm(input, merged.extractions),
+    productForm: productFormSelection.productForm,
     npk: {
       nitrogen: npkNitrogen.value,
       phosphate: npkPhosphate.value,

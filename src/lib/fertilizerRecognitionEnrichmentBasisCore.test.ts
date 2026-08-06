@@ -97,7 +97,7 @@ function genericSecondFertilizerRecognition(): ProductRecognizeResult {
       phosphate: 4,
       potash: 18,
       packageSizeValue: 10,
-      packageSizeUnit: 'kg',
+      packageSizeUnit: 'l',
       form: 'liquid',
       gtin: null,
       textFragments: [],

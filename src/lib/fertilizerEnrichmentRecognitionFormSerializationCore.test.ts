@@ -285,6 +285,13 @@ describe('fertilizerEnrichmentRecognitionFormSerializationCore', () => {
         captureInlineSourceTexts: {
           captureRecognitionLabel: textWithoutForm,
         },
+        captureRecognitionPackagingBasis: input.captureRecognitionPackagingBasis
+          ? {
+              ...input.captureRecognitionPackagingBasis,
+              packageSizeValue: null,
+              packageSizeUnit: null,
+            }
+          : undefined,
       },
     })
     const validated = validateFertilizerEnrichmentOrchestrationInputForTests(

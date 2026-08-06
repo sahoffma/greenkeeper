@@ -7,6 +7,11 @@ import type { FertilizerCaptureDraft } from './fertilizerCaptureCore'
 
 export const CAPTURE_RECOGNITION_PACKAGING_SOURCE_ID = 'captureRecognitionLabel'
 
+export const CAPTURE_RECOGNITION_PACKAGE_UNIT_INFERRED_FORM_PROVENANCE_SUFFIX =
+  ':package-unit-inferred-form'
+
+export const PRODUCT_FORM_UNIT_CONFLICT_ID = 'conflict-product-form-unit'
+
 function normalizedText(value: string | null | undefined): string | null {
   if (value == null) {
     return null
@@ -135,7 +140,6 @@ export function mapDeclarationProductFormLabelToEnrichment(
 
 export function mapAdapterExtractedProductFormToEnrichment(
   form: FertilizerEnrichmentProductFormValue,
-  input: FertilizerEnrichmentOrchestrationInput,
 ): 'granular' | 'liquid' | null {
   if (form === 'granular' || form === 'liquid') {
     return form
@@ -148,7 +152,77 @@ export function mapAdapterExtractedProductFormToEnrichment(
     }
   }
 
-  return resolveOrchestrationRecognitionProductForm(input)
+  return null
+}
+
+export function normalizePackageSizeUnit(unit: string | null | undefined): string | null {
+  const normalized = normalizedText(unit)?.toLowerCase()
+  if (!normalized) {
+    return null
+  }
+
+  if (normalized === 'kilogram' || normalized === 'kilogramm' || normalized === 'kg') {
+    return 'kg'
+  }
+
+  if (normalized === 'gram' || normalized === 'gramm' || normalized === 'g') {
+    return 'g'
+  }
+
+  if (normalized === 'liter' || normalized === 'litre' || normalized === 'l') {
+    return 'l'
+  }
+
+  if (normalized === 'milliliter' || normalized === 'millilitre' || normalized === 'ml') {
+    return 'ml'
+  }
+
+  return normalized
+}
+
+/**
+ * Generic Greenkeeper rule: infer product form from package unit when no explicit form exists.
+ */
+export function inferProductFormFromPackageUnit(
+  unit: string | null | undefined,
+): 'granular' | 'liquid' | null {
+  const normalized = normalizePackageSizeUnit(unit)
+  if (!normalized) {
+    return null
+  }
+
+  if (normalized === 'kg' || normalized === 'g') {
+    return 'granular'
+  }
+
+  if (normalized === 'l' || normalized === 'ml') {
+    return 'liquid'
+  }
+
+  return null
+}
+
+export function resolveProductFormFromCapturePackageUnit(
+  input: FertilizerEnrichmentOrchestrationInput,
+): 'granular' | 'liquid' | null {
+  const basis = input.captureRecognitionPackagingBasis
+  if (!basis?.packageSizeUnit) {
+    return null
+  }
+
+  if (basis.packageSizeValue != null && basis.packageSizeValue <= 0) {
+    return null
+  }
+
+  return inferProductFormFromPackageUnit(basis.packageSizeUnit)
+}
+
+export function resolveCapturePackageUnitInferredFormProvenanceId(
+  input: FertilizerEnrichmentOrchestrationInput,
+): string {
+  const basisSourceId =
+    input.captureRecognitionPackagingBasis?.sourceId ?? CAPTURE_RECOGNITION_PACKAGING_SOURCE_ID
+  return `${basisSourceId}${CAPTURE_RECOGNITION_PACKAGE_UNIT_INFERRED_FORM_PROVENANCE_SUFFIX}`
 }
 
 export function resolveRecognitionFormEvidence(input: {
@@ -245,7 +319,7 @@ export function resolveRecognitionFormEvidenceSourceField(input: {
   return 'none'
 }
 
-export function resolveOrchestrationRecognitionProductForm(
+export function resolveExplicitOrchestrationRecognitionProductForm(
   input: FertilizerEnrichmentOrchestrationInput,
 ): 'granular' | 'liquid' | null {
   const basis = input.captureRecognitionPackagingBasis
@@ -273,6 +347,15 @@ export function resolveOrchestrationRecognitionProductForm(
   }
 
   return null
+}
+
+export function resolveOrchestrationRecognitionProductForm(
+  input: FertilizerEnrichmentOrchestrationInput,
+): 'granular' | 'liquid' | null {
+  return (
+    resolveExplicitOrchestrationRecognitionProductForm(input) ??
+    resolveProductFormFromCapturePackageUnit(input)
+  )
 }
 
 export function resolveNpkTriplet(input: {
@@ -373,7 +456,7 @@ export function buildCaptureRecognitionPackagingBasis(
       potash: recognition.npk.potash,
     })
 
-    if (!officialName && !manufacturer && !npk && productForm == null) {
+    if (!officialName && !manufacturer && !npk && productForm == null && recognition.packageSize.normalizedValue == null) {
       return null
     }
 
