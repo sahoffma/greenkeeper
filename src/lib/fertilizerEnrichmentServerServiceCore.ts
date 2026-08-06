@@ -1,5 +1,6 @@
 import type {
   CancelFertilizerEnrichmentRequest,
+  FertilizerCaptureRecognitionPackagingBasis,
   FertilizerEnrichmentAccessContext,
   FertilizerEnrichmentApiError,
   FertilizerEnrichmentJob,
@@ -175,6 +176,71 @@ export function validateRequestAccessContextAgainstServerContext(
   }
 }
 
+function validateCaptureRecognitionPackagingBasis(
+  value: unknown,
+): FertilizerCaptureRecognitionPackagingBasis | undefined {
+  if (value == null) {
+    return undefined
+  }
+
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw apiError('invalid_request', 'captureRecognitionPackagingBasis must be an object.', 400)
+  }
+
+  const record = value as Record<string, unknown>
+  const sourceId = assertNonEmptyString(
+    record.sourceId,
+    'captureRecognitionPackagingBasis.sourceId',
+    512,
+  )
+  const productForm = record.productForm
+  if (
+    productForm != null &&
+    productForm !== 'granular' &&
+    productForm !== 'liquid' &&
+    productForm !== 'unknown'
+  ) {
+    throw apiError('invalid_request', 'captureRecognitionPackagingBasis.productForm is invalid.', 400)
+  }
+
+  let npk: FertilizerCaptureRecognitionPackagingBasis['npk'] = null
+  if (record.npk != null) {
+    if (!record.npk || typeof record.npk !== 'object' || Array.isArray(record.npk)) {
+      throw apiError('invalid_request', 'captureRecognitionPackagingBasis.npk must be an object.', 400)
+    }
+
+    const npkRecord = record.npk as Record<string, unknown>
+    if (
+      typeof npkRecord.nitrogen !== 'number' ||
+      typeof npkRecord.phosphate !== 'number' ||
+      typeof npkRecord.potash !== 'number'
+    ) {
+      throw apiError('invalid_request', 'captureRecognitionPackagingBasis.npk values are invalid.', 400)
+    }
+
+    npk = {
+      nitrogen: npkRecord.nitrogen,
+      phosphate: npkRecord.phosphate,
+      potash: npkRecord.potash,
+    }
+  }
+
+  return {
+    sourceId,
+    manufacturer: typeof record.manufacturer === 'string' ? record.manufacturer : null,
+    officialName: typeof record.officialName === 'string' ? record.officialName : null,
+    productLine: typeof record.productLine === 'string' ? record.productLine : null,
+    variant: typeof record.variant === 'string' ? record.variant : null,
+    productForm:
+      productForm === 'granular' || productForm === 'liquid'
+        ? productForm
+        : null,
+    npk,
+    packageSizeValue: typeof record.packageSizeValue === 'number' ? record.packageSizeValue : null,
+    packageSizeUnit: typeof record.packageSizeUnit === 'string' ? record.packageSizeUnit : null,
+  }
+}
+
 function validateOrchestrationInput(value: unknown): FertilizerEnrichmentOrchestrationInput {
   if (!value || typeof value !== 'object') {
     throw apiError('invalid_request', 'input is required.', 400)
@@ -247,6 +313,9 @@ function validateOrchestrationInput(value: unknown): FertilizerEnrichmentOrchest
               .filter((entry): entry is readonly [string, string] => entry != null),
           )
         : undefined,
+    captureRecognitionPackagingBasis: validateCaptureRecognitionPackagingBasis(
+      record.captureRecognitionPackagingBasis,
+    ),
     priorOrchestrationRunId:
       typeof record.priorOrchestrationRunId === 'string' ? record.priorOrchestrationRunId : null,
     idempotencyKey: typeof record.idempotencyKey === 'string' ? record.idempotencyKey : null,

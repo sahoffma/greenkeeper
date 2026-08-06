@@ -1,5 +1,8 @@
 import type { FertilizerEnrichmentProductFormValue } from '../types/fertilizerEnrichment'
-import type { FertilizerCaptureRecognitionPackagingBasis } from '../types/fertilizerEnrichmentOrchestration'
+import type {
+  FertilizerCaptureRecognitionPackagingBasis,
+  FertilizerEnrichmentOrchestrationInput,
+} from '../types/fertilizerEnrichmentOrchestration'
 import type { FertilizerCaptureDraft } from './fertilizerCaptureCore'
 
 export const CAPTURE_RECOGNITION_PACKAGING_SOURCE_ID = 'captureRecognitionLabel'
@@ -11,6 +14,161 @@ function normalizedText(value: string | null | undefined): string | null {
 
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
+}
+
+function normalizeFormText(value: string | null | undefined): string {
+  return (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function splitFormFragments(value: string): string[] {
+  return value
+    .split(/[/,&]| und | and /i)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+}
+
+function fragmentsFromValues(...values: Array<string | null | undefined>): string[] {
+  const fragments: string[] = []
+
+  for (const value of values) {
+    const normalized = normalizeFormText(value)
+    if (!normalized || normalized === 'unknown') {
+      continue
+    }
+
+    fragments.push(...splitFormFragments(normalized))
+    if (!normalized.includes('/') && !normalized.includes(',') && !normalized.includes('&')) {
+      fragments.push(normalized)
+    }
+  }
+
+  return [...new Set(fragments)]
+}
+
+function fragmentMatchesGranular(fragment: string): boolean {
+  return (
+    fragment === 'granular' ||
+    fragment === 'granulate' ||
+    fragment === 'granulat' ||
+    fragment === 'granulated' ||
+    fragment === 'solid granular' ||
+    fragment === 'granular fertilizer' ||
+    /^granul/i.test(fragment)
+  )
+}
+
+function fragmentMatchesLiquid(fragment: string): boolean {
+  return (
+    fragment === 'liquid' ||
+    fragment === 'liquid fertilizer' ||
+    fragment === 'flüssig' ||
+    fragment === 'fluessig' ||
+    fragment === 'flüssigdünger' ||
+    fragment === 'fluessigduenger' ||
+    /\b(fl[üu]ssig|liquid|spritz|konzentrat)\b/i.test(fragment)
+  )
+}
+
+function fragmentMatchesRasenduenger(fragment: string): boolean {
+  return /\brasend[üu]nger\b/i.test(fragment)
+}
+
+function classifyFormFragments(fragments: string[]): {
+  granular: boolean
+  liquid: boolean
+  rasenduenger: boolean
+} {
+  let granular = false
+  let liquid = false
+  let rasenduenger = false
+
+  for (const fragment of fragments) {
+    if (fragmentMatchesGranular(fragment)) {
+      granular = true
+    }
+    if (fragmentMatchesLiquid(fragment)) {
+      liquid = true
+    }
+    if (fragmentMatchesRasenduenger(fragment)) {
+      rasenduenger = true
+    }
+  }
+
+  return { granular, liquid, rasenduenger }
+}
+
+/**
+ * Maps recognition or declaration-label evidence to enrichment product form.
+ * Returns `unknown` when the signal is missing or ambiguous.
+ */
+export function mapRecognitionProductFormToEnrichment(
+  form: string | null | undefined,
+  descriptor: string | null | undefined = null,
+): FertilizerEnrichmentProductFormValue {
+  const fragments = fragmentsFromValues(form, descriptor)
+  const { granular, liquid, rasenduenger } = classifyFormFragments(fragments)
+
+  if (liquid && granular) {
+    return 'unknown'
+  }
+
+  if (liquid) {
+    return 'liquid'
+  }
+
+  if (granular) {
+    return 'granular'
+  }
+
+  if (rasenduenger) {
+    return 'unknown'
+  }
+
+  return 'unknown'
+}
+
+export function mapDeclarationProductFormLabelToEnrichment(
+  label: string | null | undefined,
+): FertilizerEnrichmentProductFormValue {
+  return mapRecognitionProductFormToEnrichment(label, null)
+}
+
+export function mapAdapterExtractedProductFormToEnrichment(
+  form: FertilizerEnrichmentProductFormValue,
+  input: FertilizerEnrichmentOrchestrationInput,
+): 'granular' | 'liquid' | null {
+  if (form === 'granular' || form === 'liquid') {
+    return form
+  }
+
+  const mapped = mapDeclarationProductFormLabelToEnrichment(form)
+  if (mapped === 'granular' || mapped === 'liquid') {
+    return mapped
+  }
+
+  return resolveOrchestrationRecognitionProductForm(input)
+}
+
+export function resolveOrchestrationRecognitionProductForm(
+  input: FertilizerEnrichmentOrchestrationInput,
+): 'granular' | 'liquid' | null {
+  const basisForm = input.captureRecognitionPackagingBasis?.productForm
+  if (basisForm === 'granular' || basisForm === 'liquid') {
+    return basisForm
+  }
+
+  const inlineText = input.captureInlineSourceTexts?.[CAPTURE_RECOGNITION_PACKAGING_SOURCE_ID]
+  if (inlineText) {
+    const formLine = /\bform\s*[:=]?\s*(.+)/i.exec(inlineText)?.[1]?.trim()
+    if (formLine) {
+      const mapped = mapDeclarationProductFormLabelToEnrichment(formLine)
+      if (mapped === 'granular' || mapped === 'liquid') {
+        return mapped
+      }
+    }
+  }
+
+  return null
 }
 
 export function resolveNpkTriplet(input: {
@@ -57,49 +215,6 @@ export function resolveNpkTriplet(input: {
   }
 
   return { nitrogen, phosphate, potash }
-}
-
-/**
- * Maps recognition product-form evidence to the enrichment schema.
- * Returns `unknown` when the signal is missing or ambiguous (e.g. granular + liquid hints).
- */
-export function mapRecognitionProductFormToEnrichment(
-  form: string | null | undefined,
-  descriptor: string | null | undefined = null,
-): FertilizerEnrichmentProductFormValue {
-  const normalizedForm = (form ?? '').trim().toLowerCase()
-  const normalizedDescriptor = (descriptor ?? '').trim().toLowerCase()
-
-  const liquidHint =
-    /\b(fl[üu]ssig|liquid|spritz|konzentrat)\b/i.test(normalizedForm) ||
-    /\b(fl[üu]ssig|liquid|spritz|konzentrat)\b/i.test(normalizedDescriptor)
-  const granularHint =
-    normalizedForm === 'granular' ||
-    normalizedForm === 'granulat' ||
-    /\bgranul/i.test(normalizedForm) ||
-    (/\brasend[üu]nger\b/i.test(normalizedDescriptor) && !liquidHint)
-
-  if (liquidHint && granularHint) {
-    return 'unknown'
-  }
-
-  if (liquidHint) {
-    return 'liquid'
-  }
-
-  if (granularHint) {
-    return 'granular'
-  }
-
-  if (normalizedForm === 'liquid') {
-    return 'liquid'
-  }
-
-  if (normalizedForm === 'granular') {
-    return 'granular'
-  }
-
-  return 'unknown'
 }
 
 export function resolveRecognitionManufacturer(input: {

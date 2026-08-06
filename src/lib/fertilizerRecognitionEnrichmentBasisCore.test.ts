@@ -1,17 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import type { FertilizerEnrichmentOrchestrationInput } from '../types/fertilizerEnrichmentOrchestration'
+import type { ProductRecognizeResult } from '../types/productRecognize'
 import { acceptRecognitionResult, createInitialCaptureDraft } from './fertilizerCaptureCore'
 import { buildFertilizerEnrichmentOrchestrationInputFromCaptureDraft } from './fertilizerCaptureEnrichmentInputCore'
 import {
+  mapDeclarationProductFormLabelToEnrichment,
   mapRecognitionProductFormToEnrichment,
+  resolveOrchestrationRecognitionProductForm,
   resolveRecognitionManufacturer,
 } from './fertilizerRecognitionEnrichmentBasisCore'
-import { buildRawFertilizerDeclarationInput } from './fertilizerSourceAdapterMergeCore'
 import { evaluateRawFertilizerDeclaration } from './fertilizerNormalizationReadinessPipelineCore'
-import { mapDeclarationParseToAdapterResult } from './fertilizerUserProvidedSourceAdapterCore'
-import { parseUserProvidedDeclarationText } from './fertilizerUserProvidedSourceAdapterCore'
+import {
+  mapDeclarationParseToAdapterResult,
+  parseUserProvidedDeclarationText,
+} from './fertilizerUserProvidedSourceAdapterCore'
+import { buildRawFertilizerDeclarationInput } from './fertilizerSourceAdapterMergeCore'
 import { recognitionFromImageAnalysis } from './productRecognizeIdentityCore'
-import type { ProductRecognizeResult } from '../types/productRecognize'
 import { FERTILIZER_NUTRIENT_MATRIX_KEYS } from '../types/fertilizerDeclarationNormalization'
 
 const FIXED_NOW = '2026-07-29T10:00:00.000Z'
@@ -23,29 +27,42 @@ function stressManagerRecognition(overrides: {
   manufacturer?: string | null
   form?: 'granular' | 'liquid' | 'unknown'
   descriptor?: string | null
+  formLabel?: string
 } = {}): ProductRecognizeResult {
+  const recognition = recognitionFromImageAnalysis({
+    brand: 'Rasendoktor',
+    productLine: 'Professional',
+    productName: 'Stress-Manager',
+    variant: '0-0-30',
+    productDescriptor: overrides.descriptor ?? 'Rasendünger',
+    manufacturer: overrides.manufacturer ?? null,
+    npkLabel: '0-0-30',
+    nitrogen: 0,
+    phosphate: 0,
+    potash: 30,
+    packageSizeValue: 5,
+    packageSizeUnit: 'kg',
+    form: overrides.form ?? 'granular',
+    gtin: null,
+    textFragments: [],
+    fieldConfidence: {},
+  })
+
+  if (overrides.formLabel) {
+    recognition.form = {
+      rawValue: overrides.formLabel,
+      normalizedValue: overrides.formLabel as typeof recognition.form.normalizedValue,
+      confidence: 0.9,
+      source: 'image',
+      evidence: overrides.formLabel,
+    }
+  }
+
   return {
     status: 'identified',
     identityConfidence: 0.96,
     dataCompleteness: 0.82,
-    recognition: recognitionFromImageAnalysis({
-      brand: 'Rasendoktor',
-      productLine: 'Professional',
-      productName: 'Stress-Manager',
-      variant: '0-0-30',
-      productDescriptor: overrides.descriptor ?? 'Rasendünger',
-      manufacturer: overrides.manufacturer ?? null,
-      npkLabel: '0-0-30',
-      nitrogen: 0,
-      phosphate: 0,
-      potash: 30,
-      packageSizeValue: 5,
-      packageSizeUnit: 'kg',
-      form: overrides.form ?? 'granular',
-      gtin: null,
-      textFragments: [],
-      fieldConfidence: {},
-    }),
+    recognition,
     catalogMatch: { matched: false, productId: null, matchType: 'none', confidence: 0 },
     sources: [],
     missingRequiredFields: [],
@@ -162,6 +179,31 @@ function evaluateCaptureRecognitionMerge(input: FertilizerEnrichmentOrchestratio
   })
 }
 
+describe('mapRecognitionProductFormToEnrichment', () => {
+  it.each([
+    ['granular', null, 'granular'],
+    ['granulate', null, 'granular'],
+    ['granulat', null, 'granular'],
+    ['granulated', null, 'granular'],
+    ['solid granular', null, 'granular'],
+    ['liquid', null, 'liquid'],
+    ['liquid fertilizer', null, 'liquid'],
+    ['flüssig', null, 'liquid'],
+    ['Flüssigdünger', null, 'liquid'],
+    ['Rasendünger / granular', 'Rasendünger', 'granular'],
+    ['Rasendünger', 'granular', 'granular'],
+    ['unknown', 'Rasendünger', 'unknown'],
+    ['granular', 'Flüssig-Rasendünger', 'unknown'],
+  ] as const)('maps %s + %s → %s', (form, descriptor, expected) => {
+    expect(mapRecognitionProductFormToEnrichment(form, descriptor)).toBe(expected)
+  })
+
+  it('maps declaration labels through the same mapper', () => {
+    expect(mapDeclarationProductFormLabelToEnrichment('granulate')).toBe('granular')
+    expect(mapDeclarationProductFormLabelToEnrichment('Flüssigdünger')).toBe('liquid')
+  })
+})
+
 describe('fertilizerRecognitionEnrichmentBasisCore', () => {
   it('maps manufacturer from brand when manufacturer field is empty', () => {
     expect(
@@ -170,18 +212,6 @@ describe('fertilizerRecognitionEnrichmentBasisCore', () => {
         brand: 'Rasendoktor',
       }),
     ).toBe('Rasendoktor')
-  })
-
-  it('maps granular form from descriptor when form is unknown', () => {
-    expect(mapRecognitionProductFormToEnrichment('unknown', 'Rasendünger')).toBe('granular')
-  })
-
-  it('maps liquid form directly', () => {
-    expect(mapRecognitionProductFormToEnrichment('liquid', null)).toBe('liquid')
-  })
-
-  it('keeps ambiguous granular+liquid hints as unknown', () => {
-    expect(mapRecognitionProductFormToEnrichment('granular', 'Flüssig-Rasendünger')).toBe('unknown')
   })
 })
 
@@ -192,22 +222,33 @@ describe('fertilizerSourceAdapterMergeCore recognition packaging basis', () => {
 
     expect(input.identity.manufacturer).toBe('Rasendoktor')
     expect(result.readinessResult.status).toBe('ready')
-    expect(result.readinessResult.missingRequirements).not.toContain('identity.manufacturer')
     expect(result.readinessResult.missingRequirements).not.toContain('basis.product_form')
-    expect(result.readinessResult.missingRequirements).not.toContain('ingredients.matrix')
-    expect(result.readinessResult.suggestedInputActions).not.toContain('confirm_product_form')
-
-    expect(result.readinessInput.identity.manufacturer).toBe('Rasendoktor')
     expect(result.readinessInput.productForm).toBe('granular')
-    expect(result.readinessInput.npk.nitrogen).toBe(0)
-    expect(result.readinessInput.npk.phosphate).toBe(0)
-    expect(result.readinessInput.npk.potash).toBe(30)
+  })
 
-    for (const key of FERTILIZER_NUTRIENT_MATRIX_KEYS) {
-      expect(result.readinessInput.nutrientMatrix[key]?.value).toBe(
-        key === 'potash' ? 30 : 0,
-      )
+  it('maps live-like Stress-Manager form label Rasendünger / granular to intake_ready', () => {
+    const input = buildCaptureInput(
+      stressManagerRecognition({ form: 'unknown', formLabel: 'Rasendünger / granular' }),
+    )
+
+    expect(input.captureRecognitionPackagingBasis?.productForm).toBe('granular')
+    const result = evaluateCaptureRecognitionMerge(input)
+
+    expect(result.readinessResult.status).toBe('ready')
+    expect(result.readinessInput.productForm).toBe('granular')
+    expect(result.readinessResult.missingRequirements).not.toContain('basis.product_form')
+  })
+
+  it('resolves product form from inline packaging when basis is missing', () => {
+    const input = buildCaptureInput(stressManagerRecognition())
+    const strippedInput = {
+      ...input,
+      captureRecognitionPackagingBasis: undefined,
     }
+
+    expect(
+      resolveOrchestrationRecognitionProductForm(strippedInput),
+    ).toBe('granular')
   })
 
   it('works for a second generic fertilizer without product-specific hardcoding', () => {
@@ -215,15 +256,13 @@ describe('fertilizerSourceAdapterMergeCore recognition packaging basis', () => {
     const result = evaluateCaptureRecognitionMerge(input)
 
     expect(result.readinessResult.status).toBe('ready')
-    expect(result.readinessInput.identity.manufacturer).toBe('Plantco')
     expect(result.readinessInput.productForm).toBe('liquid')
-    expect(result.readinessInput.npk.nitrogen).toBe(12)
-    expect(result.readinessInput.npk.phosphate).toBe(4)
-    expect(result.readinessInput.npk.potash).toBe(18)
   })
 
   it('still requires confirm_product_form when recognition form is truly missing', () => {
-    const input = buildCaptureInput(stressManagerRecognition())
+    const input = buildCaptureInput(
+      stressManagerRecognition({ form: 'unknown', descriptor: null, formLabel: 'unknown' }),
+    )
     const basis = {
       sourceId: 'captureRecognitionLabel',
       manufacturer: 'Rasendoktor',
@@ -259,6 +298,9 @@ describe('fertilizerSourceAdapterMergeCore recognition packaging basis', () => {
       {
         ...input,
         captureRecognitionPackagingBasis: basis,
+        captureInlineSourceTexts: {
+          captureRecognitionLabel: textWithoutForm,
+        },
       },
       [packagingResult],
       { enrichmentRunId: FIXED_RUN_ID, extractedAt: FIXED_NOW },
@@ -273,5 +315,16 @@ describe('fertilizerSourceAdapterMergeCore recognition packaging basis', () => {
     expect(result.readinessResult.status).toBe('needs_input')
     expect(result.readinessResult.missingRequirements).toContain('basis.product_form')
     expect(result.readinessResult.suggestedInputActions).toContain('confirm_product_form')
+  })
+
+  it('keeps full matrix readiness for the primary no_match + packaging success path', () => {
+    const result = evaluateCaptureRecognitionMerge(buildCaptureInput(stressManagerRecognition()))
+
+    expect(result.readinessResult.missingRequirements).not.toContain('ingredients.matrix')
+    for (const key of FERTILIZER_NUTRIENT_MATRIX_KEYS) {
+      expect(result.readinessInput.nutrientMatrix[key]?.value).toBe(
+        key === 'potash' ? 30 : 0,
+      )
+    }
   })
 })

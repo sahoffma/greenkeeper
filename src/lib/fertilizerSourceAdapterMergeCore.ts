@@ -16,7 +16,11 @@ import type {
   FertilizerSourceAdapterSourceType,
 } from '../types/fertilizerEnrichmentOrchestration'
 import type { FertilizerNutrientMatrixKey } from '../types/fertilizerReadiness'
-import { CAPTURE_RECOGNITION_PACKAGING_SOURCE_ID } from './fertilizerRecognitionEnrichmentBasisCore'
+import {
+  CAPTURE_RECOGNITION_PACKAGING_SOURCE_ID,
+  mapAdapterExtractedProductFormToEnrichment,
+  resolveOrchestrationRecognitionProductForm,
+} from './fertilizerRecognitionEnrichmentBasisCore'
 
 const OFFICIAL_SOURCE_CATEGORIES = new Set<FertilizerEnrichmentSourceCategory>([
   'official_manufacturer',
@@ -516,32 +520,25 @@ function selectProductForm(
   })
 
   for (const entry of sorted) {
-    const form = entry.result.extraction.extractedProductForm
-    if (form === 'granular' || form === 'liquid') {
+    const mapped = mapAdapterExtractedProductFormToEnrichment(
+      entry.result.extraction.extractedProductForm ?? null,
+      input,
+    )
+    if (mapped != null) {
       return {
-        value: form,
+        value: mapped,
         provenanceIds: [entry.result.sourceId],
       }
     }
   }
 
-  const basisForm = input.captureRecognitionPackagingBasis?.productForm
+  const resolved = resolveOrchestrationRecognitionProductForm(input)
   const basisSourceId =
     input.captureRecognitionPackagingBasis?.sourceId ?? CAPTURE_RECOGNITION_PACKAGING_SOURCE_ID
-  if (basisForm === 'granular' || basisForm === 'liquid') {
+  if (resolved != null) {
     return {
-      value: basisForm,
+      value: resolved,
       provenanceIds: [basisSourceId],
-    }
-  }
-
-  for (const entry of sorted) {
-    const form = entry.result.extraction.extractedProductForm
-    if (form != null) {
-      return {
-        value: form,
-        provenanceIds: [entry.result.sourceId],
-      }
     }
   }
 

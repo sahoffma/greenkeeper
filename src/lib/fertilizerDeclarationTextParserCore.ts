@@ -1,5 +1,6 @@
 import type { FertilizerEnrichmentIdentity, FertilizerEnrichmentProductFormValue } from '../types/fertilizerEnrichment'
 import type { FertilizerNutrientMatrixKey } from '../types/fertilizerReadiness'
+import { mapDeclarationProductFormLabelToEnrichment } from './fertilizerRecognitionEnrichmentBasisCore'
 
 export type FertilizerDeclarationTextClassification =
   | 'exact_match'
@@ -122,12 +123,12 @@ function extractNpk(text: string): FertilizerDeclarationTextParseResult['npk'] {
 }
 
 function extractProductForm(text: string): FertilizerEnrichmentProductFormValue {
-  const match = /\bform\s*[:=]?\s*(granular|liquid)\b/i.exec(text)
+  const match = /\bform\s*[:=]?\s*(.+)/i.exec(text)
   if (!match?.[1]) {
     return 'unknown'
   }
 
-  return match[1].toLowerCase() === 'liquid' ? 'liquid' : 'granular'
+  return mapDeclarationProductFormLabelToEnrichment(match[1].trim())
 }
 
 export function extractDeclarationDocumentIdentity(text: string): {
