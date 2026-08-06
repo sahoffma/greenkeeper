@@ -123,6 +123,22 @@ export interface FertilizerEnrichmentStartFormDiagnostic {
   packagingBasisAcceptedByServer: boolean
   packagingBasisRejectedReason: FertilizerEnrichmentStartPackagingBasisRejectedReason
   enrichmentInputBuilderPath: FertilizerEnrichmentStartEnrichmentInputBuilderPath
+  selectedPackageQuantityPresent: boolean
+  selectedPackageUnitPresent: boolean
+  selectedPackageUnitCategory: FertilizerEnrichmentStartRecognitionPackageSizeUnitCategory
+  recognitionCandidatePresent: boolean
+  recognitionCandidatePackageSizePresent: boolean
+  recognitionSnapshotPresent: boolean
+  recognitionSnapshotPackageSizePresent: boolean
+  preparedDraftPackageSizePresent: boolean
+  preparedDraftPackageSizeSource:
+    | 'recognition_result'
+    | 'recognition_candidate'
+    | 'recognition_snapshot'
+    | 'recognition_raw_value'
+    | 'selected_package_fields'
+    | 'none'
+    | 'missing'
 }
 
 export interface FertilizerEnrichmentStartOutcomeWarningDiagnostic {
@@ -514,6 +530,51 @@ function resolveEnrichmentInputBuilderPath(
   return 'unknown'
 }
 
+function readCaptureDraftPackageDiagnosticsFromRequest(
+  requestBody: string | null | undefined,
+): Record<string, unknown> | null {
+  const input = readCaptureOrchestrationInputFromRequest(requestBody)
+  if (!input) {
+    return null
+  }
+
+  return readObjectRecord(input.captureDraftPackageDiagnostics)
+}
+
+function readBooleanDiagnosticField(record: Record<string, unknown> | null, key: string): boolean {
+  return record?.[key] === true
+}
+
+function readPackageSizeSourceDiagnostic(
+  record: Record<string, unknown> | null,
+): FertilizerEnrichmentStartFormDiagnostic['preparedDraftPackageSizeSource'] {
+  const value = record?.preparedDraftPackageSizeSource
+  if (
+    value === 'recognition_result' ||
+    value === 'recognition_candidate' ||
+    value === 'recognition_snapshot' ||
+    value === 'recognition_raw_value' ||
+    value === 'selected_package_fields' ||
+    value === 'none'
+  ) {
+    return value
+  }
+
+  return record ? 'missing' : 'missing'
+}
+
+function readPackageUnitCategoryDiagnostic(
+  record: Record<string, unknown> | null,
+  key: string,
+): FertilizerEnrichmentStartRecognitionPackageSizeUnitCategory {
+  const value = record?.[key]
+  if (value === 'mass' || value === 'volume' || value === 'unknown') {
+    return value
+  }
+
+  return 'missing'
+}
+
 function resolvePackagingBasisRejectedReason(input: {
   captureDraftRecognitionPresent: boolean
   packagingBasisIncludedInRequest: boolean
@@ -679,6 +740,7 @@ export function buildFertilizerEnrichmentStartFormDiagnostic(input: {
     recognitionPackageSizePresent,
     inlinePackagingProcessed,
   })
+  const draftPackageDiagnostics = readCaptureDraftPackageDiagnosticsFromRequest(input.requestBody)
 
   const recognitionFormLabel =
     typeof basis?.recognitionFormLabel === 'string' ? basis.recognitionFormLabel : null
@@ -765,6 +827,39 @@ export function buildFertilizerEnrichmentStartFormDiagnostic(input: {
     packagingBasisAcceptedByServer,
     packagingBasisRejectedReason,
     enrichmentInputBuilderPath,
+    selectedPackageQuantityPresent: readBooleanDiagnosticField(
+      draftPackageDiagnostics,
+      'selectedPackageQuantityPresent',
+    ),
+    selectedPackageUnitPresent: readBooleanDiagnosticField(
+      draftPackageDiagnostics,
+      'selectedPackageUnitPresent',
+    ),
+    selectedPackageUnitCategory: readPackageUnitCategoryDiagnostic(
+      draftPackageDiagnostics,
+      'selectedPackageUnitCategory',
+    ),
+    recognitionCandidatePresent: readBooleanDiagnosticField(
+      draftPackageDiagnostics,
+      'recognitionCandidatePresent',
+    ),
+    recognitionCandidatePackageSizePresent: readBooleanDiagnosticField(
+      draftPackageDiagnostics,
+      'recognitionCandidatePackageSizePresent',
+    ),
+    recognitionSnapshotPresent: readBooleanDiagnosticField(
+      draftPackageDiagnostics,
+      'recognitionSnapshotPresent',
+    ),
+    recognitionSnapshotPackageSizePresent: readBooleanDiagnosticField(
+      draftPackageDiagnostics,
+      'recognitionSnapshotPackageSizePresent',
+    ),
+    preparedDraftPackageSizePresent: readBooleanDiagnosticField(
+      draftPackageDiagnostics,
+      'preparedDraftPackageSizePresent',
+    ),
+    preparedDraftPackageSizeSource: readPackageSizeSourceDiagnostic(draftPackageDiagnostics),
   }
 }
 

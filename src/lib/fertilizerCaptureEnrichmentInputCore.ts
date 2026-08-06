@@ -13,6 +13,7 @@ import {
 import {
   prepareCaptureDraftForEnrichment,
   resolveRecognitionManufacturer,
+  buildCaptureDraftPackageDiagnostics,
 } from './fertilizerRecognitionEnrichmentBasisCore'
 
 export const FERTILIZER_CAPTURE_ENRICHMENT_INPUT_BUILDER_PATH = 'canonical_capture' as const
@@ -164,6 +165,7 @@ export function buildFertilizerEnrichmentOrchestrationInputFromCaptureDraft(
       sourceHints: buildSourceHints(preparedDraft),
       idempotencyKey: options.enrichmentIdempotencyKey,
       captureEnrichmentInputBuilderPath: FERTILIZER_CAPTURE_ENRICHMENT_INPUT_BUILDER_PATH,
+      captureDraftPackageDiagnostics: buildCaptureDraftPackageDiagnostics(draft),
     },
     preparedDraft,
   )

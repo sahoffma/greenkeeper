@@ -373,6 +373,27 @@ export interface FertilizerCaptureRecognitionPackagingBasis {
   packageSizeUnit?: string | null
 }
 
+export type CaptureDraftPackageSizeSource =
+  | 'recognition_result'
+  | 'recognition_candidate'
+  | 'recognition_snapshot'
+  | 'recognition_raw_value'
+  | 'selected_package_fields'
+  | 'none'
+
+/** Diagnostic-only capture draft package field presence — not used in orchestration merge. */
+export interface CaptureDraftPackageDiagnostics {
+  selectedPackageQuantityPresent: boolean
+  selectedPackageUnitPresent: boolean
+  selectedPackageUnitCategory: 'mass' | 'volume' | 'unknown' | 'missing'
+  recognitionCandidatePresent: boolean
+  recognitionCandidatePackageSizePresent: boolean
+  recognitionSnapshotPresent: boolean
+  recognitionSnapshotPackageSizePresent: boolean
+  preparedDraftPackageSizePresent: boolean
+  preparedDraftPackageSizeSource: CaptureDraftPackageSizeSource
+}
+
 export interface FertilizerEnrichmentOrchestrationInput {
   objectCategory: FertilizerObjectCategory
   identity: FertilizerEnrichmentIdentity
@@ -386,6 +407,8 @@ export interface FertilizerEnrichmentOrchestrationInput {
   captureRecognitionPackagingBasis?: FertilizerCaptureRecognitionPackagingBasis
   /** Diagnostic-only hint for capture enrichment input builder path — not used in orchestration. */
   captureEnrichmentInputBuilderPath?: 'canonical_capture' | 'legacy_capture' | 'unknown'
+  /** Diagnostic-only capture draft package field presence at save time. */
+  captureDraftPackageDiagnostics?: CaptureDraftPackageDiagnostics
   priorOrchestrationRunId?: string | null
   idempotencyKey?: string | null
   orchestrationRunId?: string | null

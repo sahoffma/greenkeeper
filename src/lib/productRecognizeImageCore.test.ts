@@ -4,6 +4,30 @@ import { recognitionFromImageAnalysis } from './productRecognizeIdentityCore'
 import { mapRecognitionProductFormToEnrichment } from './fertilizerRecognitionEnrichmentBasisCore'
 
 describe('productRecognizeImageCore form preservation', () => {
+  it('coerces numeric string packageSizeValue from vision JSON', () => {
+    const analysis = parseImageAnalysisResponse({
+      brand: 'PlantCo',
+      productLine: null,
+      productName: 'Boost',
+      variant: null,
+      productDescriptor: null,
+      manufacturer: 'PlantCo',
+      npkLabel: '0-0-30',
+      nitrogen: 0,
+      phosphate: 0,
+      potash: 30,
+      packageSizeValue: '5',
+      packageSizeUnit: 'kg',
+      form: null,
+      gtin: null,
+      textFragments: [],
+      fieldConfidence: { packageSize: 0.9 },
+    })
+
+    expect(analysis.packageSizeValue).toBe(5)
+    expect(recognitionFromImageAnalysis(analysis).packageSize.normalizedValue).toBe(5)
+  })
+
   it('preserves free-text vision form labels that are not enum values', () => {
     const analysis = parseImageAnalysisResponse({
       brand: 'PlantCo',

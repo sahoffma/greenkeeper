@@ -19,6 +19,7 @@ import {
 } from './fertilizerCaptureSessionCore'
 import { evaluateRawFertilizerDeclaration } from './fertilizerNormalizationReadinessPipelineCore'
 import { validateFertilizerEnrichmentOrchestrationInputForTests } from './fertilizerEnrichmentServerServiceCore'
+import { parseImageAnalysisResponse } from './productRecognizeImageCore'
 import { recognitionFromImageAnalysis } from './productRecognizeIdentityCore'
 import {
   mapDeclarationParseToAdapterResult,
@@ -30,6 +31,33 @@ const FIXED_NOW = '2026-07-29T10:00:00.000Z'
 const FIXED_RUN_ID = 'capture-save-packaging-basis-run'
 const FIXED_NORM_ID = 'capture-save-packaging-basis-norm'
 const FIXED_EVAL = '2026-07-29T10:00:05.000Z'
+
+function buildPhotoFlowResultFromVision(record: Record<string, unknown>): ProductRecognizeResult {
+  const analysis = parseImageAnalysisResponse(record)
+  return {
+    status: 'identified',
+    identityConfidence: 1,
+    dataCompleteness: 0.9,
+    recognition: recognitionFromImageAnalysis(analysis),
+    catalogMatch: { matched: false, productId: null, matchType: 'none', confidence: 0 },
+    sources: [],
+    missingRequiredFields: [],
+    nextAction: { type: 'none', message: null },
+    stockCapture: { allowed: true, recognitionCandidate: true, persistToCatalog: false, message: null },
+    diagnostics: { model: 'test', latencyMs: 1, estimatedCost: null, warnings: [] },
+    steps: [],
+    spike: true,
+  } as ProductRecognizeResult
+}
+
+function acceptPhotoFlowDraft(result: ProductRecognizeResult) {
+  let draft = createInitialCaptureDraft()
+  draft = acceptRecognitionResult(draft, result, {
+    stockStatus: { status: 'first_time', currentBalance: 0, unit: 'kg' },
+  })
+  draft = applyStockRemainderAnswer(draft, false)
+  return proceedToConfirm(draft)
+}
 
 function stressManagerNoForm(): ProductRecognizeResult {
   return {
@@ -176,6 +204,86 @@ function evaluateCaptureSavePath(input: FertilizerEnrichmentOrchestrationInput) 
 }
 
 describe('fertilizerCaptureEnrichmentPackagingBasisSavePath', () => {
+  it('photo flow with string vision packageSizeValue writes draft package fields and enrichment basis', () => {
+    const result = buildPhotoFlowResultFromVision({
+      brand: 'Rasendoktor',
+      productLine: 'Professional',
+      productName: 'Stress-Manager',
+      variant: null,
+      productDescriptor: null,
+      manufacturer: 'Rasendoktor',
+      npkLabel: '0-0-30',
+      nitrogen: 0,
+      phosphate: 0,
+      potash: 30,
+      packageSizeValue: '5',
+      packageSizeUnit: 'kg',
+      form: null,
+      gtin: null,
+      textFragments: [],
+      fieldConfidence: { brand: 0.95, productLine: 0.9, productName: 0.92, npk: 0.93, packageSize: 0.9 },
+    })
+
+    const draft = acceptPhotoFlowDraft(result)
+
+    expect(draft.selectedPackageQuantity).toBe(5)
+    expect(draft.recognitionResult?.recognition.packageSize.normalizedValue).toBe(5)
+
+    const input = buildFertilizerEnrichmentOrchestrationInputFromCaptureDraft(draft, {
+      enrichmentIdempotencyKey: 'capture-key:photo-flow-string-package',
+    })
+
+    expect(input.captureRecognitionPackagingBasis?.packageSizeValue).toBe(5)
+    expect(input.captureRecognitionPackagingBasis?.packageSizeUnit).toBe('kg')
+    expect(input.captureDraftPackageDiagnostics?.preparedDraftPackageSizePresent).toBe(true)
+    expect(input.captureDraftPackageDiagnostics?.preparedDraftPackageSizeSource).toBe(
+      'recognition_result',
+    )
+
+    const serialized = JSON.stringify({ input })
+    expect(serialized.includes('captureRecognitionPackagingBasis')).toBe(true)
+
+    const readiness = evaluateCaptureSavePath(input)
+    expect(readiness.readinessResult.status).toBe('ready')
+    expect(readiness.readinessInput.productForm).toBe('granular')
+  })
+
+  it('does not treat manual purchase quantity as recognized package size', () => {
+    const result = buildPhotoFlowResultFromVision({
+      brand: 'Rasendoktor',
+      productLine: 'Professional',
+      productName: 'Stress-Manager',
+      variant: null,
+      productDescriptor: null,
+      manufacturer: 'Rasendoktor',
+      npkLabel: '0-0-30',
+      nitrogen: 0,
+      phosphate: 0,
+      potash: 30,
+      packageSizeValue: null,
+      packageSizeUnit: null,
+      form: null,
+      gtin: null,
+      textFragments: [],
+      fieldConfidence: { brand: 0.95, productName: 0.92, npk: 0.93 },
+    })
+
+    let draft = acceptRecognitionResult(createInitialCaptureDraft(), result, {
+      stockStatus: { status: 'first_time', currentBalance: 0, unit: 'kg' },
+    })
+    draft = proceedToConfirm({ ...draft, quantity: 5, purchaseQuantity: 5 })
+
+    expect(draft.selectedPackageQuantity).toBeNull()
+
+    const input = buildFertilizerEnrichmentOrchestrationInputFromCaptureDraft(draft, {
+      enrichmentIdempotencyKey: 'capture-key:purchase-only',
+    })
+
+    expect(input.captureRecognitionPackagingBasis?.packageSizeValue).toBeNull()
+    expect(input.captureDraftPackageDiagnostics?.preparedDraftPackageSizePresent).toBe(false)
+    expect(input.captureDraftPackageDiagnostics?.preparedDraftPackageSizeSource).toBe('none')
+  })
+
   it('keeps 5 kg packaging basis through save-path builder, json roundtrip and server validation', () => {
     const input = buildSavePathInput(stressManagerNoForm())
 

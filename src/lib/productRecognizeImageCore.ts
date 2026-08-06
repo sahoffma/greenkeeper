@@ -89,6 +89,26 @@ function clampConfidence(value: unknown): number {
   return Math.min(1, Math.max(0, value))
 }
 
+export function coerceNumericPackageSizeValue(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return null
+    }
+
+    const parsed = Number(trimmed.replace(',', '.'))
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed
+    }
+  }
+
+  return null
+}
+
 function parseForm(value: unknown): ProductRecognizeFormValue | null {
   if (value === 'granular' || value === 'liquid' || value === 'unknown') {
     return value
@@ -160,8 +180,7 @@ export function parseImageAnalysisResponse(
     nitrogen: typeof record.nitrogen === 'number' ? record.nitrogen : null,
     phosphate: typeof record.phosphate === 'number' ? record.phosphate : null,
     potash: typeof record.potash === 'number' ? record.potash : null,
-    packageSizeValue:
-      typeof record.packageSizeValue === 'number' ? record.packageSizeValue : null,
+    packageSizeValue: coerceNumericPackageSizeValue(record.packageSizeValue),
     packageSizeUnit:
       typeof record.packageSizeUnit === 'string' ? record.packageSizeUnit.trim() || null : null,
     ...parseFormField(record.form),

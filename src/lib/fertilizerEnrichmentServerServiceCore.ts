@@ -247,6 +247,45 @@ function validateCaptureRecognitionPackagingBasis(
   }
 }
 
+function validateCaptureDraftPackageDiagnostics(
+  value: unknown,
+): import('../types/fertilizerEnrichmentOrchestration').CaptureDraftPackageDiagnostics | undefined {
+  if (value == null) {
+    return undefined
+  }
+
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
+  }
+
+  const record = value as Record<string, unknown>
+  const source = record.preparedDraftPackageSizeSource
+  const unitCategory = record.selectedPackageUnitCategory
+
+  return {
+    selectedPackageQuantityPresent: record.selectedPackageQuantityPresent === true,
+    selectedPackageUnitPresent: record.selectedPackageUnitPresent === true,
+    selectedPackageUnitCategory:
+      unitCategory === 'mass' || unitCategory === 'volume' || unitCategory === 'unknown'
+        ? unitCategory
+        : 'missing',
+    recognitionCandidatePresent: record.recognitionCandidatePresent === true,
+    recognitionCandidatePackageSizePresent: record.recognitionCandidatePackageSizePresent === true,
+    recognitionSnapshotPresent: record.recognitionSnapshotPresent === true,
+    recognitionSnapshotPackageSizePresent: record.recognitionSnapshotPackageSizePresent === true,
+    preparedDraftPackageSizePresent: record.preparedDraftPackageSizePresent === true,
+    preparedDraftPackageSizeSource:
+      source === 'recognition_result' ||
+      source === 'recognition_candidate' ||
+      source === 'recognition_snapshot' ||
+      source === 'recognition_raw_value' ||
+      source === 'selected_package_fields' ||
+      source === 'none'
+        ? source
+        : 'none',
+  }
+}
+
 function validateOrchestrationInput(value: unknown): FertilizerEnrichmentOrchestrationInput {
   if (!value || typeof value !== 'object') {
     throw apiError('invalid_request', 'input is required.', 400)
@@ -328,6 +367,9 @@ function validateOrchestrationInput(value: unknown): FertilizerEnrichmentOrchest
       record.captureEnrichmentInputBuilderPath === 'unknown'
         ? record.captureEnrichmentInputBuilderPath
         : undefined,
+    captureDraftPackageDiagnostics: validateCaptureDraftPackageDiagnostics(
+      record.captureDraftPackageDiagnostics,
+    ),
     priorOrchestrationRunId:
       typeof record.priorOrchestrationRunId === 'string' ? record.priorOrchestrationRunId : null,
     idempotencyKey: typeof record.idempotencyKey === 'string' ? record.idempotencyKey : null,

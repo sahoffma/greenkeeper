@@ -20,6 +20,7 @@ import {
   planRecognitionStockTransition,
   applyRecognitionRemainderAnswer,
 } from './fertilizerRecognitionCore'
+import { resolveRecognitionPackageSizeFromRecognition } from './fertilizerRecognitionEnrichmentBasisCore'
 import type { InitialStockQuestion, ProductStockStatusKind } from './productRecognizeStockCore'
 import { computePurchaseAmount } from './fertilizerInventoryCore'
 import { createRandomId } from './randomId'
@@ -602,10 +603,11 @@ export function acceptRecognitionResult(
   const label = buildRecognitionProductLabel(result)
   const form = result.recognition.form.normalizedValue
   const customForm = form === 'granular' || form === 'liquid' ? form : null
-  const packageUnit = result.recognition.packageSize.unit
+  const resolvedPackage = resolveRecognitionPackageSizeFromRecognition(result.recognition)
+  const packageSize = resolvedPackage.value
+  const packageUnit = resolvedPackage.unit ?? result.recognition.packageSize.unit
   const normalizedUnit: FertilizerQuantityUnit =
     packageUnit === 'l' || packageUnit === 'ml' || packageUnit === 'g' ? packageUnit : 'kg'
-  const packageSize = result.recognition.packageSize.normalizedValue
   const packageCount = options.packageCount ?? 1
   const purchaseAmount = computePurchaseAmount({
     packageSize,
@@ -629,7 +631,7 @@ export function acceptRecognitionResult(
     customProductForm: customForm,
     selectedProduct: null,
     selectedPackageQuantity: packageSize,
-    selectedPackageUnit: packageUnit === 'l' ? ('l' as const) : ('kg' as const),
+    selectedPackageUnit: packageUnit === 'l' || packageUnit === 'ml' ? ('l' as const) : ('kg' as const),
     packageCount,
     purchaseQuantity: purchaseAmount,
     stockStatusKind: options.stockStatus.status,

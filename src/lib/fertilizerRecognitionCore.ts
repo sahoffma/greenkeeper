@@ -1,3 +1,4 @@
+import { resolveRecognitionPackageSizeFromRecognition } from './fertilizerRecognitionEnrichmentBasisCore'
 import type { ProductRecognizeResult } from '../types/productRecognize'
 import {
   ProductRecognizeClientError,
@@ -90,6 +91,7 @@ export function buildRecognitionCandidateFromResult(
   }
 
   const { recognition } = result
+  const resolvedPackage = resolveRecognitionPackageSizeFromRecognition(recognition)
   const npkLabel = recognition.npk.rawLabel
   const npkValue =
     npkLabel ??
@@ -118,8 +120,8 @@ export function buildRecognitionCandidateFromResult(
           sourceUrl: recognition.npk.sourceUrl ?? null,
         }
       : null,
-    packageSizeValue: recognition.packageSize.normalizedValue,
-    packageSizeUnit: recognition.packageSize.unit,
+    packageSizeValue: resolvedPackage.value,
+    packageSizeUnit: resolvedPackage.unit,
     productForm: recognition.form.normalizedValue,
     identityConfidence: result.identityConfidence,
     dataCompleteness: result.dataCompleteness,
@@ -164,9 +166,10 @@ export function formatRecognizedProductDisplay(
       : null)
   const npk = formatNpkDeclarationDisplay(npkRaw)
 
+  const packageSizeResolved = resolveRecognitionPackageSizeFromRecognition(recognition)
   const packageSize =
-    recognition.packageSize.normalizedValue != null
-      ? `${recognition.packageSize.normalizedValue} ${recognition.packageSize.unit ?? 'kg'}`
+    packageSizeResolved.value != null
+      ? `${packageSizeResolved.value} ${packageSizeResolved.unit ?? 'kg'}`
       : null
 
   const formLabel =
