@@ -94,13 +94,6 @@ export function buildFertilizerProductDetailRows(
     : row.balance.toLocaleString('de-DE', { maximumFractionDigits: 4 })
   rows.push({ label: 'Aktueller Bestand', value: `${balanceFormatted} ${balanceUnit}` })
 
-  if (row.packageSizeValue != null && row.packageSizeUnit) {
-    rows.push({
-      label: 'Gebindegröße',
-      value: `${row.packageSizeValue} ${row.packageSizeUnit}`,
-    })
-  }
-
   const npk = buildSavedProductNpkDisplay(row)
   if (npk) {
     rows.push({ label: 'NPK', value: npk })

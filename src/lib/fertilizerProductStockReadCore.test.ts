@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  stressManagerDetailRpcItemPayload,
+  STRESS_MANAGER_SAVED_NUTRIENT_MATRIX,
+} from './fertilizerProductDetailStressManagerFixtures'
+import {
   findActiveProductStockRowByInventoryItemId,
   groupActiveProductStockRowsByIdentity,
   isActiveCanonicalProductStockCandidate,
@@ -316,5 +320,32 @@ describe('fertilizerProductStockReadCore', () => {
     expect(row.productLine).toBe('Linie')
     expect(row.nutrientMatrix?.iron?.value).toBe(1)
     expect(row.packageSizeValue).toBe(25)
+  })
+
+  it('parses the live Stress-Manager nutrient matrix without loss', () => {
+    const row = parseActiveProductStockReadRow(stressManagerDetailRpcItemPayload())
+
+    expect(row.nutrientMatrix?.iron?.value).toBe(0)
+    expect(row.nutrientMatrix?.potash?.value).toBe(30)
+    expect(row.nutrientMatrix?.manganese?.declarationBasis).toBe('Mn')
+    expect(Object.keys(row.nutrientMatrix ?? {}).sort()).toEqual(
+      Object.keys(STRESS_MANAGER_SAVED_NUTRIENT_MATRIX).sort(),
+    )
+  })
+
+  it('returns null nutrientMatrix when rpc omits it (pre-50815 shape)', () => {
+    const row = parseActiveProductStockReadRow({
+      inventoryItemId: ITEM_A,
+      savedProductProfileId: PROFILE_A,
+      baseUnit: 'kg',
+      balance: 5,
+      manufacturer: 'Rasendoktor',
+      officialName: 'Stress-Manager',
+      productForm: 'granular',
+      movementCount: 1,
+      lastMovementAt: null,
+    })
+
+    expect(row.nutrientMatrix).toBeNull()
   })
 })

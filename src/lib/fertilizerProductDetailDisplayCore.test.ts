@@ -3,6 +3,7 @@ import {
   buildFertilizerProductDetailRows,
   buildSavedProductNpkDisplay,
 } from './fertilizerProductDetailDisplayCore'
+import { stressManagerActiveProductStockRow } from './fertilizerProductDetailStressManagerFixtures'
 import type { ActiveProductStockReadRow } from './fertilizerProductStockReadCore'
 
 function detailRow(
@@ -70,5 +71,31 @@ describe('fertilizerProductDetailDisplayCore', () => {
     expect(rows.some((row) => row.label === 'Magnesium')).toBe(true)
     expect(rows.some((row) => row.label === 'Eisen')).toBe(true)
     expect(rows.some((row) => row.label === 'Zusatzstoffe')).toBe(false)
+  })
+
+  it('does not show package size on the stock detail page', () => {
+    const rows = buildFertilizerProductDetailRows(
+      stressManagerActiveProductStockRow({
+        packageSizeValue: 5,
+        packageSizeUnit: 'kg',
+      }),
+    )
+
+    expect(rows.some((row) => row.label === 'Gebindegröße')).toBe(false)
+    expect(rows.some((row) => row.label === 'Aktueller Bestand' && row.value === '5 kg')).toBe(true)
+  })
+
+  it('omits trace nutrients that are absent from the saved matrix', () => {
+    const rows = buildFertilizerProductDetailRows(
+      stressManagerActiveProductStockRow({
+        nutrientMatrix: {
+          iron: { value: 3, unit: '%', declarationBasis: 'Fe' },
+        },
+      }),
+    )
+
+    expect(rows.some((row) => row.label === 'Eisen' && row.value === '3 % Fe')).toBe(true)
+    expect(rows.some((row) => row.label === 'Mangan')).toBe(false)
+    expect(rows.some((row) => row.label === 'Zink')).toBe(false)
   })
 })
