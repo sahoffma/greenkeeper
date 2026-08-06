@@ -1,5 +1,12 @@
 import type { FertilizerEnrichmentOrchestrationInput } from '../types/fertilizerEnrichmentOrchestration'
 import type { FertilizerCaptureDraft } from './fertilizerCaptureCore'
+import {
+  buildCaptureRecognitionPackagingBasis,
+  mapRecognitionProductFormToEnrichment,
+  resolveRecognitionManufacturer,
+  resolveRecognitionProductFormLabel,
+  resolveNpkTriplet,
+} from './fertilizerRecognitionEnrichmentBasisCore'
 
 export const CAPTURE_RECOGNITION_PACKAGING_REFERENCE_ID = 'captureRecognitionLabel'
 
@@ -18,29 +25,14 @@ function resolveNpkLabel(input: {
   phosphate: number | null
   potash: number | null
 }): string | null {
+  const triplet = resolveNpkTriplet(input)
+  if (triplet) {
+    return `${triplet.nitrogen}-${triplet.phosphate}-${triplet.potash}`
+  }
+
   const raw = normalizedText(input.rawLabel)
   if (raw) {
     return raw.replace(/^npk\s*/i, '').trim() || raw
-  }
-
-  if (
-    input.nitrogen != null &&
-    input.phosphate != null &&
-    input.potash != null
-  ) {
-    return `${input.nitrogen}-${input.phosphate}-${input.potash}`
-  }
-
-  return null
-}
-
-function resolveProductFormLabel(form: string | null | undefined): string | null {
-  if (form === 'granular') {
-    return 'Granular'
-  }
-
-  if (form === 'liquid') {
-    return 'Liquid'
   }
 
   return null
@@ -51,9 +43,10 @@ export function buildCaptureRecognitionPackagingDeclarationText(
 ): string | null {
   if (draft.recognitionResult) {
     const recognition = draft.recognitionResult.recognition
-    const manufacturer =
-      normalizedText(recognition.manufacturer.normalizedValue) ??
-      normalizedText(recognition.brand.normalizedValue)
+    const manufacturer = resolveRecognitionManufacturer({
+      manufacturer: recognition.manufacturer.normalizedValue,
+      brand: recognition.brand.normalizedValue,
+    })
     const productName =
       normalizedText(recognition.productName.normalizedValue) ??
       normalizedText(recognition.variant.normalizedValue)
@@ -64,7 +57,12 @@ export function buildCaptureRecognitionPackagingDeclarationText(
       phosphate: recognition.npk.phosphate,
       potash: recognition.npk.potash,
     })
-    const form = resolveProductFormLabel(recognition.form.normalizedValue)
+    const form = resolveRecognitionProductFormLabel(
+      mapRecognitionProductFormToEnrichment(
+        recognition.form.normalizedValue,
+        recognition.productDescriptor.normalizedValue,
+      ),
+    )
 
     if (!productName && !manufacturer && !npk) {
       return null
@@ -105,14 +103,19 @@ export function buildCaptureRecognitionPackagingDeclarationText(
     return null
   }
 
-  const manufacturer = normalizedText(
-    candidate.manufacturer?.value != null ? String(candidate.manufacturer.value) : null,
-  )
+  const manufacturer = resolveRecognitionManufacturer({
+    manufacturer:
+      candidate.manufacturer?.value != null ? String(candidate.manufacturer.value) : null,
+    brand: candidate.brand?.value != null ? String(candidate.brand.value) : null,
+  })
   const productName = normalizedText(
     candidate.productName?.value != null ? String(candidate.productName.value) : null,
   )
   const variant = normalizedText(
     candidate.variant?.value != null ? String(candidate.variant.value) : null,
+  )
+  const form = resolveRecognitionProductFormLabel(
+    mapRecognitionProductFormToEnrichment(candidate.productForm, null),
   )
 
   if (!productName && !manufacturer) {
@@ -129,6 +132,9 @@ export function buildCaptureRecognitionPackagingDeclarationText(
   if (variant && variant !== productName) {
     lines.push(`Product variant: ${variant}`)
   }
+  if (form) {
+    lines.push(`Form: ${form}`)
+  }
   lines.push('Declaration section complete')
   return lines.join('\n')
 }
@@ -137,7 +143,9 @@ export function appendCaptureRecognitionPackagingToEnrichmentInput<
   T extends FertilizerEnrichmentOrchestrationInput,
 >(input: T, draft: FertilizerCaptureDraft): T {
   const declarationText = buildCaptureRecognitionPackagingDeclarationText(draft)
-  if (!declarationText) {
+  const packagingBasis = buildCaptureRecognitionPackagingBasis(draft)
+
+  if (!declarationText && !packagingBasis) {
     return input
   }
 
@@ -145,6 +153,7 @@ export function appendCaptureRecognitionPackagingToEnrichmentInput<
   const sourceHints = [...(input.sourceHints ?? [])]
 
   if (
+    declarationText &&
     !userProvidedSources.some(
       (source) => source.referenceId === CAPTURE_RECOGNITION_PACKAGING_REFERENCE_ID,
     )
@@ -156,6 +165,7 @@ export function appendCaptureRecognitionPackagingToEnrichmentInput<
   }
 
   if (
+    declarationText &&
     !sourceHints.some(
       (hint) => hint.referenceId === CAPTURE_RECOGNITION_PACKAGING_REFERENCE_ID,
     )
@@ -171,9 +181,12 @@ export function appendCaptureRecognitionPackagingToEnrichmentInput<
     ...input,
     userProvidedSources,
     sourceHints,
-    captureInlineSourceTexts: {
-      ...(input.captureInlineSourceTexts ?? {}),
-      [CAPTURE_RECOGNITION_PACKAGING_REFERENCE_ID]: declarationText,
-    },
+    captureInlineSourceTexts: declarationText
+      ? {
+          ...(input.captureInlineSourceTexts ?? {}),
+          [CAPTURE_RECOGNITION_PACKAGING_REFERENCE_ID]: declarationText,
+        }
+      : input.captureInlineSourceTexts,
+    captureRecognitionPackagingBasis: packagingBasis ?? input.captureRecognitionPackagingBasis,
   }
 }

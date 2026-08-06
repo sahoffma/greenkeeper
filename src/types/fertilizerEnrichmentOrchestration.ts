@@ -352,6 +352,23 @@ export interface FertilizerEnrichmentOrchestrationReferences {
   correlationId?: string | null
 }
 
+/** Structured capture recognition basis — used as packaging fallback when adapters omit fields. */
+export interface FertilizerCaptureRecognitionPackagingBasis {
+  sourceId: string
+  manufacturer: string | null
+  officialName: string | null
+  productLine: string | null
+  variant: string | null
+  productForm: FertilizerEnrichmentProductFormValue
+  npk: {
+    nitrogen: number
+    phosphate: number
+    potash: number
+  } | null
+  packageSizeValue?: number | null
+  packageSizeUnit?: string | null
+}
+
 export interface FertilizerEnrichmentOrchestrationInput {
   objectCategory: FertilizerObjectCategory
   identity: FertilizerEnrichmentIdentity
@@ -361,6 +378,8 @@ export interface FertilizerEnrichmentOrchestrationInput {
   sourceHints?: FertilizerEnrichmentSourceHint[]
   /** Capture-only inline packaging/label text keyed by referenceId — not persisted as product truth. */
   captureInlineSourceTexts?: Record<string, string>
+  /** Capture-only structured recognition basis for merge fallbacks — not persisted as product truth. */
+  captureRecognitionPackagingBasis?: FertilizerCaptureRecognitionPackagingBasis
   priorOrchestrationRunId?: string | null
   idempotencyKey?: string | null
   orchestrationRunId?: string | null

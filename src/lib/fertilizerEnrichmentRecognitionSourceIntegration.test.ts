@@ -113,6 +113,19 @@ function expectOrchestrationAvoidsNoViableSource(result: FertilizerEnrichmentOrc
   }
 }
 
+function expectOrchestrationIntakeReadyWithoutRecognitionGaps(
+  result: FertilizerEnrichmentOrchestrationResult,
+) {
+  if (result.status !== 'intake_ready') {
+    throw new Error(`Expected intake_ready, received ${result.status}`)
+  }
+
+  expect(result.pipelineResult.readinessResult.status).toBe('ready')
+  expect(result.pipelineResult.readinessResult.missingRequirements).not.toContain('identity.manufacturer')
+  expect(result.pipelineResult.readinessResult.missingRequirements).not.toContain('basis.product_form')
+  expect(result.pipelineResult.readinessResult.missingRequirements).not.toContain('ingredients.matrix')
+}
+
 describe('fertilizerEnrichmentRecognitionSourceIntegration', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -207,5 +220,7 @@ describe('fertilizerEnrichmentRecognitionSourceIntegration', () => {
 
     expectOrchestrationAvoidsNoViableSource(result)
     expect(result.successfulAdapters).toContain('packaging')
+    expect(result.status).toBe('intake_ready')
+    expectOrchestrationIntakeReadyWithoutRecognitionGaps(result)
   })
 })

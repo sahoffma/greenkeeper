@@ -10,6 +10,7 @@ import {
   fingerprintFromCandidate,
   fingerprintFromRecognitionResult,
 } from './fertilizerInventoryCore'
+import { resolveRecognitionManufacturer } from './fertilizerRecognitionEnrichmentBasisCore'
 
 export class FertilizerCaptureEnrichmentInputError extends Error {
   constructor(message: string) {
@@ -39,7 +40,10 @@ function identityFromRecognition(draft: FertilizerCaptureDraft): FertilizerEnric
   const fingerprint = requireIdentityFingerprint(fingerprintFromRecognitionResult(result))
 
   return {
-    manufacturer: recognition.manufacturer.normalizedValue,
+    manufacturer: resolveRecognitionManufacturer({
+      manufacturer: recognition.manufacturer.normalizedValue,
+      brand: recognition.brand.normalizedValue,
+    }),
     officialName: recognition.productName.normalizedValue,
     productLine: recognition.productLine.normalizedValue,
     variant: recognition.variant.normalizedValue,
@@ -58,7 +62,11 @@ function identityFromCandidate(draft: FertilizerCaptureDraft): FertilizerEnrichm
   const fingerprint = requireIdentityFingerprint(fingerprintFromCandidate(candidate))
 
   return {
-    manufacturer: candidate.manufacturer?.value != null ? String(candidate.manufacturer.value) : null,
+    manufacturer: resolveRecognitionManufacturer({
+      manufacturer:
+        candidate.manufacturer?.value != null ? String(candidate.manufacturer.value) : null,
+      brand: candidate.brand?.value != null ? String(candidate.brand.value) : null,
+    }),
     officialName: candidate.productName?.value != null ? String(candidate.productName.value) : null,
     productLine: candidate.productLine?.value != null ? String(candidate.productLine.value) : null,
     variant: candidate.variant?.value != null ? String(candidate.variant.value) : null,

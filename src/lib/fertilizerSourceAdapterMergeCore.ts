@@ -15,6 +15,8 @@ import type {
   FertilizerSourceAdapterResult,
   FertilizerSourceAdapterSourceType,
 } from '../types/fertilizerEnrichmentOrchestration'
+import type { FertilizerNutrientMatrixKey } from '../types/fertilizerReadiness'
+import { CAPTURE_RECOGNITION_PACKAGING_SOURCE_ID } from './fertilizerRecognitionEnrichmentBasisCore'
 
 const OFFICIAL_SOURCE_CATEGORIES = new Set<FertilizerEnrichmentSourceCategory>([
   'official_manufacturer',
@@ -74,6 +76,170 @@ function mapAdapterSourceType(sourceType: FertilizerSourceAdapterSourceType): Fe
     default:
       return 'other'
   }
+}
+
+function isNonEmptyString(value: string | null | undefined): value is string {
+  return typeof value === 'string' && value.trim().length > 0
+}
+
+function defaultDeclarationBasisForMatrixKey(key: FertilizerNutrientMatrixKey): string {
+  switch (key) {
+    case 'phosphate':
+      return 'P2O5'
+    case 'potash':
+      return 'K2O'
+    case 'magnesium':
+      return 'MgO'
+    case 'calcium':
+      return 'CaO'
+    case 'sulfur':
+      return 'SO3'
+    case 'iron':
+      return 'Fe'
+    case 'manganese':
+      return 'Mn'
+    case 'copper':
+      return 'Cu'
+    case 'zinc':
+      return 'Zn'
+    case 'boron':
+      return 'B'
+    case 'molybdenum':
+      return 'Mo'
+    default:
+      return 'N'
+  }
+}
+
+function resolveRecognitionPackagingSourceId(
+  input: FertilizerEnrichmentOrchestrationInput,
+  extractions: Array<{ result: ExtractableAdapterResult }>,
+): string | null {
+  const basisSourceId = input.captureRecognitionPackagingBasis?.sourceId
+  if (basisSourceId) {
+    return basisSourceId
+  }
+
+  for (const entry of extractions) {
+    if (entry.result.sourceCategory === 'packaging_evidence') {
+      return entry.result.sourceId
+    }
+  }
+
+  return null
+}
+
+function resolveIdentityManufacturer(
+  input: FertilizerEnrichmentOrchestrationInput,
+  extractions: Array<{ result: ExtractableAdapterResult }>,
+): string | null {
+  if (isNonEmptyString(input.identity.manufacturer)) {
+    return input.identity.manufacturer.trim()
+  }
+
+  const basisManufacturer = input.captureRecognitionPackagingBasis?.manufacturer
+  if (isNonEmptyString(basisManufacturer)) {
+    return basisManufacturer.trim()
+  }
+
+  for (const { result } of extractions) {
+    const adapterManufacturer = result.extraction.extractedIdentity?.manufacturer
+    if (isNonEmptyString(adapterManufacturer)) {
+      return adapterManufacturer.trim()
+    }
+  }
+
+  return null
+}
+
+function appendRecognitionBasisNpkContributions(
+  contributions: FieldContribution[],
+  input: FertilizerEnrichmentOrchestrationInput,
+): void {
+  const npk = input.captureRecognitionPackagingBasis?.npk
+  const sourceId = input.captureRecognitionPackagingBasis?.sourceId ?? CAPTURE_RECOGNITION_PACKAGING_SOURCE_ID
+
+  if (!npk) {
+    return
+  }
+
+  const entries: Array<[string, number, string]> = [
+    ['npk.nitrogen', npk.nitrogen, 'N'],
+    ['npk.phosphate', npk.phosphate, 'P2O5'],
+    ['npk.potash', npk.potash, 'K2O'],
+  ]
+
+  for (const [fieldPath, numericValue, declarationBasis] of entries) {
+    if (contributions.some((contribution) => contribution.fieldPath === fieldPath)) {
+      continue
+    }
+
+    contributions.push({
+      fieldPath,
+      numericValue,
+      declarationBasis,
+      status: 'declared',
+      provenanceId: sourceId,
+      sourceId,
+      sourceCategory: 'packaging_evidence',
+      adapterOrder: -1,
+      categoryRank: sourceCategoryRank('packaging_evidence'),
+    })
+  }
+}
+
+function applyRecognitionPackagingMatrixCompletion(
+  nutrientMatrix: RawFertilizerDeclarationInput['nutrientMatrix'],
+  npk: Pick<RawFertilizerDeclarationInput, 'npk'>['npk'],
+  coverageMetadata: RawFertilizerDeclarationCoverageMetadata,
+  packagingSourceId: string | null,
+): RawFertilizerDeclarationInput['nutrientMatrix'] {
+  if (
+    !coverageMetadata.nutrientSectionFullyCaptured ||
+    !coverageMetadata.productScopeConfirmed ||
+    packagingSourceId == null
+  ) {
+    return nutrientMatrix
+  }
+
+  const completed = { ...nutrientMatrix }
+  const npkMatrixKeys: Array<[FertilizerNutrientMatrixKey, RawFertilizerDeclarationValue | null | undefined]> =
+    [
+      ['nitrogen', npk.nitrogen],
+      ['phosphate', npk.phosphate],
+      ['potash', npk.potash],
+    ]
+
+  for (const [key, npkValue] of npkMatrixKeys) {
+    const current = completed[key]
+    if (current?.status === 'declared') {
+      continue
+    }
+
+    if (npkValue?.status === 'declared' && npkValue.value != null) {
+      completed[key] = {
+        status: 'declared',
+        value: npkValue.value,
+        declarationBasis: npkValue.declarationBasis ?? defaultDeclarationBasisForMatrixKey(key),
+        provenanceIds: npkValue.provenanceIds ?? [packagingSourceId],
+      }
+    }
+  }
+
+  for (const key of FERTILIZER_NUTRIENT_MATRIX_KEYS) {
+    const current = completed[key]
+    if (current?.status === 'declared' || current?.status === 'not_declared') {
+      continue
+    }
+
+    completed[key] = {
+      status: 'not_declared',
+      declarationBasis: defaultDeclarationBasisForMatrixKey(key),
+      provenanceIds: [packagingSourceId],
+    }
+  }
+
+  return completed
 }
 
 function normalizeVariant(value: string | null | undefined): string | null {
@@ -324,7 +490,7 @@ function buildIdentity(
 
   return {
     identity: {
-      manufacturer: base.manufacturer,
+      manufacturer: resolveIdentityManufacturer(input, extractions),
       officialName: base.officialName,
       productLine: base.productLine ?? null,
       variant: base.variant,
@@ -339,7 +505,7 @@ function buildIdentity(
 }
 
 function selectProductForm(
-  _input: FertilizerEnrichmentOrchestrationInput,
+  input: FertilizerEnrichmentOrchestrationInput,
   extractions: Array<{ result: Extract<FertilizerSourceAdapterResult, { status: 'success' | 'partial' }>; order: number }>,
 ): RawFertilizerDeclarationInput['productForm'] {
   const sorted = [...extractions].sort((left, right) => {
@@ -348,6 +514,26 @@ function selectProductForm(
     if (leftRank !== rightRank) return leftRank - rightRank
     return left.order - right.order
   })
+
+  for (const entry of sorted) {
+    const form = entry.result.extraction.extractedProductForm
+    if (form === 'granular' || form === 'liquid') {
+      return {
+        value: form,
+        provenanceIds: [entry.result.sourceId],
+      }
+    }
+  }
+
+  const basisForm = input.captureRecognitionPackagingBasis?.productForm
+  const basisSourceId =
+    input.captureRecognitionPackagingBasis?.sourceId ?? CAPTURE_RECOGNITION_PACKAGING_SOURCE_ID
+  if (basisForm === 'granular' || basisForm === 'liquid') {
+    return {
+      value: basisForm,
+      provenanceIds: [basisSourceId],
+    }
+  }
 
   for (const entry of sorted) {
     const form = entry.result.extraction.extractedProductForm
@@ -427,6 +613,27 @@ export function buildRawFertilizerDeclarationInput(
     }
   }
 
+  appendRecognitionBasisNpkContributions(npkContributions, input)
+
+  const recognitionBasis = input.captureRecognitionPackagingBasis
+  const provenanceRecords = { ...merged.provenanceRecords }
+  if (recognitionBasis?.sourceId && !provenanceRecords[recognitionBasis.sourceId]) {
+    provenanceRecords[recognitionBasis.sourceId] = {
+      provenanceId: recognitionBasis.sourceId,
+      fieldPath: 'declaration',
+      sourceType: 'packaging',
+      sourceCategory: 'packaging_evidence',
+      sourceUrl: null,
+      sourceTitle: 'Capture recognition packaging',
+      evidence: null,
+      retrievedAt: options.extractedAt,
+      confidence: null,
+      productVariantReference: recognitionBasis.variant,
+      sourceVersion: null,
+      isPrimary: false,
+    }
+  }
+
   const npkNitrogen = mergeFieldContributions(
     npkContributions.filter((contribution) => contribution.fieldPath === 'npk.nitrogen'),
     'conflict-npk-n',
@@ -439,16 +646,6 @@ export function buildRawFertilizerDeclarationInput(
     npkContributions.filter((contribution) => contribution.fieldPath === 'npk.potash'),
     'conflict-npk-k',
   )
-
-  const nutrientMatrix = Object.fromEntries(
-    FERTILIZER_NUTRIENT_MATRIX_KEYS.map((key) => {
-      const mergedNutrient = mergeFieldContributions(
-        nutrientContributions.get(`nutrientMatrix.${key}`) ?? [],
-        `conflict-nutrient-${key}`,
-      )
-      return [key, mergedNutrient.value]
-    }),
-  ) as RawFertilizerDeclarationInput['nutrientMatrix']
 
   const fieldConflicts = [
     npkNitrogen.conflicts,
@@ -465,6 +662,29 @@ export function buildRawFertilizerDeclarationInput(
 
   const sourceConflicts = [...merged.conflicts, ...fieldConflicts]
   const coverageMetadata = mergeCoverageMetadata(merged.extractions, sourceConflicts)
+
+  const nutrientMatrix = applyRecognitionPackagingMatrixCompletion(
+    Object.fromEntries(
+      FERTILIZER_NUTRIENT_MATRIX_KEYS.map((key) => {
+        const mergedNutrient = mergeFieldContributions(
+          nutrientContributions.get(`nutrientMatrix.${key}`) ?? [],
+          `conflict-nutrient-${key}`,
+        )
+        return [key, mergedNutrient.value]
+      }),
+    ) as RawFertilizerDeclarationInput['nutrientMatrix'],
+    {
+      nitrogen: npkNitrogen.value,
+      phosphate: npkPhosphate.value,
+      potash: npkPotash.value,
+      declarationBasis: null,
+      provenanceIds: [],
+      conflictIds: [],
+    },
+    coverageMetadata,
+    resolveRecognitionPackagingSourceId(input, merged.extractions),
+  )
+
   const hasNpkBasis =
     npkNitrogen.value.status === 'declared' ||
     npkPhosphate.value.status === 'declared' ||
@@ -494,7 +714,7 @@ export function buildRawFertilizerDeclarationInput(
     },
     nutrientMatrix,
     coverageMetadata,
-    provenanceRecords: merged.provenanceRecords,
+    provenanceRecords,
     sourceConflicts,
     enrichmentRunId: options.enrichmentRunId,
     extractedAt: options.extractedAt,
