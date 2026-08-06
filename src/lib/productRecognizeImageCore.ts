@@ -1,4 +1,9 @@
 import type { ProductRecognizeFormValue, ProductRecognizeImageAnalysis } from '../types/productRecognize'
+import {
+  extractPackageSizeFromTextFragments,
+  normalizePackageSizeUnit,
+  parsePackageSizeFromRawText,
+} from './productRecognizePackageSizeParseCore'
 
 export const PRODUCT_RECOGNIZE_IMAGE_MODEL = 'gpt-4o-mini'
 
@@ -44,7 +49,7 @@ export const productRecognizeImageSchema = {
     nitrogen: { type: ['number', 'null'] },
     phosphate: { type: ['number', 'null'] },
     potash: { type: ['number', 'null'] },
-    packageSizeValue: { type: ['number', 'null'] },
+    packageSizeValue: { type: ['number', 'string', 'null'] },
     packageSizeUnit: { type: ['string', 'null'] },
     form: {
       anyOf: [{ type: 'string' }, { type: 'null' }],
@@ -77,8 +82,71 @@ export const productRecognizeImageSchema = {
 export function buildImageAnalysisInstruction(): string {
   return JSON.stringify({
     instruction:
-      'Analysiere ausschließlich die Vorderseite eines Düngersacks. Trenne fachlich: brand (Wortmarke, z. B. Rasendoktor), productLine (z. B. Professional), productName/variant (konkrete Sorte, z. B. Frühjahr & Neuansaat), productDescriptor (generische Bezeichnung wie Rasendünger mit Spurennährstoffen). manufacturer nur wenn ein separates Unternehmen sichtbar ist — niemals productLine als manufacturer. Keine Halluzinationen. NPK nur wenn sichtbar. Confidence 0.0–1.0.',
+      'Analysiere ausschließlich die Vorderseite eines Düngersacks. Trenne fachlich: brand (Wortmarke, z. B. Rasendoktor), productLine (z. B. Professional), productName/variant (konkrete Sorte, z. B. Frühjahr & Neuansaat), productDescriptor (generische Bezeichnung wie Rasendünger mit Spurennährstoffen). manufacturer nur wenn ein separates Unternehmen sichtbar ist — niemals productLine als manufacturer. Extrahiere die Netto-Gebindegröße separat als packageSizeValue (Zahl) und packageSizeUnit (kg, g, l oder ml). Beispiele: „5 kg“ → packageSizeValue 5, packageSizeUnit „kg“; „500 g“ → 500, „g“; „1 l“ → 1, „l“; „500 ml“ → 500, „ml“. null wenn nicht sichtbar. Keine Halluzinationen. NPK nur wenn sichtbar. Confidence 0.0–1.0.',
   })
+}
+
+export function buildEmptyFieldConfidenceRecord(): Record<string, number> {
+  return {
+    brand: 0,
+    productLine: 0,
+    productName: 0,
+    variant: 0,
+    productDescriptor: 0,
+    manufacturer: 0,
+    npk: 0,
+    packageSize: 0,
+    form: 0,
+    gtin: 0,
+  }
+}
+
+function readNestedPackageSizeRecord(
+  record: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const nested = record.packageSize
+  if (!nested || typeof nested !== 'object' || Array.isArray(nested)) {
+    return null
+  }
+
+  return nested as Record<string, unknown>
+}
+
+function resolveRawPackageSizeFields(record: Record<string, unknown>): {
+  value: unknown
+  unit: unknown
+} {
+  if (record.packageSizeValue != null || record.packageSizeUnit != null) {
+    return { value: record.packageSizeValue, unit: record.packageSizeUnit }
+  }
+
+  if (record.package_size_value != null || record.package_size_unit != null) {
+    return { value: record.package_size_value, unit: record.package_size_unit }
+  }
+
+  const nested = readNestedPackageSizeRecord(record)
+  if (nested) {
+    return {
+      value:
+        nested.value ??
+        nested.packageSizeValue ??
+        nested.size ??
+        nested.quantity ??
+        nested.netWeight ??
+        nested.weight ??
+        null,
+      unit: nested.unit ?? nested.packageSizeUnit ?? null,
+    }
+  }
+
+  if (record.netWeight != null || record.quantity != null) {
+    return {
+      value: record.netWeight ?? record.quantity ?? null,
+      unit: record.unit ?? null,
+    }
+  }
+
+  return { value: null, unit: null }
 }
 
 function clampConfidence(value: unknown): number {
@@ -163,6 +231,27 @@ export function parseImageAnalysisResponse(
     gtin: clampConfidence(confidenceRecord.gtin),
   }
 
+  const rawPackage = resolveRawPackageSizeFields(record)
+  let packageSizeValue = coerceNumericPackageSizeValue(rawPackage.value)
+  let packageSizeUnit =
+    typeof rawPackage.unit === 'string' ? normalizePackageSizeUnit(rawPackage.unit) : null
+
+  if (packageSizeValue == null && typeof rawPackage.value === 'string') {
+    const fromCombined = parsePackageSizeFromRawText(rawPackage.value)
+    packageSizeValue = fromCombined.value
+    packageSizeUnit = packageSizeUnit ?? fromCombined.unit
+  }
+
+  const textFragments = Array.isArray(record.textFragments)
+    ? record.textFragments.filter((item): item is string => typeof item === 'string')
+    : []
+
+  if (packageSizeValue == null && textFragments.length > 0) {
+    const fromFragments = extractPackageSizeFromTextFragments(textFragments)
+    packageSizeValue = fromFragments.value
+    packageSizeUnit = packageSizeUnit ?? fromFragments.unit
+  }
+
   return {
     brand: typeof record.brand === 'string' ? record.brand.trim() || null : null,
     productLine:
@@ -180,14 +269,11 @@ export function parseImageAnalysisResponse(
     nitrogen: typeof record.nitrogen === 'number' ? record.nitrogen : null,
     phosphate: typeof record.phosphate === 'number' ? record.phosphate : null,
     potash: typeof record.potash === 'number' ? record.potash : null,
-    packageSizeValue: coerceNumericPackageSizeValue(record.packageSizeValue),
-    packageSizeUnit:
-      typeof record.packageSizeUnit === 'string' ? record.packageSizeUnit.trim() || null : null,
+    packageSizeValue,
+    packageSizeUnit,
     ...parseFormField(record.form),
     gtin: typeof record.gtin === 'string' ? record.gtin.replace(/\D/g, '') || null : null,
-    textFragments: Array.isArray(record.textFragments)
-      ? record.textFragments.filter((item): item is string => typeof item === 'string')
-      : [],
+    textFragments,
     fieldConfidence,
   }
 }

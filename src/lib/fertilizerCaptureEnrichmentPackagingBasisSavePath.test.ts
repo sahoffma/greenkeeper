@@ -248,6 +248,45 @@ describe('fertilizerCaptureEnrichmentPackagingBasisSavePath', () => {
     expect(readiness.readinessInput.productForm).toBe('granular')
   })
 
+  it('photo flow with OCR textFragments only still writes packaging basis for 5 kg', () => {
+    const result = buildPhotoFlowResultFromVision({
+      brand: 'Rasendoktor',
+      productLine: 'Professional',
+      productName: 'Stress-Manager',
+      variant: null,
+      productDescriptor: null,
+      manufacturer: 'Rasendoktor',
+      npkLabel: '0-0-30',
+      nitrogen: 0,
+      phosphate: 0,
+      potash: 30,
+      packageSizeValue: null,
+      packageSizeUnit: null,
+      form: null,
+      gtin: null,
+      textFragments: ['Rasendünger', 'Nettoinhalt 5 kg', '0-0-30'],
+      fieldConfidence: { brand: 0.95, productLine: 0.9, productName: 0.92, npk: 0.93 },
+    })
+
+    const draft = acceptPhotoFlowDraft(result)
+
+    expect(draft.selectedPackageQuantity).toBe(5)
+    expect(draft.selectedPackageUnit).toBe('kg')
+    expect(draft.recognitionResult?.recognition.packageSize.normalizedValue).toBe(5)
+
+    const input = buildFertilizerEnrichmentOrchestrationInputFromCaptureDraft(draft, {
+      enrichmentIdempotencyKey: 'capture-key:photo-flow-text-fragments',
+    })
+
+    expect(input.captureRecognitionPackagingBasis?.packageSizeValue).toBe(5)
+    expect(input.captureDraftPackageDiagnostics?.preparedDraftPackageSizePresent).toBe(true)
+
+    const readiness = evaluateCaptureSavePath(input)
+    expect(readiness.readinessResult.status).toBe('ready')
+    expect(readiness.readinessInput.productForm).toBe('granular')
+    expect(readiness.readinessResult.missingRequirements).not.toContain('basis.product_form')
+  })
+
   it('does not treat manual purchase quantity as recognized package size', () => {
     const result = buildPhotoFlowResultFromVision({
       brand: 'Rasendoktor',

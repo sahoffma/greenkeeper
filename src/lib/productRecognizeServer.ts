@@ -7,6 +7,9 @@ import {
   PRODUCT_RECOGNIZE_IMAGE_MODEL,
   productRecognizeImageSchema,
 } from './productRecognizeImageCore'
+import {
+  buildRecognitionPackageParseDiagnostics,
+} from './productRecognizeImagePackageDiagnosticsCore'
 import { productToCatalogItem } from './productRecognizeCatalogCore'
 import type { ProductRecognizeCatalogItem } from '../types/productRecognize'
 import type { ProductRecognizeDeps } from './productRecognizeCore'
@@ -16,6 +19,9 @@ import {
   productRecognizeWebSearchSchema,
   type ProductRecognizeSearchProvider,
 } from './productRecognizeSearchCore'
+import {
+  logProductRecognizePipeline,
+} from './productRecognizePipelineLogCore'
 
 export async function loadRecognizeCatalog(): Promise<ProductRecognizeCatalogItem[]> {
   const supabase = createSupabaseAdminClient()
@@ -109,7 +115,7 @@ async function analyzeImageWithOpenAi(
       {
         role: 'system',
         content:
-          'Du analysierst die Vorderseite von Düngerverpackungen für Greenkeeper. Trenne brand, productLine, productName/variant, productDescriptor und manufacturer (nur wenn sichtbar). Keine Halluzinationen.',
+          'Du analysierst die Vorderseite von Düngerverpackungen für Greenkeeper. Trenne brand, productLine, productName/variant, productDescriptor und manufacturer (nur wenn sichtbar). Extrahiere packageSizeValue und packageSizeUnit (kg, g, l, ml) separat aus der sichtbaren Netto-Gebindeangabe. Keine Halluzinationen.',
       },
       {
         role: 'user',
@@ -142,5 +148,31 @@ async function analyzeImageWithOpenAi(
     throw new Error('Die KI-Antwort war leer.')
   }
 
-  return parseImageAnalysisResponse(JSON.parse(outputText) as Record<string, unknown>)
+  let rawRecord: Record<string, unknown> | null = null
+  let rawVisionJsonParsed = false
+
+  try {
+    rawRecord = JSON.parse(outputText) as Record<string, unknown>
+    rawVisionJsonParsed = true
+  } catch {
+    logProductRecognizePipeline('vision_package_parse_diagnostic', {
+      ...buildRecognitionPackageParseDiagnostics({
+        rawVisionJsonParsed: false,
+        rawRecord: null,
+        parsed: null,
+      }),
+    })
+    throw new Error('Die KI-Antwort konnte nicht gelesen werden.')
+  }
+
+  const parsed = parseImageAnalysisResponse(rawRecord)
+  logProductRecognizePipeline('vision_package_parse_diagnostic', {
+    ...buildRecognitionPackageParseDiagnostics({
+      rawVisionJsonParsed,
+      rawRecord,
+      parsed,
+    }),
+  })
+
+  return parsed
 }
