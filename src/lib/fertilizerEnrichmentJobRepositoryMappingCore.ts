@@ -90,7 +90,6 @@ export type PersistedFertilizerEnrichmentAccessContext =
   | {
       kind: 'authenticated_user'
       userId: string
-      sessionId?: string | null
     }
   | {
       kind: 'session'
@@ -106,7 +105,6 @@ export function sanitizeJobJsonAccessContextForPersistence(
   return {
     kind: 'authenticated_user',
     userId: accessContext.userId,
-    sessionId: accessContext.sessionId ?? null,
   }
 }
 
@@ -191,6 +189,13 @@ export function resolveRecordExpiresAt(record: FertilizerEnrichmentJobRecord): s
   return expiresAt
 }
 
+function assertPersistableJobSnapshot(record: FertilizerEnrichmentJobRecord): void {
+  const sanitizedJob = sanitizeJobForPersistence(record.job)
+  assertPersistedJobJsonHasNoSessionId(sanitizedJob as unknown as Record<string, unknown>)
+  const sanitizedInput = sanitizeOrchestrationInputForPersistence(record.orchestrationInput)
+  assertPersistedOrchestrationInputHasNoSessionId(sanitizedInput as unknown as Record<string, unknown>)
+}
+
 export function mapRecordToRow(
   record: FertilizerEnrichmentJobRecord,
   deriveSessionAccessHash: DeriveSessionAccessHash,
@@ -200,6 +205,8 @@ export function mapRecordToRow(
   const accessKind = resolveAccessKind(accessContext)
   const sanitizedJob = sanitizeJobForPersistence(record.job)
   const sanitizedInput = sanitizeOrchestrationInputForPersistence(record.orchestrationInput)
+  assertPersistedJobJsonHasNoSessionId(sanitizedJob as unknown as Record<string, unknown>)
+  assertPersistedOrchestrationInputHasNoSessionId(sanitizedInput as unknown as Record<string, unknown>)
 
   return {
     job_id: record.job.jobId,
@@ -434,6 +441,8 @@ export function validateFertilizerEnrichmentJobRecord(record: FertilizerEnrichme
       'lastSourceProvisionIdempotencyKey must not be empty when set.',
     )
   }
+
+  assertPersistableJobSnapshot(record)
 }
 
 export function persistedJobJsonHasNoRawSessionId(value: unknown): boolean {

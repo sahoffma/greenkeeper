@@ -157,6 +157,38 @@ describe('fertilizerEnrichmentJobRepositoryMappingCore', () => {
     expect(row.access_kind).toBe('authenticated_user')
     expect(row.user_id).toBe(AUTH_ACCESS.userId)
     expect(row.session_access_hash).toBeNull()
+    expect(persistedJobJsonHasNoRawSessionId(row.job_json)).toBe(true)
+    expect(JSON.stringify(row.job_json)).not.toContain('sessionId')
+  })
+
+  it('M-10: sanitizeJobForPersistence removes sessionId from authenticated accessContext', () => {
+    const sanitized = sanitizeJobForPersistence(
+      buildJob({
+        kind: 'authenticated_user',
+        userId: AUTH_ACCESS.userId,
+        sessionId: null,
+      }),
+    )
+
+    expect(sanitized.accessContext).toEqual({
+      kind: 'authenticated_user',
+      userId: AUTH_ACCESS.userId,
+    })
+    expect('sessionId' in sanitized.accessContext).toBe(false)
+  })
+
+  it('M-11: validateFertilizerEnrichmentJobRecord accepts in-memory session jobs when persist snapshot is clean', () => {
+    expect(() => validateFertilizerEnrichmentJobRecord(buildRecord())).not.toThrow()
+    expect(buildRecord().job.accessContext).toEqual(SESSION_ACCESS)
+  })
+
+  it('M-12: persistedJobJsonHasNoRawSessionId rejects accessContext.sessionId', () => {
+    expect(
+      persistedJobJsonHasNoRawSessionId({
+        accessContext: { kind: 'session', sessionId: 'session-1' },
+        result: resultBase(),
+      }),
+    ).toBe(false)
   })
 
   it('M-9: validateFertilizerEnrichmentJobRecord rejects empty provision key', () => {

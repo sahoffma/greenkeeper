@@ -14,6 +14,11 @@ import {
 } from './fertilizerEnrichmentJobRepositoryMappingCore'
 import { FertilizerEnrichmentJobRepositoryError } from './fertilizerEnrichmentJobRepositoryCore'
 import { createPersistentFertilizerEnrichmentJobRepository } from './fertilizerEnrichmentJobRepositoryPersistentCore'
+import {
+  createFertilizerEnrichmentServerService,
+  createTestOrchestrationDependencies,
+  createTestResolveExpiresAt,
+} from './fertilizerEnrichmentServerServiceCore'
 
 const FIXED_NOW = '2026-07-29T10:00:00.000Z'
 const TEST_EXPIRES_AT = '2026-08-05T10:00:00.000Z'
@@ -71,12 +76,14 @@ function buildInput(): FertilizerEnrichmentOrchestrationInput {
   }
 }
 
-function buildJob(): FertilizerEnrichmentJob {
+function buildJob(
+  accessContext: FertilizerEnrichmentAccessContext = SESSION_ACCESS,
+): FertilizerEnrichmentJob {
   return {
     jobId: 'job-1',
     orchestrationRunId: 'orch-1',
     idempotencyKey: 'idem-1',
-    accessContext: SESSION_ACCESS,
+    accessContext,
     objectCategory: 'fertilizer',
     identityFingerprint: 'fp-1',
     createdAt: FIXED_NOW,
@@ -504,5 +511,131 @@ describe('fertilizerEnrichmentJobRepositoryPersistentCore', () => {
     expect(removed).toBe(1)
     expect(rows).toHaveLength(1)
     expect(rows[0]?.job_id).toBe('job-2')
+  })
+
+  it('P-8: authenticated save persists without sessionId when runtime accessContext carries null', async () => {
+    const authAccess: FertilizerEnrichmentAccessContext = {
+      kind: 'authenticated_user',
+      userId: '00000000-0000-4000-8000-000000000099',
+      sessionId: null,
+    }
+    const { client, rows } = createFakeSupabaseClient()
+    const repository = createPersistentFertilizerEnrichmentJobRepository({
+      supabase: client,
+      deriveSessionAccessHash: deriveHash,
+    })
+
+    const saved = await repository.save({
+      ...buildRecord(),
+      job: {
+        ...buildJob(authAccess),
+        jobId: 'job-auth-save',
+        idempotencyKey: 'idem-auth-save',
+      },
+    })
+
+    expect(saved.job.accessContext).toEqual(authAccess)
+    expect(JSON.stringify(rows[0]?.job_json)).not.toContain('sessionId')
+    expect((rows[0]?.job_json as { accessContext?: Record<string, unknown> }).accessContext).toEqual({
+      kind: 'authenticated_user',
+      userId: authAccess.userId,
+    })
+  })
+
+  it('P-9: update keeps sessionId out of job_json while restoring it in memory', async () => {
+    const { client, rows } = createFakeSupabaseClient()
+    const repository = createPersistentFertilizerEnrichmentJobRepository({
+      supabase: client,
+      deriveSessionAccessHash: deriveHash,
+    })
+
+    const saved = await repository.save(buildRecord())
+    const updated = await repository.update({
+      ...saved,
+      job: {
+        ...saved.job,
+        updatedAt: '2026-07-29T11:00:00.000Z',
+        result: {
+          ...resultBase(),
+          status: 'needs_input',
+          recommendedNextAction: 'upload_product_document',
+        },
+      },
+    })
+
+    expect(updated.job.accessContext).toEqual(SESSION_ACCESS)
+    expect(JSON.stringify(rows[0]?.job_json)).not.toContain('sessionId')
+  })
+
+  it('P-10: service start and idempotent retry never persist sessionId in job_json', async () => {
+    const { client, rows } = createFakeSupabaseClient()
+    const repository = createPersistentFertilizerEnrichmentJobRepository({
+      supabase: client,
+      deriveSessionAccessHash: deriveHash,
+    })
+    const service = createFertilizerEnrichmentServerService({
+      repository,
+      resolveOrchestrationDependencies: () => createTestOrchestrationDependencies([]),
+      resolveExpiresAt: createTestResolveExpiresAt(TEST_EXPIRES_AT),
+      now: () => FIXED_NOW,
+      createJobId: () => 'job-svc-1',
+      createOrchestrationRunId: () => 'orch-svc-1',
+    })
+
+    const started = await service.startFertilizerEnrichment(
+      {
+        idempotencyKey: 'idem-svc-1',
+        accessContext: SESSION_ACCESS,
+        input: buildInput(),
+      },
+      { sessionId: 'session-1', requestId: 'req-svc-1' },
+    )
+
+    expect(started.accessContext).toEqual(SESSION_ACCESS)
+    expect(JSON.stringify(rows[0]?.job_json)).not.toContain('sessionId')
+
+    const retried = await service.startFertilizerEnrichment(
+      {
+        idempotencyKey: 'idem-svc-1',
+        accessContext: SESSION_ACCESS,
+        input: buildInput(),
+      },
+      { sessionId: 'session-1', requestId: 'req-svc-2' },
+    )
+
+    expect(retried.jobId).toBe(started.jobId)
+    expect(JSON.stringify(rows[0]?.job_json)).not.toContain('sessionId')
+  })
+
+  it('P-11: service status reload keeps runtime sessionId outside persisted snapshot', async () => {
+    const { client } = createFakeSupabaseClient()
+    const repository = createPersistentFertilizerEnrichmentJobRepository({
+      supabase: client,
+      deriveSessionAccessHash: deriveHash,
+    })
+    const service = createFertilizerEnrichmentServerService({
+      repository,
+      resolveOrchestrationDependencies: () => createTestOrchestrationDependencies([]),
+      resolveExpiresAt: createTestResolveExpiresAt(TEST_EXPIRES_AT),
+      now: () => FIXED_NOW,
+      createJobId: () => 'job-svc-status',
+      createOrchestrationRunId: () => 'orch-svc-status',
+    })
+
+    const started = await service.startFertilizerEnrichment(
+      {
+        idempotencyKey: 'idem-svc-status',
+        accessContext: SESSION_ACCESS,
+        input: buildInput(),
+      },
+      { sessionId: 'session-1', requestId: 'req-svc-status-start' },
+    )
+
+    const status = await service.getFertilizerEnrichmentStatus(
+      { jobId: started.jobId, accessContext: SESSION_ACCESS },
+      { sessionId: 'session-1', requestId: 'req-svc-status-get' },
+    )
+
+    expect(status.accessContext).toEqual(SESSION_ACCESS)
   })
 })
