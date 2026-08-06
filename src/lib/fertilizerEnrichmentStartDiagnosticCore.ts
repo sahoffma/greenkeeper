@@ -126,6 +126,7 @@ export interface FertilizerEnrichmentStartFormDiagnostic {
   selectedPackageQuantityPresent: boolean
   selectedPackageUnitPresent: boolean
   selectedPackageUnitCategory: FertilizerEnrichmentStartRecognitionPackageSizeUnitCategory
+  recognitionResultPackageSizePresent: boolean
   recognitionCandidatePresent: boolean
   recognitionCandidatePackageSizePresent: boolean
   recognitionSnapshotPresent: boolean
@@ -139,6 +140,10 @@ export interface FertilizerEnrichmentStartFormDiagnostic {
     | 'selected_package_fields'
     | 'none'
     | 'missing'
+  clientRecognitionPackageSizePresent: boolean
+  acceptInputPackageSizePresent: boolean
+  acceptOutputSelectedPackagePresent: boolean
+  acceptOutputRecognitionPackageSizePresent: boolean
 }
 
 export interface FertilizerEnrichmentStartOutcomeWarningDiagnostic {
@@ -839,6 +844,10 @@ export function buildFertilizerEnrichmentStartFormDiagnostic(input: {
       draftPackageDiagnostics,
       'selectedPackageUnitCategory',
     ),
+    recognitionResultPackageSizePresent: readBooleanDiagnosticField(
+      draftPackageDiagnostics,
+      'recognitionResultPackageSizePresent',
+    ),
     recognitionCandidatePresent: readBooleanDiagnosticField(
       draftPackageDiagnostics,
       'recognitionCandidatePresent',
@@ -860,6 +869,22 @@ export function buildFertilizerEnrichmentStartFormDiagnostic(input: {
       'preparedDraftPackageSizePresent',
     ),
     preparedDraftPackageSizeSource: readPackageSizeSourceDiagnostic(draftPackageDiagnostics),
+    clientRecognitionPackageSizePresent: readBooleanDiagnosticField(
+      draftPackageDiagnostics,
+      'clientRecognitionPackageSizePresent',
+    ),
+    acceptInputPackageSizePresent: readBooleanDiagnosticField(
+      draftPackageDiagnostics,
+      'acceptInputPackageSizePresent',
+    ),
+    acceptOutputSelectedPackagePresent: readBooleanDiagnosticField(
+      draftPackageDiagnostics,
+      'acceptOutputSelectedPackagePresent',
+    ),
+    acceptOutputRecognitionPackageSizePresent: readBooleanDiagnosticField(
+      draftPackageDiagnostics,
+      'acceptOutputRecognitionPackageSizePresent',
+    ),
   }
 }
 

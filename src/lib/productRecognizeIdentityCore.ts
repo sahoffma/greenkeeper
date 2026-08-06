@@ -287,18 +287,6 @@ export function recognitionFromImageAnalysis(
     }
   }
 
-  if (sanitized.packageSizeValue != null) {
-    const raw = `${sanitized.packageSizeValue} ${sanitized.packageSizeUnit ?? 'kg'}`.trim()
-    recognition.packageSize = {
-      rawValue: raw,
-      normalizedValue: sanitized.packageSizeValue,
-      unit: (sanitized.packageSizeUnit ?? 'kg').toLowerCase(),
-      confidence: sanitized.fieldConfidence.packageSize ?? 0,
-      source: 'image',
-      evidence: raw,
-    }
-  }
-
   if (
     sanitized.nitrogen != null ||
     sanitized.phosphate != null ||
@@ -315,7 +303,52 @@ export function recognitionFromImageAnalysis(
     }
   }
 
-  return recognition
+  return applyImageAnalysisPackageSizeToRecognition(recognition, sanitized)
+}
+
+export function applyImageAnalysisPackageSizeToRecognition(
+  recognition: ProductRecognizeRecognition,
+  analysis: ProductRecognizeImageAnalysis,
+): ProductRecognizeRecognition {
+  if (analysis.packageSizeValue == null || analysis.packageSizeValue <= 0) {
+    return recognition
+  }
+
+  const unit = (analysis.packageSizeUnit ?? 'kg').toLowerCase()
+  const raw = `${analysis.packageSizeValue} ${unit}`.trim()
+
+  return {
+    ...recognition,
+    packageSize: {
+      rawValue: raw,
+      normalizedValue: analysis.packageSizeValue,
+      unit,
+      confidence: analysis.fieldConfidence.packageSize ?? 0,
+      source: 'image',
+      evidence: raw,
+    },
+  }
+}
+
+export function reconcileRecognitionPackageSizeFromImageAnalysis(
+  analysis: ProductRecognizeImageAnalysis,
+  recognition: ProductRecognizeRecognition,
+): ProductRecognizeRecognition {
+  if (hasRecognitionPackageSize(recognition) || !hasImageAnalysisPackageSize(analysis)) {
+    return recognition
+  }
+
+  return applyImageAnalysisPackageSizeToRecognition(recognition, analysis)
+}
+
+function hasRecognitionPackageSize(recognition: ProductRecognizeRecognition): boolean {
+  return (
+    recognition.packageSize.normalizedValue != null && recognition.packageSize.normalizedValue > 0
+  )
+}
+
+function hasImageAnalysisPackageSize(analysis: ProductRecognizeImageAnalysis): boolean {
+  return analysis.packageSizeValue != null && analysis.packageSizeValue > 0
 }
 
 export function computeIdentityConfidence(recognition: ProductRecognizeRecognition): number {

@@ -386,12 +386,17 @@ export interface CaptureDraftPackageDiagnostics {
   selectedPackageQuantityPresent: boolean
   selectedPackageUnitPresent: boolean
   selectedPackageUnitCategory: 'mass' | 'volume' | 'unknown' | 'missing'
+  recognitionResultPackageSizePresent: boolean
   recognitionCandidatePresent: boolean
   recognitionCandidatePackageSizePresent: boolean
   recognitionSnapshotPresent: boolean
   recognitionSnapshotPackageSizePresent: boolean
   preparedDraftPackageSizePresent: boolean
   preparedDraftPackageSizeSource: CaptureDraftPackageSizeSource
+  clientRecognitionPackageSizePresent: boolean
+  acceptInputPackageSizePresent: boolean
+  acceptOutputSelectedPackagePresent: boolean
+  acceptOutputRecognitionPackageSizePresent: boolean
 }
 
 export interface FertilizerEnrichmentOrchestrationInput {

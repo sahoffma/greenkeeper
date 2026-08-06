@@ -3,6 +3,7 @@ import {
   logRecognitionClientFetchOutcome,
   type RecognitionClientPreFetchDiagnostics,
 } from './productRecognizeClientDiagnosticsCore'
+import { logProductRecognizeClientPackageHandoff } from './productRecognizePackageHandoffDiagnosticsCore'
 
 const PRODUCT_RECOGNIZE_URL = '/.netlify/functions/product-recognize'
 export const PRODUCT_RECOGNIZE_CLIENT_DEFAULT_TIMEOUT_MS = 90_000
@@ -198,6 +199,8 @@ export async function recognizeProductFromImage(input: {
       httpStatus,
       fetchFinishedAt: new Date().toISOString(),
     })
+
+    logProductRecognizeClientPackageHandoff(payload)
 
     return payload
   } catch (error) {

@@ -6,6 +6,7 @@ import {
 import { createOpenAiProductRecognizeDeps } from '../../src/lib/productRecognizeServer'
 import { stripDataUrl } from '../../src/lib/productAssistantAnalyzeCore'
 import { logProductRecognizePipeline } from '../../src/lib/productRecognizePipelineLogCore'
+import { buildPackageSizeHandoffDiagnostics } from '../../src/lib/productRecognizePackageHandoffDiagnosticsCore'
 
 function jsonResponse(statusCode: number, payload: Record<string, unknown>) {
   return {
@@ -97,6 +98,14 @@ export const handler: Handler = async (event) => {
         imageDecodeMs,
       },
     )
+
+    logProductRecognizePipeline('vision_package_handoff_diagnostic', {
+      handoffStage: 'http_response',
+      ...buildPackageSizeHandoffDiagnostics({
+        finalRecognition: result.recognition,
+        responseRecognition: result.recognition,
+      }),
+    })
 
     logProductRecognizePipeline('response_ready', {
       totalMs: Date.now() - requestStartedAt,

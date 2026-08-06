@@ -24,6 +24,7 @@ import {
   computeIdentityConfidence,
   evaluateStockCapture,
   recognitionFromImageAnalysis,
+  reconcileRecognitionPackageSizeFromImageAnalysis,
   sanitizeImageAnalysis,
   summarizeIdentity,
 } from './productRecognizeIdentityCore'
@@ -43,6 +44,7 @@ import {
   logProductRecognizePipeline,
   logProductRecognizePipelineError,
 } from './productRecognizePipelineLogCore'
+import { buildPackageSizeHandoffDiagnostics } from './productRecognizePackageHandoffDiagnosticsCore'
 
 export interface ProductRecognizeInput {
   imageBase64: string
@@ -293,6 +295,15 @@ export async function runProductRecognition(
   })
 
   let recognition = recognitionFromImageAnalysis(imageAnalysis)
+  const identityMappedRecognition = recognition
+  logProductRecognizePipeline('vision_package_handoff_diagnostic', {
+    handoffStage: 'identity_mapper',
+    ...buildPackageSizeHandoffDiagnostics({
+      imageAnalysis,
+      identityMapperInput: imageAnalysis,
+      identityMapperOutput: identityMappedRecognition,
+    }),
+  })
   const sanitizedAnalysis = sanitizeImageAnalysis(imageAnalysis)
 
   updateStep(steps, 'catalog_search', { status: 'running', summary: 'Katalog wird durchsucht…' })
@@ -394,6 +405,17 @@ export async function runProductRecognition(
       summary: 'Übersprungen — ausreichender Katalogtreffer.',
     })
   }
+
+  recognition = reconcileRecognitionPackageSizeFromImageAnalysis(imageAnalysis, recognition)
+  logProductRecognizePipeline('vision_package_handoff_diagnostic', {
+    handoffStage: 'final_recognition',
+    ...buildPackageSizeHandoffDiagnostics({
+      imageAnalysis,
+      identityMapperInput: imageAnalysis,
+      identityMapperOutput: identityMappedRecognition,
+      finalRecognition: recognition,
+    }),
+  })
 
   const identityConfidence = computeIdentityConfidence(recognition)
   const dataCompleteness = computeDataCompleteness(recognition)

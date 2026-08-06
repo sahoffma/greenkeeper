@@ -269,6 +269,7 @@ function validateCaptureDraftPackageDiagnostics(
       unitCategory === 'mass' || unitCategory === 'volume' || unitCategory === 'unknown'
         ? unitCategory
         : 'missing',
+    recognitionResultPackageSizePresent: record.recognitionResultPackageSizePresent === true,
     recognitionCandidatePresent: record.recognitionCandidatePresent === true,
     recognitionCandidatePackageSizePresent: record.recognitionCandidatePackageSizePresent === true,
     recognitionSnapshotPresent: record.recognitionSnapshotPresent === true,
@@ -283,6 +284,11 @@ function validateCaptureDraftPackageDiagnostics(
       source === 'none'
         ? source
         : 'none',
+    clientRecognitionPackageSizePresent: record.clientRecognitionPackageSizePresent === true,
+    acceptInputPackageSizePresent: record.acceptInputPackageSizePresent === true,
+    acceptOutputSelectedPackagePresent: record.acceptOutputSelectedPackagePresent === true,
+    acceptOutputRecognitionPackageSizePresent:
+      record.acceptOutputRecognitionPackageSizePresent === true,
   }
 }
 

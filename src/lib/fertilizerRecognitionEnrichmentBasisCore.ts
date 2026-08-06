@@ -543,6 +543,10 @@ export function buildCaptureDraftPackageDiagnostics(
 
   const snapshotPackage =
     snapshot != null ? resolveRecognitionPackageSizeFromRecognition(snapshot) : null
+  const recognitionResultPackage =
+    draft.recognitionResult?.recognition != null
+      ? resolveRecognitionPackageSizeFromRecognition(draft.recognitionResult.recognition)
+      : null
 
   return {
     selectedPackageQuantityPresent:
@@ -551,6 +555,8 @@ export function buildCaptureDraftPackageDiagnostics(
     selectedPackageUnitCategory: classifyRecognitionPackageSizeUnitCategory(
       draft.selectedPackageUnit ?? draft.unit,
     ),
+    recognitionResultPackageSizePresent:
+      recognitionResultPackage?.value != null && recognitionResultPackage.value > 0,
     recognitionCandidatePresent: candidate != null,
     recognitionCandidatePackageSizePresent:
       candidate?.packageSizeValue != null && candidate.packageSizeValue > 0,
@@ -560,6 +566,14 @@ export function buildCaptureDraftPackageDiagnostics(
     preparedDraftPackageSizePresent:
       preparedPackageSize.value != null && preparedPackageSize.value > 0,
     preparedDraftPackageSizeSource: preparedPackageSize.source,
+    clientRecognitionPackageSizePresent:
+      recognitionResultPackage?.value != null && recognitionResultPackage.value > 0,
+    acceptInputPackageSizePresent:
+      recognitionResultPackage?.value != null && recognitionResultPackage.value > 0,
+    acceptOutputSelectedPackagePresent:
+      draft.selectedPackageQuantity != null && draft.selectedPackageQuantity > 0,
+    acceptOutputRecognitionPackageSizePresent:
+      recognitionResultPackage?.value != null && recognitionResultPackage.value > 0,
   }
 }
 

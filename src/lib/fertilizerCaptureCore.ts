@@ -25,6 +25,27 @@ import type { InitialStockQuestion, ProductStockStatusKind } from './productReco
 import { computePurchaseAmount } from './fertilizerInventoryCore'
 import { createRandomId } from './randomId'
 import type { FertilizerInventoryCreationReason } from './fertilizerInventoryCreationCore'
+import {
+  buildPackageSizeHandoffDiagnostics,
+  logCapturePackageHandoffDiagnostic,
+} from './productRecognizePackageHandoffDiagnosticsCore'
+
+function finalizeAcceptRecognitionDraft(
+  result: ProductRecognizeResult,
+  nextDraft: FertilizerCaptureDraft,
+): FertilizerCaptureDraft {
+  logCapturePackageHandoffDiagnostic(
+    'accept_output',
+    buildPackageSizeHandoffDiagnostics({
+      acceptInputRecognition: result.recognition,
+      acceptOutputRecognition: nextDraft.recognitionResult?.recognition ?? null,
+      acceptOutputSelectedPackagePresent:
+        nextDraft.selectedPackageQuantity != null && nextDraft.selectedPackageQuantity > 0,
+    }),
+  )
+
+  return nextDraft
+}
 
 export function attachProductProfileToCaptureDraft(
   draft: FertilizerCaptureDraft,
@@ -598,6 +619,14 @@ export function acceptRecognitionResult(
     packageCount?: number | null
   },
 ): FertilizerCaptureDraft {
+  logCapturePackageHandoffDiagnostic(
+    'accept_input',
+    buildPackageSizeHandoffDiagnostics({
+      acceptInputRecognition: result.recognition,
+      clientRecognition: result.recognition,
+    }),
+  )
+
   const catalogProductId = catalogProductIdFromResult(result)
   const candidate = buildRecognitionCandidateFromResult(result)
   const label = buildRecognitionProductLabel(result)
@@ -641,34 +670,40 @@ export function acceptRecognitionResult(
   }
 
   if (transition.kind === 'add_to_existing') {
-    return proceedToConfirm({
-      ...base,
-      quantity: transition.totalStock ?? null,
-      purchaseQuantity: transition.purchaseAmount ?? purchaseAmount,
-    })
+    return finalizeAcceptRecognitionDraft(
+      result,
+      proceedToConfirm({
+        ...base,
+        quantity: transition.totalStock ?? null,
+        purchaseQuantity: transition.purchaseAmount ?? purchaseAmount,
+      }),
+    )
   }
 
   if (transition.kind === 'remainder_question') {
-    return {
+    return finalizeAcceptRecognitionDraft(result, {
       ...base,
       step: 'stock-remainder',
       quantity: null,
-    }
+    })
   }
 
   if (purchaseAmount == null && packageSize != null) {
-    return {
+    return finalizeAcceptRecognitionDraft(result, {
       ...base,
       step: 'stock-package-count',
       quantity: null,
-    }
+    })
   }
 
-  return proceedToConfirm({
-    ...base,
-    quantity: purchaseAmount,
-    purchaseQuantity: purchaseAmount,
-  })
+  return finalizeAcceptRecognitionDraft(
+    result,
+    proceedToConfirm({
+      ...base,
+      quantity: purchaseAmount,
+      purchaseQuantity: purchaseAmount,
+    }),
+  )
 }
 
 export function applyPackageCount(
