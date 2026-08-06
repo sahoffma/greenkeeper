@@ -42,6 +42,44 @@ export interface FertilizerEnrichmentStartEnrichmentResultDiagnostic {
   selectedAdapterTypes: string[]
 }
 
+export interface FertilizerEnrichmentStartAdapterOutcomeDiagnostic {
+  adapterType: string
+  status: string
+  errorCode: string | null
+  retryable: boolean | null
+}
+
+export interface FertilizerEnrichmentStartReadinessDiagnostic {
+  status: string | null
+  readinessReason: string | null
+  missingSections: string[]
+  failedCheck: string | null
+}
+
+export interface FertilizerEnrichmentStartOutcomeWarningDiagnostic {
+  functionName: typeof FERTILIZER_ENRICHMENT_START_FUNCTION_NAME
+  requestId: string | null
+  httpStatus: number
+  jobIdRef: string
+  result: {
+    status: string
+    failureReason: string | null
+    recommendedNextAction: string | null
+  }
+  readiness: FertilizerEnrichmentStartReadinessDiagnostic | null
+  sourceHintCount: number
+  userProvidedSourceCount: number
+  captureInlineSourceTextCount: number
+  selectedAdapterTypes: string[]
+  adapterOutcomes: FertilizerEnrichmentStartAdapterOutcomeDiagnostic[]
+  sourceSummary: {
+    foundCount: number
+    acceptedCount: number
+  }
+  packagingInlineProcessed: boolean
+  manufacturerHttpFetchAttempted: boolean
+}
+
 export interface FertilizerEnrichmentStartStackFrameDiagnostic {
   file: string
   function: string
@@ -96,6 +134,7 @@ const SENSITIVE_MESSAGE_PATTERNS = [
   /password=\S+/gi,
   /token=\S+/gi,
   /session=\S+/gi,
+  /https?:\/\/\S+/gi,
 ] as const
 
 const SUPABASE_TABLE_PATTERN = /relation "([^"]+)"/i
@@ -158,6 +197,257 @@ export function extractSafeFertilizerEnrichmentStartInputCounts(
   } catch {
     return empty
   }
+}
+
+function readJobId(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') {
+    return null
+  }
+
+  const job = (payload as Record<string, unknown>).job
+  if (!job || typeof job !== 'object') {
+    return null
+  }
+
+  const jobId = (job as Record<string, unknown>).jobId
+  return typeof jobId === 'string' && jobId.trim() ? jobId.trim() : null
+}
+
+export function redactFertilizerEnrichmentStartJobId(jobId: string): string {
+  const trimmed = jobId.trim()
+  if (trimmed.length <= 8) {
+    return 'job:[redacted]'
+  }
+
+  return `${trimmed.slice(0, 4)}...${trimmed.slice(-4)}`
+}
+
+function readObjectRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+
+  return value as Record<string, unknown>
+}
+
+function readAdapterOutcomeErrorCode(record: Record<string, unknown>): string | null {
+  const technicalError = readObjectRecord(record.technicalError)
+  if (technicalError && typeof technicalError.code === 'string') {
+    return technicalError.code
+  }
+
+  if (typeof record.reasonCode === 'string') {
+    return record.reasonCode
+  }
+
+  return null
+}
+
+function readAdapterOutcomeRetryable(record: Record<string, unknown>): boolean | null {
+  if (typeof record.retryable === 'boolean') {
+    return record.retryable
+  }
+
+  const technicalError = readObjectRecord(record.technicalError)
+  if (technicalError && typeof technicalError.retryable === 'boolean') {
+    return technicalError.retryable
+  }
+
+  return null
+}
+
+export function buildFertilizerEnrichmentStartAdapterOutcomeDiagnostics(
+  result: Record<string, unknown>,
+): FertilizerEnrichmentStartAdapterOutcomeDiagnostic[] {
+  const partialAdapterResults = result.partialAdapterResults
+  if (!Array.isArray(partialAdapterResults)) {
+    return []
+  }
+
+  const outcomes: FertilizerEnrichmentStartAdapterOutcomeDiagnostic[] = []
+
+  for (const item of partialAdapterResults) {
+    const record = readObjectRecord(item)
+    if (!record || typeof record.adapterType !== 'string' || typeof record.status !== 'string') {
+      continue
+    }
+
+    outcomes.push({
+      adapterType: record.adapterType,
+      status: record.status,
+      errorCode: readAdapterOutcomeErrorCode(record),
+      retryable: readAdapterOutcomeRetryable(record),
+    })
+  }
+
+  return outcomes
+}
+
+function readNestedReadinessResult(
+  result: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const direct = readObjectRecord(result.readinessResult)
+  if (direct) {
+    return direct
+  }
+
+  const pipelineResult = readObjectRecord(result.pipelineResult)
+  return pipelineResult ? readObjectRecord(pipelineResult.readinessResult) : null
+}
+
+export function buildFertilizerEnrichmentStartReadinessDiagnostic(
+  result: Record<string, unknown>,
+  status: string,
+  failureReason: string | null,
+): FertilizerEnrichmentStartReadinessDiagnostic | null {
+  const readiness = readNestedReadinessResult(result)
+  const missingSections = readiness ? readStringArray(readiness.missingRequirements) : []
+  const readinessStatus =
+    readiness && typeof readiness.status === 'string' ? readiness.status : null
+  const failedCheck = resolveFertilizerEnrichmentStartReadinessFailedCheck(
+    result,
+    status,
+    failureReason,
+  )
+
+  if (!readiness && !failedCheck && missingSections.length === 0) {
+    return null
+  }
+
+  return {
+    status: readinessStatus,
+    readinessReason: readinessStatus,
+    missingSections,
+    failedCheck,
+  }
+}
+
+export function resolveFertilizerEnrichmentStartReadinessFailedCheck(
+  result: Record<string, unknown>,
+  status: string,
+  failureReason: string | null,
+): string | null {
+  if (status === 'needs_input') {
+    return 'readiness_needs_input'
+  }
+
+  if (failureReason === 'domain_not_ready') {
+    return 'readiness_not_ready'
+  }
+
+  if (failureReason === 'pipeline_failure') {
+    const pipelineStep = result.pipelineStep
+    return typeof pipelineStep === 'string' ? `pipeline_${pipelineStep}` : 'pipeline_failure'
+  }
+
+  if (failureReason === 'no_viable_source') {
+    return 'no_viable_source'
+  }
+
+  if (status === 'failed' && failureReason) {
+    return failureReason
+  }
+
+  if (status === 'timed_out') {
+    return 'orchestration_timed_out'
+  }
+
+  if (status === 'recognized' || status === 'enriching' || status === 'cancelled') {
+    return status
+  }
+
+  return null
+}
+
+export function buildFertilizerEnrichmentStartOutcomeWarningDiagnostic(input: {
+  requestId: string | null
+  httpStatus: number
+  responseBody?: string | null
+  inputCounts: FertilizerEnrichmentStartInputCounts
+}): FertilizerEnrichmentStartOutcomeWarningDiagnostic | null {
+  if (!input.responseBody?.trim()) {
+    return null
+  }
+
+  let parsedBody: unknown = null
+  try {
+    parsedBody = JSON.parse(input.responseBody)
+  } catch {
+    return null
+  }
+
+  const jobResult = readJobResult(parsedBody)
+  if (!jobResult) {
+    return null
+  }
+
+  const status = typeof jobResult.status === 'string' ? jobResult.status : 'unknown'
+  const failureReason =
+    typeof jobResult.failureReason === 'string' ? jobResult.failureReason : null
+  const recommendedNextAction =
+    typeof jobResult.recommendedNextAction === 'string' ? jobResult.recommendedNextAction : null
+  const attemptedAdapters = readStringArray(jobResult.attemptedAdapters)
+  const successfulAdapters = readStringArray(jobResult.successfulAdapters)
+  const failedAdapters = readStringArray(jobResult.failedAdapters)
+  const selectedAdapterTypes = Array.from(
+    new Set([...attemptedAdapters, ...successfulAdapters, ...failedAdapters]),
+  )
+  const adapterOutcomes = buildFertilizerEnrichmentStartAdapterOutcomeDiagnostics(jobResult)
+  const jobId = readJobId(parsedBody)
+
+  return {
+    functionName: FERTILIZER_ENRICHMENT_START_FUNCTION_NAME,
+    requestId: input.requestId,
+    httpStatus: input.httpStatus,
+    jobIdRef: jobId ? redactFertilizerEnrichmentStartJobId(jobId) : 'job:[missing]',
+    result: {
+      status,
+      failureReason,
+      recommendedNextAction,
+    },
+    readiness: buildFertilizerEnrichmentStartReadinessDiagnostic(jobResult, status, failureReason),
+    sourceHintCount: input.inputCounts.sourceHintCount,
+    userProvidedSourceCount: input.inputCounts.userProvidedSourceCount,
+    captureInlineSourceTextCount: input.inputCounts.captureInlineSourceTextCount,
+    selectedAdapterTypes,
+    adapterOutcomes,
+    sourceSummary: {
+      foundCount: adapterOutcomes.length > 0 ? adapterOutcomes.length : attemptedAdapters.length,
+      acceptedCount: successfulAdapters.length,
+    },
+    packagingInlineProcessed:
+      input.inputCounts.captureInlineSourceTextCount > 0 &&
+      selectedAdapterTypes.includes('packaging'),
+    manufacturerHttpFetchAttempted: selectedAdapterTypes.includes('manufacturer_product_document'),
+  }
+}
+
+export function shouldWarnFertilizerEnrichmentStartOutcome(input: {
+  httpStatus: number
+  responseBody?: string | null
+}): boolean {
+  if (input.httpStatus < 200 || input.httpStatus >= 300) {
+    return false
+  }
+
+  if (!input.responseBody?.trim()) {
+    return false
+  }
+
+  try {
+    const parsed = JSON.parse(input.responseBody) as Record<string, unknown>
+    const result = readJobResult(parsed)
+    const status = typeof result?.status === 'string' ? result.status : null
+    return status != null && status !== 'intake_ready'
+  } catch {
+    return false
+  }
+}
+
+export function logFertilizerEnrichmentStartOutcomeWarning(
+  diagnostic: FertilizerEnrichmentStartOutcomeWarningDiagnostic,
+): void {
+  console.warn(`[${FERTILIZER_ENRICHMENT_START_FUNCTION_NAME}]`, diagnostic)
 }
 
 function readApiErrorCode(payload: unknown): FertilizerEnrichmentApiErrorCode | null {
@@ -789,18 +1079,29 @@ export function diagnoseFertilizerEnrichmentStartResponse(input: {
   error?: unknown
   phaseOverride?: FertilizerEnrichmentStartFailurePhase
 }): void {
-  if (!shouldLogFertilizerEnrichmentStartFailure(input)) {
-    return
+  if (shouldLogFertilizerEnrichmentStartFailure(input)) {
+    logFertilizerEnrichmentStartFailure(
+      buildFertilizerEnrichmentStartFailureDiagnostic({
+        requestId: input.requestId,
+        phase: input.phaseOverride,
+        error: input.error,
+        httpStatus: input.httpStatus,
+        responseBody: input.responseBody,
+        inputCounts: input.inputCounts,
+      }),
+    )
   }
 
-  logFertilizerEnrichmentStartFailure(
-    buildFertilizerEnrichmentStartFailureDiagnostic({
+  if (shouldWarnFertilizerEnrichmentStartOutcome(input)) {
+    const warning = buildFertilizerEnrichmentStartOutcomeWarningDiagnostic({
       requestId: input.requestId,
-      phase: input.phaseOverride,
-      error: input.error,
       httpStatus: input.httpStatus,
       responseBody: input.responseBody,
       inputCounts: input.inputCounts,
-    }),
-  )
+    })
+
+    if (warning) {
+      logFertilizerEnrichmentStartOutcomeWarning(warning)
+    }
+  }
 }

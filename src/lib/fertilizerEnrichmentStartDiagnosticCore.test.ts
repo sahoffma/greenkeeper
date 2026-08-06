@@ -6,13 +6,31 @@ import { FertilizerEnrichmentServerApiError } from './fertilizerEnrichmentServer
 import {
   analyzeFertilizerEnrichmentStartInternalError,
   buildFertilizerEnrichmentStartFailureDiagnostic,
+  buildFertilizerEnrichmentStartOutcomeWarningDiagnostic,
   diagnoseFertilizerEnrichmentStartResponse,
   extractSafeFertilizerEnrichmentStartInputCounts,
   logFertilizerEnrichmentStartFailure,
+  logFertilizerEnrichmentStartOutcomeWarning,
   resolveFertilizerEnrichmentStartFailurePhase,
   resolveFertilizerEnrichmentStartRequestId,
   sanitizeFertilizerEnrichmentStartDiagnosticMessage,
+  shouldWarnFertilizerEnrichmentStartOutcome,
 } from './fertilizerEnrichmentStartDiagnosticCore'
+
+const INPUT_COUNTS = {
+  sourceHintCount: 2,
+  userProvidedSourceCount: 1,
+  captureInlineSourceTextCount: 1,
+}
+
+function buildStartResponseBody(result: Record<string, unknown>, jobId = 'job-live-494afcd9-001') {
+  return JSON.stringify({
+    job: {
+      jobId,
+      result,
+    },
+  })
+}
 
 describe('fertilizerEnrichmentStartDiagnosticCore', () => {
   afterEach(() => {
@@ -169,6 +187,7 @@ describe('fertilizerEnrichmentStartDiagnosticCore', () => {
 
   it('logs structured diagnosis for failed enrichment responses', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     diagnoseFertilizerEnrichmentStartResponse({
       requestId: '40392437',
@@ -193,6 +212,7 @@ describe('fertilizerEnrichmentStartDiagnosticCore', () => {
     })
 
     expect(consoleError).toHaveBeenCalledTimes(1)
+    expect(consoleWarn).toHaveBeenCalledTimes(1)
     expect(consoleError.mock.calls[0]?.[1]).toEqual(
       expect.objectContaining({
         functionName: 'fertilizer-enrichment-start',
@@ -419,5 +439,246 @@ describe('fertilizerEnrichmentStartDiagnosticCore', () => {
     expect(serialized).not.toContain('captureInlineSourceTexts')
     expect(serialized).not.toContain('NPK 0-0-30')
     expect(serialized).not.toContain('permission denied for relation')
+  })
+
+  it('warns on HTTP 200 failed/no_viable_source with safe outcome diagnostics', () => {
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    logFertilizerEnrichmentStartOutcomeWarning(
+      buildFertilizerEnrichmentStartOutcomeWarningDiagnostic({
+        requestId: '494afcd9',
+        httpStatus: 200,
+        responseBody: buildStartResponseBody({
+          status: 'failed',
+          failureReason: 'no_viable_source',
+          attemptedAdapters: ['manufacturer_product_document', 'packaging'],
+          successfulAdapters: [],
+          failedAdapters: ['manufacturer_product_document'],
+          partialAdapterResults: [
+            {
+              adapterType: 'manufacturer_product_document',
+              status: 'failed',
+              sourceId: 'src-1',
+              sourceUrl: 'https://manufacturer.example/doc?token=secret',
+              sourceTitle: 'Secret Product Label NPK 15-5-10',
+              technicalError: {
+                code: 'source_fetch_failed',
+                message: 'Manufacturer fetch failed for https://manufacturer.example/doc',
+                retryable: true,
+                adapterType: 'manufacturer_product_document',
+              },
+              retryable: true,
+            },
+          ],
+        }),
+        inputCounts: INPUT_COUNTS,
+      })!,
+    )
+
+    expect(consoleWarn).toHaveBeenCalledTimes(1)
+    expect(consoleWarn.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        functionName: 'fertilizer-enrichment-start',
+        requestId: '494afcd9',
+        httpStatus: 200,
+        jobIdRef: 'job-...-001',
+        result: {
+          status: 'failed',
+          failureReason: 'no_viable_source',
+          recommendedNextAction: null,
+        },
+        readiness: expect.objectContaining({
+          failedCheck: 'no_viable_source',
+        }),
+        packagingInlineProcessed: true,
+        manufacturerHttpFetchAttempted: true,
+        adapterOutcomes: [
+          {
+            adapterType: 'manufacturer_product_document',
+            status: 'failed',
+            errorCode: 'source_fetch_failed',
+            retryable: true,
+          },
+        ],
+        sourceSummary: {
+          foundCount: 1,
+          acceptedCount: 0,
+        },
+      }),
+    )
+
+    const serialized = JSON.stringify(consoleWarn.mock.calls[0])
+    expect(serialized).not.toContain('https://manufacturer.example')
+    expect(serialized).not.toContain('Secret Product Label')
+    expect(serialized).not.toContain('token=secret')
+    expect(serialized).not.toContain('job-live-494afcd9-001')
+  })
+
+  it('warns on HTTP 200 needs_input outcomes', () => {
+    expect(
+      shouldWarnFertilizerEnrichmentStartOutcome({
+        httpStatus: 200,
+        responseBody: buildStartResponseBody({
+          status: 'needs_input',
+          recommendedNextAction: 'upload_product_document',
+          attemptedAdapters: ['packaging'],
+          successfulAdapters: ['packaging'],
+          failedAdapters: [],
+          pipelineResult: {
+            readinessResult: {
+              status: 'needs_input',
+              missingRequirements: ['ingredients.matrix'],
+              fulfilledRequirements: ['identity.core'],
+              blockingIssues: [],
+              suggestedInputActions: ['upload_product_document'],
+              evaluatedAt: '2026-08-06T08:20:10.000Z',
+              specificationVersion: 'fertilizer-readiness-v1',
+            },
+          },
+        }),
+      }),
+    ).toBe(true)
+
+    const warning = buildFertilizerEnrichmentStartOutcomeWarningDiagnostic({
+      requestId: '494afcd9',
+      httpStatus: 200,
+      responseBody: buildStartResponseBody({
+        status: 'needs_input',
+        recommendedNextAction: 'upload_product_document',
+        attemptedAdapters: ['packaging'],
+        successfulAdapters: ['packaging'],
+        failedAdapters: [],
+        pipelineResult: {
+          readinessResult: {
+            status: 'needs_input',
+            missingRequirements: ['ingredients.matrix'],
+            fulfilledRequirements: ['identity.core'],
+            blockingIssues: [],
+            suggestedInputActions: ['upload_product_document'],
+            evaluatedAt: '2026-08-06T08:20:10.000Z',
+            specificationVersion: 'fertilizer-readiness-v1',
+          },
+        },
+      }),
+      inputCounts: INPUT_COUNTS,
+    })
+
+    expect(warning).toEqual(
+      expect.objectContaining({
+        result: {
+          status: 'needs_input',
+          failureReason: null,
+          recommendedNextAction: 'upload_product_document',
+        },
+        readiness: {
+          status: 'needs_input',
+          readinessReason: 'needs_input',
+          missingSections: ['ingredients.matrix'],
+          failedCheck: 'readiness_needs_input',
+        },
+      }),
+    )
+  })
+
+  it('warns on HTTP 200 incomplete nutrient matrix via domain_not_ready', () => {
+    const warning = buildFertilizerEnrichmentStartOutcomeWarningDiagnostic({
+      requestId: '494afcd9',
+      httpStatus: 200,
+      responseBody: buildStartResponseBody({
+        status: 'failed',
+        failureReason: 'domain_not_ready',
+        attemptedAdapters: ['packaging'],
+        successfulAdapters: ['packaging'],
+        failedAdapters: [],
+        readinessResult: {
+          status: 'not_ready',
+          missingRequirements: ['ingredients.matrix', 'ingredients.npk'],
+          fulfilledRequirements: ['identity.core'],
+          blockingIssues: [],
+          suggestedInputActions: [],
+          evaluatedAt: '2026-08-06T08:20:10.000Z',
+          specificationVersion: 'fertilizer-readiness-v1',
+        },
+      }),
+      inputCounts: INPUT_COUNTS,
+    })
+
+    expect(warning?.readiness).toEqual(
+      expect.objectContaining({
+        status: 'not_ready',
+        missingSections: ['ingredients.matrix', 'ingredients.npk'],
+        failedCheck: 'readiness_not_ready',
+      }),
+    )
+  })
+
+  it('does not warn for intake_ready outcomes', () => {
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    diagnoseFertilizerEnrichmentStartResponse({
+      requestId: '494afcd9',
+      httpStatus: 200,
+      responseBody: buildStartResponseBody({
+        status: 'intake_ready',
+        attemptedAdapters: ['packaging'],
+        successfulAdapters: ['packaging'],
+        failedAdapters: [],
+        pipelineResult: {
+          readinessResult: {
+            status: 'ready',
+            missingRequirements: [],
+            fulfilledRequirements: ['ingredients.matrix'],
+            blockingIssues: [],
+            suggestedInputActions: [],
+            evaluatedAt: '2026-08-06T08:20:10.000Z',
+            specificationVersion: 'fertilizer-readiness-v1',
+          },
+        },
+      }),
+      inputCounts: INPUT_COUNTS,
+    })
+
+    expect(consoleWarn).not.toHaveBeenCalled()
+    expect(
+      shouldWarnFertilizerEnrichmentStartOutcome({
+        httpStatus: 200,
+        responseBody: buildStartResponseBody({ status: 'intake_ready' }),
+      }),
+    ).toBe(false)
+  })
+
+  it('does not include sensitive content in outcome warning logs', () => {
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    diagnoseFertilizerEnrichmentStartResponse({
+      requestId: '494afcd9',
+      httpStatus: 200,
+      responseBody: buildStartResponseBody({
+        status: 'needs_input',
+        recommendedNextAction: 'upload_back_photo',
+        attemptedAdapters: ['packaging'],
+        successfulAdapters: [],
+        failedAdapters: ['packaging'],
+        partialAdapterResults: [
+          {
+            adapterType: 'packaging',
+            status: 'partial',
+            sourceId: 'captureRecognitionLabel',
+            sourceTitle: 'Manufacturer: SecretCo',
+            extraction: {
+              extractedNpk: { rawLabel: 'NPK 0-0-30' },
+            },
+          },
+        ],
+      }),
+      inputCounts: INPUT_COUNTS,
+    })
+
+    const serialized = JSON.stringify(consoleWarn.mock.calls[0])
+    expect(serialized).toContain('needs_input')
+    expect(serialized).not.toContain('SecretCo')
+    expect(serialized).not.toContain('NPK 0-0-30')
+    expect(serialized).not.toContain('captureRecognitionLabel')
+    expect(serialized).not.toContain('Manufacturer:')
   })
 })

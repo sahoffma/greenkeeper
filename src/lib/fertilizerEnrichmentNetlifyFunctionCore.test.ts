@@ -230,6 +230,7 @@ describe('fertilizerEnrichmentNetlifyFunctionCore', () => {
 
   it('logs structured start failure diagnostics without leaking secrets', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const runtime = createMockRuntime()
     runtime.handlers.handleStart.mockResolvedValue({
       statusCode: 200,
@@ -272,7 +273,9 @@ describe('fertilizerEnrichmentNetlifyFunctionCore', () => {
     )
 
     expect(consoleError).toHaveBeenCalledTimes(1)
+    expect(consoleWarn).toHaveBeenCalledTimes(1)
     const diagnostic = consoleError.mock.calls[0]?.[1] as Record<string, unknown>
+    const warning = consoleWarn.mock.calls[0]?.[1] as Record<string, unknown>
     expect(diagnostic).toEqual(
       expect.objectContaining({
         functionName: 'fertilizer-enrichment-start',
@@ -284,9 +287,13 @@ describe('fertilizerEnrichmentNetlifyFunctionCore', () => {
     )
 
     const serialized = JSON.stringify(diagnostic)
+    const warningSerialized = JSON.stringify(warning)
     expect(serialized).not.toContain('secret-token')
     expect(serialized).not.toContain('SecretCo')
     expect(serialized).not.toContain('NPK 0-0-30')
+    expect(warningSerialized).not.toContain('secret-token')
+    expect(warningSerialized).not.toContain('SecretCo')
+    expect(warningSerialized).not.toContain('NPK 0-0-30')
   })
 
   it('logs runtime_init diagnostics for configuration failures', async () => {
