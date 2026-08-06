@@ -1,5 +1,8 @@
+import type { FertilizerNutrientMatrix } from '../types/fertilizerReadiness'
 import type { FertilizerStockListItem } from '../types/fertilizerInventory'
 import { buildSavedProductProfileLabel } from './fertilizerInventoryStockListCore'
+import { buildNpkLabel } from './nutrientDisplay'
+import { formatNpkDeclarationDisplay } from './fertilizerProductDisplay'
 
 export const LIST_ACTIVE_FERTILIZER_PRODUCT_STOCK_RPC =
   'list_active_fertilizer_product_stock' as const
@@ -35,7 +38,16 @@ export interface ActiveProductStockReadRow {
   balance: number
   manufacturer: string | null
   officialName: string | null
+  productLine?: string | null
+  variant?: string | null
   productForm: FertilizerProductStockForm | null
+  npkDeclaration?: string | null
+  nitrogen?: number | null
+  phosphate?: number | null
+  potash?: number | null
+  nutrientMatrix?: FertilizerNutrientMatrix | null
+  packageSizeValue?: number | null
+  packageSizeUnit?: string | null
   movementCount: number
   lastMovementAt: string | null
 }
@@ -134,6 +146,37 @@ function parseInteger(value: unknown): number {
   return Number.isFinite(parsed) ? Math.trunc(parsed) : 0
 }
 
+function parseOptionalDecimal(value: unknown): number | null {
+  if (value == null) {
+    return null
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) {
+      return parsed
+    }
+  }
+
+  return null
+}
+
+function parseNutrientMatrix(value: unknown): FertilizerNutrientMatrix | null {
+  if (value == null) {
+    return null
+  }
+
+  if (typeof value !== 'object') {
+    return null
+  }
+
+  return value as FertilizerNutrientMatrix
+}
+
 function parseRequiredUuid(value: unknown, fieldName: string): string {
   const parsed = parseOptionalString(value)
   if (!parsed) {
@@ -141,6 +184,22 @@ function parseRequiredUuid(value: unknown, fieldName: string): string {
   }
 
   return parsed
+}
+
+function formatStockListNpkSummary(
+  row: Pick<ActiveProductStockReadRow, 'npkDeclaration' | 'nitrogen' | 'phosphate' | 'potash'>,
+): string | null {
+  const fromDeclaration = formatNpkDeclarationDisplay(row.npkDeclaration)
+  if (fromDeclaration) {
+    return fromDeclaration
+  }
+
+  if (row.nitrogen == null || row.phosphate == null || row.potash == null) {
+    return null
+  }
+
+  const label = buildNpkLabel(row.nitrogen, row.phosphate, row.potash)
+  return label ? `NPK ${label}` : null
 }
 
 export function parseActiveProductStockReadRow(value: unknown): ActiveProductStockReadRow {
@@ -162,39 +221,77 @@ export function parseActiveProductStockReadRow(value: unknown): ActiveProductSto
     balance: parseDecimal(record.balance),
     manufacturer: parseOptionalString(record.manufacturer),
     officialName: parseOptionalString(record.officialName),
+    productLine: parseOptionalString(record.productLine),
+    variant: parseOptionalString(record.variant),
     productForm: parseProductForm(record.productForm),
+    npkDeclaration: parseOptionalString(record.npkDeclaration),
+    nitrogen: parseOptionalDecimal(record.nitrogen),
+    phosphate: parseOptionalDecimal(record.phosphate),
+    potash: parseOptionalDecimal(record.potash),
+    nutrientMatrix: parseNutrientMatrix(record.nutrientMatrix),
+    packageSizeValue: parseOptionalDecimal(record.packageSizeValue),
+    packageSizeUnit: parseOptionalString(record.packageSizeUnit),
     movementCount: parseInteger(record.movementCount),
     lastMovementAt: parseOptionalString(record.lastMovementAt),
   }
 }
 
 export function parseActiveProductStockListPayload(payload: unknown): ActiveProductStockListPayload {
-  if (typeof payload !== 'object' || payload === null) {
+  const normalizedPayload = coerceRpcJsonPayload(payload)
+
+  if (typeof normalizedPayload !== 'object' || normalizedPayload === null) {
     throw new Error('FERTILIZER_PRODUCT_STOCK_READ_INVALID_PAYLOAD')
   }
 
-  const record = payload as Record<string, unknown>
+  const record = normalizedPayload as Record<string, unknown>
   const rawItems = record.items
 
   if (!Array.isArray(rawItems)) {
     throw new Error('FERTILIZER_PRODUCT_STOCK_READ_INVALID_ITEMS')
   }
 
-  return {
-    items: rawItems.map(parseActiveProductStockReadRow),
+  const items: ActiveProductStockReadRow[] = []
+
+  for (const rawItem of rawItems) {
+    try {
+      items.push(parseActiveProductStockReadRow(rawItem))
+    } catch (error) {
+      console.error('[fertilizer-stock-read] skipped invalid row', error)
+    }
+  }
+
+  return { items }
+}
+
+function coerceRpcJsonPayload(payload: unknown): unknown {
+  if (typeof payload !== 'string') {
+    return payload
+  }
+
+  const trimmed = payload.trim()
+  if (!trimmed) {
+    return payload
+  }
+
+  try {
+    return JSON.parse(trimmed) as unknown
+  } catch {
+    return payload
   }
 }
 
 export function parseActiveProductStockItemPayload(payload: unknown): ActiveProductStockReadRow | null {
-  if (payload == null) {
+  const normalizedPayload = coerceRpcJsonPayload(payload)
+
+  if (normalizedPayload == null) {
     return null
   }
 
-  if (typeof payload !== 'object') {
+  if (typeof normalizedPayload !== 'object') {
     throw new Error('FERTILIZER_PRODUCT_STOCK_READ_INVALID_PAYLOAD')
   }
 
-  const record = payload as Record<string, unknown>
+  const record = normalizedPayload as Record<string, unknown>
   if (record.item == null) {
     return null
   }
@@ -217,11 +314,12 @@ export function mapActiveProductStockRowToListItem(
     recognitionCandidateId: null,
     productForm: row.productForm,
     manufacturer: row.manufacturer,
-    packageSizeValue: null,
-    packageSizeUnit: null,
+    packageSizeValue: row.packageSizeValue ?? null,
+    packageSizeUnit: row.packageSizeUnit ?? null,
     savedProductProfileId: row.savedProductProfileId,
     baseUnit: row.baseUnit,
     accessKind: 'authenticated_user',
+    npkSummary: formatStockListNpkSummary(row),
   }
 }
 

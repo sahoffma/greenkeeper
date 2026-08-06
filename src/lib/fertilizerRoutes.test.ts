@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   FERTILIZER_ROUTES,
   fertilizerHomeApplicationPath,
+  fertilizerProductPath,
   fertilizerStockIntakePath,
   fertilizerStockOutboundPath,
   isFertilizerStockIntakePath,
@@ -30,6 +31,10 @@ describe('fertilizerRoutes', () => {
     expect(resolveLegacyApplicationRedirectPath(ITEM_ID)).toBe(`/duengung/${ITEM_ID}`)
     expect(resolveLegacyApplicationRedirectPath('not-a-uuid')).toBe('/duengung')
     expect(resolveLegacyApplicationRedirectPath(undefined)).toBe('/duengung')
+  })
+
+  it('builds product detail path with inventory item id', () => {
+    expect(fertilizerProductPath(ITEM_ID)).toBe(`/ausruestung/duenger/${ITEM_ID}`)
   })
 
   it('builds intake and outbound paths', () => {

@@ -181,6 +181,56 @@ describe('fertilizerProductStockReadCore', () => {
     expect(items[0]?.productLabel).toBe('Rasendoktor Frühjahr')
   })
 
+  it('skips invalid rows instead of failing the entire list', () => {
+    const payload = parseActiveProductStockListPayload({
+      items: [
+        {
+          inventoryItemId: ITEM_A,
+          savedProductProfileId: PROFILE_A,
+          baseUnit: 'kg',
+          balance: 7.5,
+          manufacturer: 'Rasendoktor',
+          officialName: 'Frühjahr',
+          productForm: 'granular',
+          movementCount: 1,
+          lastMovementAt: '2026-08-01T10:00:00.000Z',
+        },
+        {
+          inventoryItemId: ITEM_B,
+          savedProductProfileId: PROFILE_B,
+          baseUnit: 'lb',
+          balance: 1,
+        },
+      ],
+    })
+
+    expect(payload.items).toHaveLength(1)
+    expect(payload.items[0]?.inventoryItemId).toBe(ITEM_A)
+  })
+
+  it('parses JSON string payloads from rpc responses', () => {
+    const payload = parseActiveProductStockListPayload(
+      JSON.stringify({
+        items: [
+          {
+            inventoryItemId: ITEM_A,
+            savedProductProfileId: PROFILE_A,
+            baseUnit: 'kg',
+            balance: 2,
+            manufacturer: null,
+            officialName: 'Frühjahr',
+            productForm: 'granular',
+            movementCount: 1,
+            lastMovementAt: null,
+          },
+        ],
+      }),
+    )
+
+    expect(payload.items).toHaveLength(1)
+    expect(payload.items[0]?.balance).toBe(2)
+  })
+
   it('parses single item payload and returns null when missing', () => {
     expect(parseActiveProductStockItemPayload(null)).toBeNull()
     expect(parseActiveProductStockItemPayload({ item: null })).toBeNull()
@@ -227,5 +277,44 @@ describe('fertilizerProductStockReadCore', () => {
         USER_ID,
       ),
     ).toBe(false)
+  })
+
+  it('maps active rows to stock list items with npk summary', () => {
+    const item = mapActiveProductStockRowToListItem(
+      activeRow({
+        nitrogen: 12,
+        phosphate: 5,
+        potash: 8,
+      }),
+    )
+
+    expect(item.npkSummary).toBe('NPK 12-5-8')
+  })
+
+  it('parses detail fields from rpc rows', () => {
+    const row = parseActiveProductStockReadRow({
+      inventoryItemId: ITEM_A,
+      savedProductProfileId: PROFILE_A,
+      baseUnit: 'kg',
+      balance: 3,
+      manufacturer: 'Hersteller',
+      officialName: 'Produkt',
+      productLine: 'Linie',
+      variant: 'Variante',
+      productForm: 'granular',
+      npkDeclaration: '10-5-8',
+      nitrogen: 10,
+      phosphate: 5,
+      potash: 8,
+      nutrientMatrix: { iron: { value: 1, unit: '%', declarationBasis: 'Fe' } },
+      packageSizeValue: 25,
+      packageSizeUnit: 'kg',
+      movementCount: 1,
+      lastMovementAt: null,
+    })
+
+    expect(row.productLine).toBe('Linie')
+    expect(row.nutrientMatrix?.iron?.value).toBe(1)
+    expect(row.packageSizeValue).toBe(25)
   })
 })

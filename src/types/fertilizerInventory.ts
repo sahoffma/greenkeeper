@@ -65,6 +65,7 @@ export interface FertilizerStockListItem {
   savedProductProfileId: string | null
   baseUnit: 'kg' | 'ml' | null
   accessKind: 'authenticated_user' | 'session' | null
+  npkSummary?: string | null
 }
 
 export interface FertilizerRecognitionCandidatePayload {

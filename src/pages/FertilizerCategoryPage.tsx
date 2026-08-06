@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { HomeAppShell } from '../components/home/HomeAppShell'
 import { FertilizerCaptureButton } from '../components/equipment/FertilizerCaptureButton'
 import { SubpageHeader } from '../components/layout/SubpageHeader'
 import { layoutStockListByProductForm } from '../lib/fertilizerCaptureCore'
-import { fetchFertilizerStockList } from '../lib/fertilizerInventory'
 import {
-  FERTILIZER_ROUTES,
-  fertilizerStockIntakePath,
-  fertilizerStockOutboundPath,
-} from '../lib/fertilizerRoutes'
+  buildFertilizerStockListDetailPath,
+  buildFertilizerStockListIntakePath,
+  buildFertilizerStockListOutboundPath,
+} from '../lib/fertilizerCategoryStockNavigationCore'
+import { fetchFertilizerStockList } from '../lib/fertilizerInventory'
+import { FERTILIZER_ROUTES } from '../lib/fertilizerRoutes'
 import type { FertilizerStockListItem } from '../types/fertilizerInventory'
 import styles from './FertilizerCategoryPage.module.css'
 
@@ -23,27 +24,55 @@ function formatBalance(item: FertilizerStockListItem): string {
 }
 
 function StockListItem({ item }: { item: FertilizerStockListItem }) {
+  const navigate = useNavigate()
   const showStockActions =
     item.savedProductProfileId != null && (item.baseUnit === 'kg' || item.baseUnit === 'ml')
+  const detailPath = buildFertilizerStockListDetailPath(item.id)
+
+  function openDetail() {
+    navigate(detailPath)
+  }
 
   return (
     <li>
-      <div className={styles.stockItem}>
+      <div
+        className={styles.stockItem}
+        role="link"
+        tabIndex={0}
+        aria-label={`${item.productLabel}, ${formatBalance(item)}`}
+        onClick={openDetail}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            openDetail()
+          }
+        }}
+      >
         <div className={styles.stockItemMain}>
           <span className={styles.stockItemName}>{item.productLabel}</span>
           {item.manufacturer && (
             <span className={styles.stockItemMeta}>{item.manufacturer}</span>
           )}
+          {item.npkSummary && (
+            <span className={styles.stockItemNpk}>{item.npkSummary}</span>
+          )}
         </div>
 
-        <div className={styles.stockItemActions}>
+        <div
+          className={styles.stockItemActions}
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
           <span className={styles.stockItemBalance}>{formatBalance(item)}</span>
           {showStockActions && (
             <div className={styles.stockItemLinks}>
-              <Link className={styles.stockActionLink} to={fertilizerStockIntakePath(item.id)}>
+              <Link className={styles.stockActionLink} to={buildFertilizerStockListIntakePath(item.id)}>
                 Zugang erfassen
               </Link>
-              <Link className={styles.stockActionLink} to={fertilizerStockOutboundPath(item.id)}>
+              <Link
+                className={styles.stockActionLink}
+                to={buildFertilizerStockListOutboundPath(item.id)}
+              >
                 Abgang erfassen
               </Link>
             </div>
@@ -88,6 +117,7 @@ function StockListSection({ items }: { items: FertilizerStockListItem[] }) {
 }
 
 export function FertilizerCategoryPage() {
+  const location = useLocation()
   const [inStock, setInStock] = useState<FertilizerStockListItem[]>([])
   const [outOfStock, setOutOfStock] = useState<FertilizerStockListItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -95,6 +125,8 @@ export function FertilizerCategoryPage() {
 
   useEffect(() => {
     let cancelled = false
+    setLoading(true)
+    setError(null)
 
     void fetchFertilizerStockList()
       .then((data) => {
@@ -121,7 +153,7 @@ export function FertilizerCategoryPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [location.key])
 
   return (
     <HomeAppShell>
@@ -139,7 +171,7 @@ export function FertilizerCategoryPage() {
 
         <section className={styles.section} aria-labelledby="fertilizer-in-stock-heading">
           <h2 id="fertilizer-in-stock-heading" className={styles.sectionHeading}>
-            Im Bestand
+            Meine Dünger
           </h2>
 
           {loading && (

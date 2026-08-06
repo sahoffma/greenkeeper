@@ -142,6 +142,13 @@
   border-radius: var(--radius-lg);
   background: var(--color-surface);
   color: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.stockItem:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 .stockItemActions {
@@ -207,6 +214,25 @@
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+}
+
+.stockItemLink {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.stockItemLink:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.stockItemNpk {
+  font-size: 0.8rem;
+  color: rgba(31, 61, 43, 0.58);
 }
 
 .stockItemMeta {

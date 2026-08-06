@@ -13,6 +13,7 @@ import {
   mapActiveProductStockRowsToListItems,
   parseActiveProductStockItemPayload,
   parseActiveProductStockListPayload,
+  type ActiveProductStockReadRow,
 } from './fertilizerProductStockReadCore'
 
 const INVENTORY_ERROR_MESSAGES: Record<string, string> = {
@@ -25,6 +26,9 @@ const INVENTORY_ERROR_MESSAGES: Record<string, string> = {
   CATALOG_PRODUCT_NOT_FOUND: 'Das Katalogprodukt ist nicht mehr verfügbar.',
   CATALOG_AND_CANDIDATE_CONFLICT: 'Produktzuordnung ist widersprüchlich.',
   CANDIDATE_FINGERPRINT_REQUIRED: 'Das erkannte Produkt ist nicht eindeutig genug.',
+  FERTILIZER_PRODUCT_STOCK_READ_ACCESS_DENIED: 'Bitte melde dich erneut an.',
+  FERTILIZER_PRODUCT_STOCK_READ_INVALID_PAYLOAD: 'Der Düngerbestand konnte nicht geladen werden.',
+  FERTILIZER_PRODUCT_STOCK_READ_INVALID_ITEMS: 'Der Düngerbestand konnte nicht geladen werden.',
 }
 
 function mapInventoryError(error: unknown, fallback: string): Error {
@@ -66,10 +70,24 @@ export async function fetchFertilizerStockList(): Promise<FertilizerStockListVie
   const { data, error } = await supabase.rpc(LIST_ACTIVE_FERTILIZER_PRODUCT_STOCK_RPC)
 
   if (error) {
+    console.error('[fertilizer-stock-read]', {
+      rpc: LIST_ACTIVE_FERTILIZER_PRODUCT_STOCK_RPC,
+      message: getErrorMessage(error, 'Der Düngerbestand konnte nicht geladen werden.'),
+    })
     throw mapInventoryError(error, 'Der Düngerbestand konnte nicht geladen werden.')
   }
 
-  const payload = parseActiveProductStockListPayload(data)
+  let payload: ReturnType<typeof parseActiveProductStockListPayload>
+  try {
+    payload = parseActiveProductStockListPayload(data)
+  } catch (parseError) {
+    console.error('[fertilizer-stock-read]', {
+      rpc: LIST_ACTIVE_FERTILIZER_PRODUCT_STOCK_RPC,
+      message: parseError instanceof Error ? parseError.message : 'invalid payload',
+    })
+    throw new Error('Der Düngerbestand konnte nicht geladen werden.')
+  }
+
   const items = mapActiveProductStockRowsToListItems(payload.items)
 
   return partitionFertilizerStockListItems(items)
@@ -78,8 +96,19 @@ export async function fetchFertilizerStockList(): Promise<FertilizerStockListVie
 export async function fetchFertilizerStockListItem(
   containerId: string,
 ): Promise<FertilizerStockListItem | null> {
+  const row = await fetchFertilizerProductStockRow(containerId)
+  if (!row) {
+    return null
+  }
+
+  return mapActiveProductStockRowToListItem(row)
+}
+
+export async function fetchFertilizerProductStockRow(
+  inventoryItemId: string,
+): Promise<ActiveProductStockReadRow | null> {
   const { data, error } = await supabase.rpc(GET_ACTIVE_FERTILIZER_PRODUCT_STOCK_ITEM_RPC, {
-    p_inventory_item_id: containerId,
+    p_inventory_item_id: inventoryItemId,
   })
 
   if (error) {
@@ -91,7 +120,7 @@ export async function fetchFertilizerStockListItem(
     return null
   }
 
-  return mapActiveProductStockRowToListItem(row)
+  return row
 }
 
 export {
