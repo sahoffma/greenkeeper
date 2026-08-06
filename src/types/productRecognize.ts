@@ -162,6 +162,8 @@ export interface ProductRecognizeRecognition {
   npk: ProductRecognizeNpkField
   nutrients: ProductRecognizeNutrientField[]
   application: ProductRecognizeApplication
+  /** OCR label fragments retained from vision analysis for downstream declaration parsing. */
+  labelTextFragments?: string[]
 }
 
 export interface ProductRecognizeCatalogMatch {

@@ -12,6 +12,7 @@ import {
   parseUserProvidedDeclarationText,
 } from './fertilizerUserProvidedSourceAdapterCore'
 import { buildRawFertilizerDeclarationInput } from './fertilizerSourceAdapterMergeCore'
+import { buildFullEnglishMatrixLabelFragments } from './fertilizerCaptureNutrientTestFixtures'
 
 const FIXED_NOW = '2026-07-29T10:00:00.000Z'
 const FIXED_RUN_ID = 'form-serialization-run'
@@ -34,7 +35,11 @@ function buildRecognitionFromVisionForm(formValue: string | null): ProductRecogn
     packageSizeUnit: 'kg',
     form: formValue,
     gtin: null,
-    textFragments: [],
+    textFragments: buildFullEnglishMatrixLabelFragments({
+      nitrogen: 12,
+      phosphate: 4,
+      potash: 18,
+    }),
     fieldConfidence: { form: 0.9, productDescriptor: 0.8 },
   })
 
@@ -160,7 +165,11 @@ describe('fertilizerEnrichmentRecognitionFormSerializationCore', () => {
       packageSizeUnit: 'kg',
       form: 'unknown',
       gtin: null,
-      textFragments: [],
+      textFragments: buildFullEnglishMatrixLabelFragments({
+      nitrogen: 12,
+      phosphate: 4,
+      potash: 18,
+    }),
       fieldConfidence: { form: 0.2, productDescriptor: 0.9 },
     })
 
@@ -265,7 +274,11 @@ describe('fertilizerEnrichmentRecognitionFormSerializationCore', () => {
       packageSizeUnit: 'kg',
       form: 'unknown',
       gtin: null,
-      textFragments: [],
+      textFragments: buildFullEnglishMatrixLabelFragments({
+      nitrogen: 12,
+      phosphate: 4,
+      potash: 18,
+    }),
       fieldConfidence: { form: 0.1, productDescriptor: 0.8 },
     })
 

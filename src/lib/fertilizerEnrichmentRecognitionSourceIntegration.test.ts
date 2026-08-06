@@ -9,6 +9,7 @@ import { orchestrateFertilizerEnrichment } from './fertilizerEnrichmentOrchestra
 import { createFertilizerEnrichmentProductionAdapterDependencies } from './fertilizerEnrichmentProductionAdapterCore'
 import { validateFertilizerManufacturerDocumentSource } from './fertilizerManufacturerDocumentSourceValidatorCore'
 import { recognitionFromImageAnalysis } from './productRecognizeIdentityCore'
+import { GENERIC_LABEL_COMPOSITION_TEXT_FRAGMENTS } from './fertilizerCaptureNutrientTestFixtures'
 
 const FIXED_NOW = '2026-07-29T10:00:00.000Z'
 const MANUFACTURER_URL = 'https://www.rasendoktor.de/duenger/stress-manager'
@@ -33,7 +34,7 @@ function stressManagerRecognitionResult(): ProductRecognizeResult {
       packageSizeUnit: 'kg',
       form: 'granular',
       gtin: null,
-      textFragments: ['Rasendoktor Stress-Manager', 'NPK 0-0-30'],
+      textFragments: [...GENERIC_LABEL_COMPOSITION_TEXT_FRAGMENTS, 'Rasendoktor Stress-Manager'],
       fieldConfidence: {
         brand: 0.95,
         productName: 0.94,

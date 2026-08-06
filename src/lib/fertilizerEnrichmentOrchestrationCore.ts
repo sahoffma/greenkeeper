@@ -36,6 +36,8 @@ import {
   hasSufficientStructuredDataForPipeline,
   isFastPathEligible,
 } from './fertilizerSourceAdapterMergeCore'
+import { CAPTURE_RECOGNITION_PACKAGING_REFERENCE_ID } from './fertilizerCaptureRecognitionPackagingCore'
+import { buildFertilizerCaptureNutrientPipelineDiagnostics } from './fertilizerCaptureNutrientPipelineDiagnosticsCore'
 
 export const FERTILIZER_SOURCE_ADAPTER_EXECUTION_ORDER: readonly FertilizerSourceAdapterType[] = [
   'existing_product_profile',
@@ -289,6 +291,36 @@ function isSuccessfulAdapterResult(result: FertilizerSourceAdapterResult): boole
 
 function isFailedAdapterResult(result: FertilizerSourceAdapterResult): boolean {
   return result.status === 'failed' || result.status === 'unavailable' || result.status === 'invalid_source'
+}
+
+function attachNutrientPipelineDiagnostics(
+  base: FertilizerEnrichmentOrchestrationResultBase,
+  context: {
+    input: FertilizerEnrichmentOrchestrationInput
+    adapterResults: FertilizerSourceAdapterResult[]
+    rawDeclarationInput?: RawFertilizerDeclarationInput | null
+    pipelineResult?: FertilizerEnrichmentPipelineResult | null
+  },
+): FertilizerEnrichmentOrchestrationResultBase {
+  return {
+    ...base,
+    nutrientPipelineDiagnostics: buildFertilizerCaptureNutrientPipelineDiagnostics({
+      visionAnalysis: context.input.captureRecognitionPackagingBasis?.npk
+        ? {
+            nitrogen: context.input.captureRecognitionPackagingBasis.npk.nitrogen,
+            phosphate: context.input.captureRecognitionPackagingBasis.npk.phosphate,
+            potash: context.input.captureRecognitionPackagingBasis.npk.potash,
+          }
+        : null,
+      packagingDeclarationText:
+        context.input.captureInlineSourceTexts?.[CAPTURE_RECOGNITION_PACKAGING_REFERENCE_ID] ??
+        null,
+      adapterResults: context.adapterResults,
+      rawDeclarationInput: context.rawDeclarationInput ?? null,
+      normalizedNutrientMatrix:
+        context.pipelineResult?.normalizationResult.enrichmentResult.nutrientMatrix ?? null,
+    }),
+  }
 }
 
 export function mapFertilizerPipelineResultToOrchestrationResult(
@@ -761,7 +793,12 @@ export async function orchestrateFertilizerEnrichment(
     }
 
     return mapFertilizerPipelineResultToOrchestrationResult(
-      resultBase,
+      attachNutrientPipelineDiagnostics(resultBase, {
+        input,
+        adapterResults,
+        rawDeclarationInput,
+        pipelineResult,
+      }),
       pipelineResult,
       rawDeclarationInput,
     )

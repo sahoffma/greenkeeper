@@ -1,3 +1,4 @@
+import type { FertilizerCaptureNutrientPipelineDiagnostics } from './fertilizerCaptureNutrientPipelineDiagnostics'
 import type { FertilizerDeclarationNormalizationResult } from './fertilizerDeclarationNormalization'
 import type { RawFertilizerDeclarationInput } from './fertilizerDeclarationNormalization'
 import type {
@@ -455,6 +456,7 @@ export interface FertilizerEnrichmentOrchestrationResultBase {
   technicalErrors: FertilizerSourceAdapterTechnicalError[]
   rawDeclarationInput?: RawFertilizerDeclarationInput | null
   partialAdapterResults?: FertilizerSourceAdapterResult[]
+  nutrientPipelineDiagnostics?: FertilizerCaptureNutrientPipelineDiagnostics | null
 }
 
 export type FertilizerEnrichmentRecognizedResult = FertilizerEnrichmentOrchestrationResultBase & {

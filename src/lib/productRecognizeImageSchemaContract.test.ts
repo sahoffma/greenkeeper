@@ -6,6 +6,7 @@ import {
   productRecognizeImageSchema,
 } from './productRecognizeImageCore'
 import { buildRecognitionPackageParseDiagnostics } from './productRecognizeImagePackageDiagnosticsCore'
+import { GENERIC_LABEL_COMPOSITION_TEXT_FRAGMENTS } from './fertilizerCaptureNutrientTestFixtures'
 import { recognitionFromImageAnalysis } from './productRecognizeIdentityCore'
 import {
   acceptRecognitionResult,
@@ -188,6 +189,7 @@ describe('productRecognizeImageSchema contract', () => {
       packageSizeValue: 5,
       packageSizeUnit: 'kg',
       fieldConfidence: { ...buildEmptyFieldConfidenceRecord(), packageSize: 0.92, npk: 0.9 },
+      textFragments: [...GENERIC_LABEL_COMPOSITION_TEXT_FRAGMENTS],
     })
 
     const { analysis, diagnostics, draft, input, readiness } = evaluateContractEndToEnd(record)

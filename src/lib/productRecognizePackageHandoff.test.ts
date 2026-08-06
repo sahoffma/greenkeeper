@@ -19,6 +19,7 @@ import {
   parseUserProvidedDeclarationText,
 } from './fertilizerUserProvidedSourceAdapterCore'
 import { buildRawFertilizerDeclarationInput } from './fertilizerSourceAdapterMergeCore'
+import { GENERIC_LABEL_COMPOSITION_TEXT_FRAGMENTS } from './fertilizerCaptureNutrientTestFixtures'
 import type { ProductRecognizeCatalogItem, ProductRecognizeResult } from '../types/productRecognize'
 import {
   buildPackageSizeHandoffDiagnostics,
@@ -46,7 +47,7 @@ function buildOpenAiVisionRecord(): Record<string, unknown> {
     packageSizeUnit: 'kg',
     form: null,
     gtin: null,
-    textFragments: [],
+    textFragments: [...GENERIC_LABEL_COMPOSITION_TEXT_FRAGMENTS],
     fieldConfidence: {
       ...buildEmptyFieldConfidenceRecord(),
       brand: 0.95,

@@ -303,7 +303,12 @@ export function recognitionFromImageAnalysis(
     }
   }
 
-  return applyImageAnalysisPackageSizeToRecognition(recognition, sanitized)
+  return {
+    ...applyImageAnalysisPackageSizeToRecognition(recognition, sanitized),
+    labelTextFragments: sanitized.textFragments.filter(
+      (fragment): fragment is string => typeof fragment === 'string' && fragment.trim().length > 0,
+    ),
+  }
 }
 
 export function applyImageAnalysisPackageSizeToRecognition(

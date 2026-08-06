@@ -15,9 +15,9 @@ import {
   parseUserProvidedDeclarationText,
 } from './fertilizerUserProvidedSourceAdapterCore'
 import { buildRawFertilizerDeclarationInput } from './fertilizerSourceAdapterMergeCore'
+import { buildFullEnglishMatrixLabelFragments } from './fertilizerCaptureNutrientTestFixtures'
 import { recognitionFromImageAnalysis } from './productRecognizeIdentityCore'
 import { parseImageAnalysisResponse } from './productRecognizeImageCore'
-import { FERTILIZER_NUTRIENT_MATRIX_KEYS } from '../types/fertilizerDeclarationNormalization'
 
 const FIXED_NOW = '2026-07-29T10:00:00.000Z'
 const FIXED_RUN_ID = 'recognition-basis-run'
@@ -100,7 +100,11 @@ function genericSecondFertilizerRecognition(): ProductRecognizeResult {
       packageSizeUnit: 'l',
       form: 'liquid',
       gtin: null,
-      textFragments: [],
+      textFragments: buildFullEnglishMatrixLabelFragments({
+        nitrogen: 12,
+        phosphate: 4,
+        potash: 18,
+      }),
       fieldConfidence: {},
     }),
     catalogMatch: { matched: false, productId: null, matchType: 'none', confidence: 0 },
@@ -217,14 +221,13 @@ describe('fertilizerRecognitionEnrichmentBasisCore', () => {
 })
 
 describe('fertilizerSourceAdapterMergeCore recognition packaging basis', () => {
-  it('preserves manufacturer, product form, NPK 0-0-30 and zero-fills matrix when manufacturer adapter is no_match', () => {
+  it('preserves manufacturer, product form and NPK 0-0-30 when manufacturer adapter is no_match', () => {
     const input = buildCaptureInput(stressManagerRecognition())
     const result = evaluateCaptureRecognitionMerge(input)
 
     expect(input.identity.manufacturer).toBe('Rasendoktor')
-    expect(result.readinessResult.status).toBe('ready')
-    expect(result.readinessResult.missingRequirements).not.toContain('basis.product_form')
     expect(result.readinessInput.productForm).toBe('granular')
+    expect(result.readinessInput.npk.potash).toBe(30)
   })
 
   it('maps live-like Stress-Manager form label Rasendünger / granular to intake_ready', () => {
@@ -255,8 +258,9 @@ describe('fertilizerSourceAdapterMergeCore recognition packaging basis', () => {
     expect(input.captureRecognitionPackagingBasis?.recognitionFormLabel).toBe('Rasendünger / granular')
     const result = evaluateCaptureRecognitionMerge(input)
 
-    expect(result.readinessResult.status).toBe('ready')
+    expect(result.readinessResult.status).toBe('needs_input')
     expect(result.readinessInput.productForm).toBe('granular')
+    expect(result.readinessResult.missingRequirements).toContain('ingredients.declaration_source')
     expect(result.readinessResult.missingRequirements).not.toContain('basis.product_form')
   })
 
@@ -338,14 +342,24 @@ describe('fertilizerSourceAdapterMergeCore recognition packaging basis', () => {
     expect(result.readinessResult.suggestedInputActions).toContain('confirm_product_form')
   })
 
-  it('keeps full matrix readiness for the primary no_match + packaging success path', () => {
+  it('does not zero-fill unknown nutrients when packaging only provides NPK synthesis', () => {
     const result = evaluateCaptureRecognitionMerge(buildCaptureInput(stressManagerRecognition()))
 
-    expect(result.readinessResult.missingRequirements).not.toContain('ingredients.matrix')
-    for (const key of FERTILIZER_NUTRIENT_MATRIX_KEYS) {
-      expect(result.readinessInput.nutrientMatrix[key]?.value).toBe(
-        key === 'potash' ? 30 : 0,
-      )
-    }
+    expect(result.readinessInput.nutrientMatrix.potash?.value).toBe(30)
+    expect(result.readinessInput.nutrientMatrix.iron?.value).not.toBe(0)
+    expect(result.readinessInput.nutrientMatrix.iron?.value ?? null).toBeNull()
+  })
+
+  it('keeps positive trace nutrients from label OCR through merge and normalization', () => {
+    const recognition = stressManagerRecognition()
+    recognition.recognition.labelTextFragments = [
+      'NPK 0-0-30',
+      'Zusammensetzung: 30 % Kaliumoxid (K2O), 10,2 % Schwefel (S), 3,0 % Eisen (Fe)',
+    ]
+    const result = evaluateCaptureRecognitionMerge(buildCaptureInput(recognition))
+
+    expect(result.readinessInput.nutrientMatrix.iron?.value).toBe(3)
+    expect(result.readinessInput.nutrientMatrix.sulfur?.value).toBe(10.2)
+    expect(result.readinessInput.nutrientMatrix.potash?.value).toBe(30)
   })
 })

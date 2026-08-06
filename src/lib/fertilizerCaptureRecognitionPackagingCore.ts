@@ -1,4 +1,5 @@
 import type { FertilizerEnrichmentOrchestrationInput } from '../types/fertilizerEnrichmentOrchestration'
+import type { ProductRecognizeRecognition } from '../types/productRecognize'
 import type { FertilizerCaptureDraft } from './fertilizerCaptureCore'
 import {
   buildCaptureRecognitionPackagingBasis,
@@ -36,6 +37,26 @@ function resolveNpkLabel(input: {
   const raw = normalizedText(input.rawLabel)
   if (raw) {
     return raw.replace(/^npk\s*/i, '').trim() || raw
+  }
+
+  return null
+}
+
+function resolveRecognitionTextFragments(recognition: ProductRecognizeRecognition): string[] {
+  return (recognition.labelTextFragments ?? []).filter(
+    (fragment): fragment is string => typeof fragment === 'string' && fragment.trim().length > 0,
+  )
+}
+
+function resolvePackagingDeclarationCompletionMarker(fragments: string[]): string | null {
+  for (const fragment of fragments) {
+    if (/declaration section complete/i.test(fragment)) {
+      return 'Declaration section complete'
+    }
+
+    if (/deklaration\s+(?:vollständig|abgeschlossen)/i.test(fragment)) {
+      return 'Declaration section complete'
+    }
   }
 
   return null
@@ -105,7 +126,17 @@ export function buildCaptureRecognitionPackagingDeclarationText(
       }
     }
 
-    lines.push('Declaration section complete')
+    const labelFragments = resolveRecognitionTextFragments(recognition)
+    if (labelFragments.length > 0) {
+      lines.push('', 'Packaging label text:')
+      lines.push(...labelFragments)
+    }
+
+    const completionMarker = resolvePackagingDeclarationCompletionMarker(labelFragments)
+    if (completionMarker) {
+      lines.push(completionMarker)
+    }
+
     return lines.join('\n')
   }
 
@@ -146,7 +177,6 @@ export function buildCaptureRecognitionPackagingDeclarationText(
   if (form) {
     lines.push(`Form: ${form}`)
   }
-  lines.push('Declaration section complete')
   return lines.join('\n')
 }
 

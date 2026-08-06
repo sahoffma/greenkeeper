@@ -233,6 +233,18 @@ function applyRecognitionPackagingMatrixCompletion(
     }
   }
 
+  const hasDeclaredAdditionalNutrient = FERTILIZER_NUTRIENT_MATRIX_KEYS.some((key) => {
+    if (key === 'nitrogen' || key === 'phosphate' || key === 'potash') {
+      return false
+    }
+
+    return completed[key]?.status === 'declared'
+  })
+
+  if (!hasDeclaredAdditionalNutrient) {
+    return completed
+  }
+
   for (const key of FERTILIZER_NUTRIENT_MATRIX_KEYS) {
     const current = completed[key]
     if (current?.status === 'declared' || current?.status === 'not_declared') {

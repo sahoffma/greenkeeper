@@ -76,22 +76,82 @@ const NUTRIENT_LINE_PATTERNS: Array<{
   defaultBasis: string | null
 }> = [
   { key: 'nitrogen', pattern: /nitrogen\s*\(N\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'N' },
+  { key: 'nitrogen', pattern: /stickstoff\s*\(N\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'N' },
   { key: 'phosphate', pattern: /phosphate\s*\(P2O5\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'P2O5' },
+  { key: 'phosphate', pattern: /phosphat\s*\(P2O5\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'P2O5' },
   { key: 'potash', pattern: /potash\s*\(K2O\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'K2O' },
+  { key: 'potash', pattern: /kaliumoxid\s*\(K2O\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'K2O' },
+  { key: 'potash', pattern: /([\d.,]+)\s*%\s*kaliumoxid\s*\(K2O\)/i, defaultBasis: 'K2O' },
   { key: 'magnesium', pattern: /magnesium\s*\(MgO\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'MgO' },
+  { key: 'magnesium', pattern: /([\d.,]+)\s*%\s*magnesium\s*\(MgO\)/i, defaultBasis: 'MgO' },
   { key: 'calcium', pattern: /calcium\s*\(CaO\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'CaO' },
+  { key: 'calcium', pattern: /kalzium\s*\(CaO\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'CaO' },
   { key: 'sulfur', pattern: /sulfur\s*\(SO3\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'SO3' },
+  { key: 'sulfur', pattern: /schwefel\s*\(S\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'S' },
+  { key: 'sulfur', pattern: /schwefel\s*\(SO3\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'SO3' },
+  { key: 'sulfur', pattern: /([\d.,]+)\s*%\s*schwefel\s*\(S\)/i, defaultBasis: 'S' },
   { key: 'iron', pattern: /iron\s*\(Fe\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'Fe' },
+  { key: 'iron', pattern: /eisen\s*\(Fe\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'Fe' },
+  { key: 'iron', pattern: /([\d.,]+)\s*%\s*eisen\s*\(Fe\)/i, defaultBasis: 'Fe' },
   { key: 'manganese', pattern: /manganese\s*\(Mn\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'Mn' },
+  { key: 'manganese', pattern: /mangan\s*\(Mn\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'Mn' },
+  { key: 'manganese', pattern: /([\d.,]+)\s*%\s*mangan\s*\(Mn\)/i, defaultBasis: 'Mn' },
   { key: 'copper', pattern: /copper\s*\(Cu\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'Cu' },
+  { key: 'copper', pattern: /kupfer\s*\(Cu\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'Cu' },
+  { key: 'copper', pattern: /([\d.,]+)\s*%\s*kupfer\s*\(Cu\)/i, defaultBasis: 'Cu' },
   { key: 'zinc', pattern: /zinc\s*\(Zn\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'Zn' },
+  { key: 'zinc', pattern: /zink\s*\(Zn\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'Zn' },
+  { key: 'zinc', pattern: /([\d.,]+)\s*%\s*zink\s*\(Zn\)/i, defaultBasis: 'Zn' },
   { key: 'boron', pattern: /boron\s*\(B\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'B' },
+  { key: 'boron', pattern: /bor\s*\(B\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'B' },
   { key: 'molybdenum', pattern: /molybdenum\s*\(Mo\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'Mo' },
+  { key: 'molybdenum', pattern: /molybd[aä]n\s*\(Mo\)\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'Mo' },
   { key: 'nitrateNitrogen', pattern: /nitrate\s*nitrogen\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'N' },
   { key: 'ammoniumNitrogen', pattern: /ammonium\s*nitrogen\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'N' },
   { key: 'ureaNitrogen', pattern: /urea\s*nitrogen\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'N' },
   { key: 'organicNitrogen', pattern: /organic\s*nitrogen\s*[:=]?\s*([\d.,]+)\s*%/i, defaultBasis: 'N' },
 ]
+
+function extractNutrientsFromText(text: string): FertilizerDeclarationTextParsedNutrient[] {
+  const nutrients: FertilizerDeclarationTextParsedNutrient[] = []
+  const seenKeys = new Set<FertilizerNutrientMatrixKey>()
+
+  for (const entry of NUTRIENT_LINE_PATTERNS) {
+    if (seenKeys.has(entry.key)) {
+      continue
+    }
+
+    const parsed = extractLabeledPercent(text, entry.pattern)
+    if (!parsed) {
+      continue
+    }
+
+    seenKeys.add(entry.key)
+    nutrients.push({
+      key: entry.key,
+      value: parsed.value,
+      declarationBasis: entry.defaultBasis,
+      evidenceExcerpt: parsed.excerpt,
+      fieldPath: `nutrientMatrix.${entry.key}`,
+    })
+  }
+
+  return nutrients
+}
+
+function hasExplicitDeclarationCompletionMarker(text: string): boolean {
+  return (
+    /declaration section complete/i.test(text) ||
+    /deklaration\s+(?:vollständig|abgeschlossen)/i.test(text)
+  )
+}
+
+function hasCompositionDeclarationBlock(text: string, nutrientCount: number): boolean {
+  return (
+    /\b(zusammensetzung|inhaltsstoffe|nährstoffe|naehrstoffe)\s*:/i.test(text) &&
+    nutrientCount >= 3
+  )
+}
 
 function extractNpk(text: string): FertilizerDeclarationTextParseResult['npk'] {
   const match =
@@ -218,29 +278,18 @@ export function parseFertilizerDeclarationText(text: string): FertilizerDeclarat
 
   const extractedIdentity = extractDeclarationDocumentIdentity(trimmed)
   const npk = extractNpk(trimmed)
-  const nutrients: FertilizerDeclarationTextParsedNutrient[] = []
-
-  for (const entry of NUTRIENT_LINE_PATTERNS) {
-    const parsed = extractLabeledPercent(trimmed, entry.pattern)
-    if (!parsed) {
-      continue
-    }
-
-    nutrients.push({
-      key: entry.key,
-      value: parsed.value,
-      declarationBasis: entry.defaultBasis,
-      evidenceExcerpt: parsed.excerpt,
-      fieldPath: `nutrientMatrix.${entry.key}`,
-    })
-  }
+  const nutrients = extractNutrientsFromText(trimmed)
 
   const declarationSectionLocated =
-    /nutrient declaration/i.test(trimmed) || /npk/i.test(trimmed) || nutrients.length > 0
+    /nutrient declaration/i.test(trimmed) ||
+    /npk/i.test(trimmed) ||
+    /\b(zusammensetzung|inhaltsstoffe|nährstoffe|naehrstoffe)\s*:/i.test(trimmed) ||
+    nutrients.length > 0
   const declarationSectionFullyCaptured =
     declarationSectionLocated &&
-    /declaration section complete/i.test(trimmed) &&
-    !/declaration section incomplete/i.test(trimmed)
+    !/declaration section incomplete/i.test(trimmed) &&
+    (hasExplicitDeclarationCompletionMarker(trimmed) ||
+      hasCompositionDeclarationBlock(trimmed, nutrients.length))
   const documentFullyProcessed = !/document truncated/i.test(trimmed)
 
   return {

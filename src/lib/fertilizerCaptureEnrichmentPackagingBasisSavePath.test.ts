@@ -26,6 +26,7 @@ import {
   parseUserProvidedDeclarationText,
 } from './fertilizerUserProvidedSourceAdapterCore'
 import { buildRawFertilizerDeclarationInput } from './fertilizerSourceAdapterMergeCore'
+import { GENERIC_LABEL_COMPOSITION_TEXT_FRAGMENTS } from './fertilizerCaptureNutrientTestFixtures'
 
 const FIXED_NOW = '2026-07-29T10:00:00.000Z'
 const FIXED_RUN_ID = 'capture-save-packaging-basis-run'
@@ -79,7 +80,7 @@ function stressManagerNoForm(): ProductRecognizeResult {
       packageSizeUnit: 'kg',
       form: null,
       gtin: null,
-      textFragments: [],
+      textFragments: [...GENERIC_LABEL_COMPOSITION_TEXT_FRAGMENTS],
       fieldConfidence: { brand: 0.95, productLine: 0.9, productName: 0.92, npk: 0.93, packageSize: 0.9 },
     }),
     catalogMatch: { matched: false, productId: null, matchType: 'none', confidence: 0 },
@@ -117,7 +118,7 @@ function buildRecognition(overrides: {
       packageSizeUnit: overrides.packageSizeUnit,
       form: overrides.form ?? 'unknown',
       gtin: null,
-      textFragments: [],
+      textFragments: [...GENERIC_LABEL_COMPOSITION_TEXT_FRAGMENTS],
       fieldConfidence: { packageSize: 0.95 },
     }),
     catalogMatch: { matched: false, productId: null, matchType: 'none', confidence: 0 },
@@ -220,7 +221,7 @@ describe('fertilizerCaptureEnrichmentPackagingBasisSavePath', () => {
       packageSizeUnit: 'kg',
       form: null,
       gtin: null,
-      textFragments: [],
+      textFragments: [...GENERIC_LABEL_COMPOSITION_TEXT_FRAGMENTS],
       fieldConfidence: { brand: 0.95, productLine: 0.9, productName: 0.92, npk: 0.93, packageSize: 0.9 },
     })
 
@@ -264,7 +265,7 @@ describe('fertilizerCaptureEnrichmentPackagingBasisSavePath', () => {
       packageSizeUnit: null,
       form: null,
       gtin: null,
-      textFragments: ['Rasendünger', 'Nettoinhalt 5 kg', '0-0-30'],
+      textFragments: ['Rasendünger', 'Nettoinhalt 5 kg', '0-0-30', ...GENERIC_LABEL_COMPOSITION_TEXT_FRAGMENTS],
       fieldConfidence: { brand: 0.95, productLine: 0.9, productName: 0.92, npk: 0.93 },
     })
 
@@ -303,7 +304,7 @@ describe('fertilizerCaptureEnrichmentPackagingBasisSavePath', () => {
       packageSizeUnit: null,
       form: null,
       gtin: null,
-      textFragments: [],
+      textFragments: [...GENERIC_LABEL_COMPOSITION_TEXT_FRAGMENTS],
       fieldConfidence: { brand: 0.95, productName: 0.92, npk: 0.93 },
     })
 

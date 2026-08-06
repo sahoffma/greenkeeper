@@ -16,6 +16,7 @@ import {
   parseUserProvidedDeclarationText,
 } from './fertilizerUserProvidedSourceAdapterCore'
 import { buildRawFertilizerDeclarationInput } from './fertilizerSourceAdapterMergeCore'
+import { buildFullEnglishMatrixLabelFragments } from './fertilizerCaptureNutrientTestFixtures'
 
 const FIXED_NOW = '2026-07-29T10:00:00.000Z'
 const FIXED_RUN_ID = 'package-unit-form-run'
@@ -46,7 +47,11 @@ function buildRecognition(input: {
       packageSizeUnit: input.packageSizeUnit,
       form: input.form ?? 'unknown',
       gtin: null,
-      textFragments: [],
+      textFragments: buildFullEnglishMatrixLabelFragments({
+        nitrogen: 12,
+        phosphate: 4,
+        potash: 18,
+      }),
       fieldConfidence: { form: 0.1, packageSize: 0.95 },
     }),
     catalogMatch: { matched: false, productId: null, matchType: 'none', confidence: 0 },

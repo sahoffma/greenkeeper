@@ -104,4 +104,39 @@ describe('fertilizerCaptureRecognitionPackagingCore', () => {
 
     expect(input.captureInlineSourceTexts?.[CAPTURE_RECOGNITION_PACKAGING_REFERENCE_ID]).toBeTruthy()
   })
+
+  it('includes label OCR fragments without synthetic completion marker', () => {
+    let draft = createInitialCaptureDraft()
+    draft = acceptRecognitionResult(
+      draft,
+      {
+        ...mockRecognitionResult(),
+        recognition: recognitionFromImageAnalysis({
+          brand: 'Rasendoktor',
+          productLine: 'Professional',
+          productName: 'Frühjahr',
+          variant: null,
+          productDescriptor: null,
+          manufacturer: null,
+          npkLabel: '14-28-10',
+          nitrogen: 14,
+          phosphate: 28,
+          potash: 10,
+          packageSizeValue: 25,
+          packageSizeUnit: 'kg',
+          form: 'granular',
+          gtin: null,
+          textFragments: ['Eisen (Fe): 2%', 'Declaration section complete'],
+          fieldConfidence: {},
+        }),
+      },
+      {
+        stockStatus: { status: 'first_time', currentBalance: 0, unit: 'kg' },
+      },
+    )
+
+    const text = buildCaptureRecognitionPackagingDeclarationText(draft)
+    expect(text).toContain('Packaging label text:')
+    expect(text).toContain('Declaration section complete')
+  })
 })

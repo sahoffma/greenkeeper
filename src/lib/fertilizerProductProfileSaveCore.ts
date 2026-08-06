@@ -115,7 +115,7 @@ function parseProjectionDecimal(value: string): number {
   return Number(value)
 }
 
-function mapEnrichmentNutrientMatrixToSaved(
+export function mapEnrichmentNutrientMatrixToSaved(
   matrix: FertilizerEnrichmentNutrientMatrix,
 ): FertilizerNutrientMatrix {
   const saved: FertilizerNutrientMatrix = {}
