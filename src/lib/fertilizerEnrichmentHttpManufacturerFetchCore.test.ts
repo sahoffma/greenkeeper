@@ -88,7 +88,27 @@ describe('fertilizerEnrichmentHttpManufacturerFetchCore', () => {
     }
   })
 
-  it('rejects PDF responses as unsupported_source', async () => {
+  it('extracts readable text from PDF responses when possible', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        mockFetchResponse({
+          headers: { 'content-type': 'application/pdf' },
+          body: '%PDF-1.4\nstream\n(Manufacturer: Example\nProduct: Granular Feed)\nendstream',
+        }),
+      ),
+    )
+
+    const result = await fetchExternalManufacturerDocument(BASE_URL)
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.contentType).toBe('application/pdf')
+      expect(result.text).toContain('Granular Feed')
+    }
+  })
+
+  it('rejects PDF responses without extractable text', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>

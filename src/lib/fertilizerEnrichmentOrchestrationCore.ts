@@ -38,6 +38,7 @@ import {
 } from './fertilizerSourceAdapterMergeCore'
 import { CAPTURE_RECOGNITION_PACKAGING_REFERENCE_ID } from './fertilizerCaptureRecognitionPackagingCore'
 import { buildFertilizerCaptureNutrientPipelineDiagnostics } from './fertilizerCaptureNutrientPipelineDiagnosticsCore'
+import { readManufacturerResearchDiagnostics } from './fertilizerManufacturerResearchDiagnosticsCore'
 
 export const FERTILIZER_SOURCE_ADAPTER_EXECUTION_ORDER: readonly FertilizerSourceAdapterType[] = [
   'existing_product_profile',
@@ -293,6 +294,37 @@ function isFailedAdapterResult(result: FertilizerSourceAdapterResult): boolean {
   return result.status === 'failed' || result.status === 'unavailable' || result.status === 'invalid_source'
 }
 
+function attachResearchDiagnostics(
+  base: FertilizerEnrichmentOrchestrationResultBase,
+  input: FertilizerEnrichmentOrchestrationInput,
+): FertilizerEnrichmentOrchestrationResultBase {
+  return {
+    ...base,
+    manufacturerResearchDiagnostics:
+      readManufacturerResearchDiagnostics(input) ?? base.manufacturerResearchDiagnostics ?? null,
+  }
+}
+
+function resolveRecommendedNextAction(
+  suggestedActions: FertilizerSuggestedInputAction[],
+  researchDiagnostics: ReturnType<typeof readManufacturerResearchDiagnostics>,
+): FertilizerSuggestedInputAction {
+  const filtered = suggestedActions.filter((action) => action !== 'upload_back_photo')
+  if (filtered.length > 0) {
+    return filtered[0]
+  }
+
+  if (researchDiagnostics?.fallbackRecommendation === 'provide_document') {
+    return 'provide_product_document'
+  }
+
+  if (researchDiagnostics?.fallbackRecommendation === 'optional_back_photo') {
+    return 'optionally_upload_back_photo'
+  }
+
+  return suggestedActions[0] ?? 'provide_product_document'
+}
+
 function attachNutrientPipelineDiagnostics(
   base: FertilizerEnrichmentOrchestrationResultBase,
   context: {
@@ -344,14 +376,19 @@ export function mapFertilizerPipelineResultToOrchestrationResult(
   }
 
   if (pipelineResult.readinessResult.status === 'needs_input') {
-    const [recommendedNextAction, ...alternativeNextActions] =
-      pipelineResult.readinessResult.suggestedInputActions
+    const suggestedActions = pipelineResult.readinessResult.suggestedInputActions
+    const recommendedNextAction = resolveRecommendedNextAction(
+      suggestedActions,
+      base.manufacturerResearchDiagnostics ?? null,
+    )
+    const alternativeNextActions = suggestedActions.filter(
+      (action) => action !== recommendedNextAction,
+    )
 
     return {
       ...base,
       status: 'needs_input',
-      recommendedNextAction:
-        recommendedNextAction ?? ('upload_back_photo' satisfies FertilizerSuggestedInputAction),
+      recommendedNextAction,
       alternativeNextActions,
       pipelineResult,
       rawDeclarationInput,
@@ -439,7 +476,7 @@ function buildNoViableSourceResult(
     status: 'failed',
     failureReason: 'no_viable_source',
     attemptedAdapters: attemptSummaries,
-    recommendedNextAction: 'upload_back_photo',
+    recommendedNextAction: 'provide_product_document',
   } as FertilizerEnrichmentOrchestrationResult
 }
 
@@ -775,16 +812,21 @@ export async function orchestrateFertilizerEnrichment(
     return buildTimedOutResult(resultBase, timeoutState, rawDeclarationInput, adapterResults)
   }
 
+  const researchDiagnostics = readManufacturerResearchDiagnostics(input)
+  const enrichedResultBase = attachResearchDiagnostics(resultBase, input)
+
   try {
     const pipelineResult = runPipelineSafely(evaluatePipeline, rawDeclarationInput, {
       normalizedAt,
       normalizationRunId,
       evaluatedAt,
+      automaticResearchAttempted: researchDiagnostics?.automaticResearchAttempted === true,
+      researchDiagnostics,
     })
 
     if (timedOutDuringRun) {
       return buildTimedOutResult(
-        resultBase,
+        enrichedResultBase,
         timeoutState,
         rawDeclarationInput,
         adapterResults,
@@ -793,7 +835,7 @@ export async function orchestrateFertilizerEnrichment(
     }
 
     return mapFertilizerPipelineResultToOrchestrationResult(
-      attachNutrientPipelineDiagnostics(resultBase, {
+      attachNutrientPipelineDiagnostics(enrichedResultBase, {
         input,
         adapterResults,
         rawDeclarationInput,
@@ -803,7 +845,7 @@ export async function orchestrateFertilizerEnrichment(
       rawDeclarationInput,
     )
   } catch (error) {
-    return buildPipelineFailureResult(resultBase, error, rawDeclarationInput, adapterResults)
+    return buildPipelineFailureResult(enrichedResultBase, error, rawDeclarationInput, adapterResults)
   }
 }
 

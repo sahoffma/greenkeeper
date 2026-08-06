@@ -482,9 +482,10 @@ describe('fertilizerEnrichmentStoredSourceResolverCore', () => {
       createFertilizerEnrichmentStoredSourceAdapterDependencies(storage),
     )
 
-    expect(dependencies.adapters).toHaveLength(3)
+    expect(dependencies.adapters).toHaveLength(4)
     expect(dependencies.adapters.map((adapter) => adapter.adapterType)).toEqual([
       FERTILIZER_MANUFACTURER_PRODUCT_DOCUMENT_ADAPTER_TYPE,
+      'manufacturer_product_page',
       FERTILIZER_USER_DOCUMENT_ADAPTER_TYPE,
       FERTILIZER_PACKAGING_SOURCE_ADAPTER_TYPE,
     ])

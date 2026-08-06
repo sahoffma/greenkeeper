@@ -172,7 +172,7 @@ describe('evaluateFertilizerReadiness', () => {
       expect(result.missingRequirements).toContain('ingredients.declaration_source')
       expect(result.missingRequirements).not.toContain('ingredients.matrix')
       expect(result.suggestedInputActions).toEqual(
-        expect.arrayContaining(['upload_back_photo', 'upload_product_document']),
+        expect.arrayContaining(['provide_product_document']),
       )
     })
   })

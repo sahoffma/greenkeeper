@@ -96,7 +96,13 @@ describe('fertilizerEnrichmentAdapterCompositionCore', () => {
       resolveUserDocumentSource: expect.any(Function),
       resolvePackagingSource: expect.any(Function),
     })
-    expect(adapterSpy.mock.results[0]?.value.adapters).toHaveLength(3)
+    expect(adapterSpy.mock.results[0]?.value.adapters).toHaveLength(4)
+    expect(adapterSpy.mock.results[0]?.value.adapters.map((adapter: { adapterType: string }) => adapter.adapterType)).toEqual([
+      'manufacturer_product_document',
+      'manufacturer_product_page',
+      'user_document',
+      'packaging',
+    ])
     adapterSpy.mockRestore()
   })
 })

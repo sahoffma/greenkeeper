@@ -38,6 +38,8 @@ export function evaluateRawFertilizerDeclaration(
   const readinessInput = buildFertilizerReadinessInput(normalizationResult.enrichmentResult)
   const readinessResult = evaluateFertilizerReadiness(readinessInput, {
     evaluatedAt: options.evaluatedAt,
+    automaticResearchAttempted: options.automaticResearchAttempted,
+    researchDiagnostics: options.researchDiagnostics,
   })
 
   return {

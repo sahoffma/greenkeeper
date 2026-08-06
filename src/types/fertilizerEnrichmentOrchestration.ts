@@ -1,4 +1,5 @@
 import type { FertilizerCaptureNutrientPipelineDiagnostics } from './fertilizerCaptureNutrientPipelineDiagnostics'
+import type { FertilizerManufacturerResearchDiagnostics } from './fertilizerManufacturerResearchDiagnostics'
 import type { FertilizerDeclarationNormalizationResult } from './fertilizerDeclarationNormalization'
 import type { RawFertilizerDeclarationInput } from './fertilizerDeclarationNormalization'
 import type {
@@ -435,6 +436,8 @@ export interface FertilizerEnrichmentOrchestrationInput {
   captureEnrichmentInputBuilderPath?: 'canonical_capture' | 'legacy_capture' | 'unknown'
   /** Diagnostic-only capture draft package field presence at save time. */
   captureDraftPackageDiagnostics?: CaptureDraftPackageDiagnostics
+  /** Populated during manufacturer page research — diagnostic only, no raw URLs or text. */
+  manufacturerResearchDiagnostics?: FertilizerManufacturerResearchDiagnostics | null
   priorOrchestrationRunId?: string | null
   idempotencyKey?: string | null
   orchestrationRunId?: string | null
@@ -457,6 +460,7 @@ export interface FertilizerEnrichmentOrchestrationResultBase {
   rawDeclarationInput?: RawFertilizerDeclarationInput | null
   partialAdapterResults?: FertilizerSourceAdapterResult[]
   nutrientPipelineDiagnostics?: FertilizerCaptureNutrientPipelineDiagnostics | null
+  manufacturerResearchDiagnostics?: FertilizerManufacturerResearchDiagnostics | null
 }
 
 export type FertilizerEnrichmentRecognizedResult = FertilizerEnrichmentOrchestrationResultBase & {

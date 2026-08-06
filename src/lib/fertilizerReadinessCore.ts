@@ -13,6 +13,7 @@ import {
   type FertilizerReadinessStatus,
   type FertilizerSuggestedInputAction,
 } from '../types/fertilizerReadiness'
+import type { FertilizerManufacturerResearchDiagnostics } from '../types/fertilizerManufacturerResearchDiagnostics'
 import { isValidNutrientNumericValue } from './fertilizerNutrientValueCore'
 
 export {
@@ -105,8 +106,13 @@ function dedupeBlockingIssues(issues: FertilizerBlockingIssue[]): FertilizerBloc
 
 function actionsForMissingRequirements(
   missing: FertilizerMissingRequirementKey[],
+  context: {
+    automaticResearchAttempted?: boolean
+    researchDiagnostics?: FertilizerManufacturerResearchDiagnostics | null
+  } = {},
 ): FertilizerSuggestedInputAction[] {
   const actions = new Set<FertilizerSuggestedInputAction>()
+  const researchAttempted = context.automaticResearchAttempted === true
 
   for (const key of missing) {
     switch (key) {
@@ -117,25 +123,34 @@ function actionsForMissingRequirements(
         break
       case 'identity.ambiguity':
         actions.add('confirm_product_variant')
+        actions.add('confirm_product_identity')
         break
       case 'basis.product_form':
         actions.add('confirm_product_form')
         break
       case 'ingredients.declaration_source':
-        actions.add('upload_back_photo')
-        actions.add('upload_product_document')
-        break
       case 'ingredients.matrix':
-        actions.add('upload_back_photo')
-        actions.add('upload_product_document')
+        if (researchAttempted) {
+          actions.add('provide_product_document')
+          actions.add('upload_product_document')
+          actions.add('optionally_upload_back_photo')
+        } else {
+          actions.add('provide_product_document')
+        }
         break
       case 'sources.conflict':
+        actions.add('provide_product_document')
         actions.add('upload_product_document')
         actions.add('capture_additional_packaging_photo')
         break
       case 'basis.npk':
       case 'basis.npk.declaration_basis':
-        actions.add('upload_back_photo')
+        if (researchAttempted) {
+          actions.add('provide_product_document')
+          actions.add('optionally_upload_back_photo')
+        } else {
+          actions.add('provide_product_document')
+        }
         actions.add('manual_fallback_input')
         break
       default:
@@ -143,7 +158,23 @@ function actionsForMissingRequirements(
     }
   }
 
-  return uniqueSorted([...actions])
+  const ordered = [...actions]
+  const priority: FertilizerSuggestedInputAction[] = [
+    'confirm_product_identity',
+    'confirm_product_variant',
+    'confirm_product_form',
+    'provide_product_document',
+    'upload_product_document',
+    'optionally_upload_back_photo',
+    'upload_back_photo',
+    'capture_additional_packaging_photo',
+    'manual_fallback_input',
+    'retry_recognition',
+  ]
+
+  return uniqueSorted(
+    ordered.sort((left, right) => priority.indexOf(left) - priority.indexOf(right)),
+  )
 }
 
 function evaluateMissingRequirements(
@@ -271,7 +302,12 @@ export function evaluateFertilizerReadiness(
     fulfilledRequirements: buildFulfilledRequirements(dedupedMissing),
     blockingIssues: status === 'ready' ? [] : dedupeBlockingIssues(blockingIssues),
     suggestedInputActions:
-      status === 'ready' ? [] : actionsForMissingRequirements(dedupedMissing),
+      status === 'ready'
+        ? []
+        : actionsForMissingRequirements(dedupedMissing, {
+            automaticResearchAttempted: options.automaticResearchAttempted,
+            researchDiagnostics: options.researchDiagnostics,
+          }),
     evaluatedAt: options.evaluatedAt ?? new Date().toISOString(),
     specificationVersion: FERTILIZER_READINESS_SPECIFICATION_VERSION,
   }

@@ -4,6 +4,7 @@ import type {
 } from './fertilizerManufacturerProductDocumentAdapterCore'
 import { isExternalSourceReference } from './fertilizerEnrichmentStorageLocatorCore'
 import { validateFertilizerManufacturerDocumentSource } from './fertilizerManufacturerDocumentSourceValidatorCore'
+import { extractPdfTextFromBytes } from './fertilizerPdfTextExtractionCore'
 
 const DEFAULT_TIMEOUT_MS = 15_000
 const MAX_RESPONSE_BYTES = 2_000_000
@@ -94,7 +95,21 @@ export async function fetchExternalManufacturerDocument(
     let text: string | null = null
 
     if (contentType === 'application/pdf') {
-      return mapFetchFailure('unsupported_source', false)
+      const pdfText = extractPdfTextFromBytes(new Uint8Array(buffer))
+      if (!pdfText?.trim()) {
+        return mapFetchFailure('unsupported_source', false)
+      }
+
+      return {
+        ok: true,
+        finalUrl: finalValidation.normalizedUrl,
+        contentType: 'application/pdf',
+        text: pdfText,
+        retrievedAt: options.now?.() ?? new Date().toISOString(),
+        etag: response.headers.get('etag'),
+        lastModified: response.headers.get('last-modified'),
+        statusCode: response.status,
+      }
     }
 
     const rawText = new TextDecoder('utf-8', { fatal: false }).decode(buffer)

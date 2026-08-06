@@ -1,6 +1,11 @@
 import type { FertilizerEnrichmentIdentity, FertilizerEnrichmentProductFormValue } from '../types/fertilizerEnrichment'
 import type { FertilizerNutrientMatrixKey } from '../types/fertilizerReadiness'
 import { mapDeclarationProductFormLabelToEnrichment } from './fertilizerRecognitionEnrichmentBasisCore'
+import {
+  buildManufacturerBrandToken,
+  buildProductNameSearchVariants,
+  normalizeResearchToken,
+} from './fertilizerManufacturerResearchQueryCore'
 
 export type FertilizerDeclarationTextClassification =
   | 'exact_match'
@@ -41,7 +46,87 @@ export class FertilizerDeclarationTextParserError extends Error {
 }
 
 function normalizeComparable(value: string | null | undefined): string {
-  return (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+  return normalizeResearchToken(value).replace(/\s+/g, ' ')
+}
+
+function productNameMatchesText(normalizedText: string, expectedProduct: string): boolean {
+  if (!expectedProduct) {
+    return false
+  }
+
+  if (normalizedText.includes(expectedProduct)) {
+    return true
+  }
+
+  return buildProductNameSearchVariants(expectedProduct).some((variant) =>
+    normalizedText.includes(normalizeComparable(variant)),
+  )
+}
+
+function variantMatchesText(text: string, expectedVariant: string): boolean {
+  const raw = text.toLowerCase()
+  const normalized = normalizeComparable(expectedVariant)
+  const compact = normalized.replace(/\s+/g, '')
+  const hyphenated = normalized.replace(/\s+/g, '-')
+
+  if (raw.includes(expectedVariant.toLowerCase())) {
+    return true
+  }
+
+  if (hyphenated && raw.includes(hyphenated)) {
+    return true
+  }
+
+  if (normalized && raw.includes(normalized)) {
+    return true
+  }
+
+  const npkParts = expectedVariant.split(/[-–—/\s]+/).filter(Boolean)
+  if (npkParts.length === 3) {
+    const npkPattern = new RegExp(
+      `${npkParts[0]}\\s*[-–—/]?\\s*${npkParts[1]}\\s*[-–—/]?\\s*${npkParts[2]}`,
+      'i',
+    )
+    if (npkPattern.test(text)) {
+      return true
+    }
+  }
+
+  return compact.length > 0 && raw.replace(/[^a-z0-9]/g, '').includes(compact.replace(/[^a-z0-9]/g, ''))
+}
+
+function manufacturerMatchesText(
+  normalizedText: string,
+  expectedManufacturer: string,
+  extractedManufacturer: string,
+  requireManufacturer: boolean,
+): boolean {
+  if (!requireManufacturer) {
+    return true
+  }
+
+  if (!expectedManufacturer) {
+    return true
+  }
+
+  if (normalizedText.includes(expectedManufacturer)) {
+    return true
+  }
+
+  if (extractedManufacturer && extractedManufacturer === expectedManufacturer) {
+    return true
+  }
+
+  const brandToken = buildManufacturerBrandToken(expectedManufacturer)
+  if (brandToken && normalizedText.includes(brandToken)) {
+    return true
+  }
+
+  if (brandToken && extractedManufacturer.startsWith(brandToken)) {
+    return true
+  }
+
+  return false
 }
 
 function parseDecimal(value: string): number | null {
@@ -191,15 +276,38 @@ function extractProductForm(text: string): FertilizerEnrichmentProductFormValue 
   return mapDeclarationProductFormLabelToEnrichment(match[1].trim())
 }
 
+function extractLabeledField(
+  text: string,
+  labelPattern: RegExp,
+  stopBeforePattern: RegExp,
+): string | null {
+  const match = labelPattern.exec(text)
+  if (!match?.[1]) {
+    return null
+  }
+
+  const remainder = match[1]
+  const stopMatch = stopBeforePattern.exec(remainder)
+  const value = (stopMatch ? remainder.slice(0, stopMatch.index) : remainder).trim()
+  return value.length > 0 ? value : null
+}
+
 export function extractDeclarationDocumentIdentity(text: string): {
   manufacturer: string | null
   productName: string | null
   variant: string | null
 } {
-  const manufacturer = /manufacturer\s*[:=]\s*(.+)/i.exec(text)?.[1]?.trim() ?? null
-  const productName = /product\s*[:=]\s*(.+)/i.exec(text)?.[1]?.trim() ?? null
+  const stopBeforeNextLabel =
+    /\s+(?:product|product variant|variant|form|npk|declaration|zusammensetzung|manufacturer)\s*[:=]/i
+
+  const manufacturer = extractLabeledField(
+    text,
+    /manufacturer\s*[:=]\s*(.+)/i,
+    stopBeforeNextLabel,
+  )
+  const productName = extractLabeledField(text, /product\s*[:=]\s*(.+)/i, stopBeforeNextLabel)
   const variant =
-    /(?:variant|product variant)\s*[:=]\s*(.+)/i.exec(text)?.[1]?.trim() ??
+    extractLabeledField(text, /(?:variant|product variant)\s*[:=]\s*(.+)/i, stopBeforeNextLabel) ??
     /NPK\s*[:=]?\s*(\d+(?:[.,]\d+)?\s*[-–—/]\s*\d+(?:[.,]\d+)?\s*[-–—/]\s*\d+(?:[.,]\d+)?)/i.exec(
       text,
     )?.[1]?.trim() ??
@@ -227,22 +335,24 @@ export function classifyDeclarationAgainstIdentity(
     return 'no_match'
   }
 
-  if (expectedProduct && !normalizedText.includes(expectedProduct)) {
+  if (expectedProduct && !productNameMatchesText(normalizedText, expectedProduct)) {
     if (extractedProduct && extractedProduct !== expectedProduct) {
       return 'no_match'
     }
-    if (extractedProduct && !normalizedText.includes(extractedProduct)) {
+    if (extractedProduct && !productNameMatchesText(normalizedText, extractedProduct)) {
       return 'no_match'
     }
   }
 
-  const manufacturerMatches =
-    !options.requireManufacturer ||
-    (expectedManufacturer.length > 0 && normalizedText.includes(expectedManufacturer)) ||
-    (extractedManufacturer.length > 0 && extractedManufacturer === expectedManufacturer)
+  const manufacturerMatches = manufacturerMatchesText(
+    normalizedText,
+    expectedManufacturer,
+    extractedManufacturer,
+    options.requireManufacturer,
+  )
 
   const productMatches =
-    (expectedProduct.length > 0 && normalizedText.includes(expectedProduct)) ||
+    productNameMatchesText(normalizedText, expectedProduct) ||
     (extractedProduct.length > 0 && extractedProduct === expectedProduct)
 
   if (!productMatches) {
@@ -256,7 +366,7 @@ export function classifyDeclarationAgainstIdentity(
   if (expectedVariant) {
     const normalizedExpectedVariant = expectedVariant.replace(/\s+/g, '')
     const variantInText =
-      normalizedText.includes(normalizedExpectedVariant) ||
+      variantMatchesText(text, expectedIdentity.variant ?? expectedVariant) ||
       extractedVariant.replace(/\s+/g, '') === normalizedExpectedVariant
 
     if (!variantInText) {

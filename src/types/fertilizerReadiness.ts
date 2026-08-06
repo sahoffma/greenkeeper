@@ -31,11 +31,14 @@ export type FertilizerMissingRequirementKey =
 export type FertilizerSuggestedInputAction =
   | 'upload_back_photo'
   | 'upload_product_document'
+  | 'provide_product_document'
   | 'capture_additional_packaging_photo'
   | 'confirm_product_variant'
+  | 'confirm_product_identity'
   | 'confirm_product_form'
   | 'retry_recognition'
   | 'manual_fallback_input'
+  | 'optionally_upload_back_photo'
 
 export type FertilizerBlockingIssueCode =
   | 'sources.conflict'
@@ -142,6 +145,8 @@ export interface FertilizerReadinessResult {
 
 export interface EvaluateFertilizerReadinessOptions {
   evaluatedAt?: string
+  automaticResearchAttempted?: boolean
+  researchDiagnostics?: import('./fertilizerManufacturerResearchDiagnostics').FertilizerManufacturerResearchDiagnostics | null
 }
 
 export const FERTILIZER_READINESS_CONTRACT_ERROR_CODE = 'unsupported_object_category' as const

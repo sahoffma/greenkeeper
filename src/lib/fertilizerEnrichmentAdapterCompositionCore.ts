@@ -2,6 +2,8 @@ import type { FertilizerEnrichmentOrchestrationInput } from '../types/fertilizer
 import type { FertilizerEnrichmentSourceHint } from '../types/fertilizerEnrichmentOrchestration'
 import type { FertilizerManufacturerDocumentFetchResult } from './fertilizerManufacturerProductDocumentAdapterCore'
 import { createFertilizerManufacturerProductDocumentAdapter } from './fertilizerManufacturerProductDocumentAdapterCore'
+import { createFertilizerManufacturerProductPageAdapter } from './fertilizerManufacturerProductPageAdapterCore'
+import type { FertilizerManufacturerResearchSearchProvider } from './fertilizerManufacturerResearchCore'
 import { createFertilizerPackagingSourceAdapter } from './fertilizerPackagingSourceAdapterCore'
 import { createFertilizerUserDocumentAdapter } from './fertilizerUserDocumentAdapterCore'
 import type { OrchestrateFertilizerEnrichmentDependencies } from './fertilizerEnrichmentOrchestrationCore'
@@ -16,6 +18,7 @@ export interface FertilizerEnrichmentAdapterCompositionDependencies {
       attempt: number
     },
   ) => Promise<FertilizerManufacturerDocumentFetchResult>
+  manufacturerResearchSearchProvider?: FertilizerManufacturerResearchSearchProvider | null
   resolveUserDocumentSource?: (
     hint: FertilizerEnrichmentSourceHint,
     context: {
@@ -60,6 +63,14 @@ export function createFertilizerEnrichmentOrchestrationDependencies(
       createFertilizerManufacturerProductDocumentAdapter({
         fetchDocument: (sourceUrl, context) =>
           dependencies.fetchManufacturerDocument!(sourceUrl, context),
+      }),
+    )
+
+    adapters.push(
+      createFertilizerManufacturerProductPageAdapter({
+        fetchDocument: (sourceUrl, context) =>
+          dependencies.fetchManufacturerDocument!(sourceUrl, context),
+        searchProvider: dependencies.manufacturerResearchSearchProvider ?? null,
       }),
     )
   }
