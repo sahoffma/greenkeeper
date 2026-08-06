@@ -14,6 +14,8 @@ export interface FertilizerEnrichmentHttpResponse {
   statusCode: number
   headers: Record<string, string>
   body: string
+  /** Internal-only error reference for server-side diagnostics — never serialized to clients. */
+  diagnosticError?: unknown
 }
 
 export interface FertilizerEnrichmentHttpRequest {
@@ -64,15 +66,25 @@ function assertMethod(request: FertilizerEnrichmentHttpRequest, method: string):
 
 function mapHandlerError(error: unknown): FertilizerEnrichmentHttpResponse {
   if (error instanceof FertilizerEnrichmentServerApiError) {
-    return jsonResponse(error.httpStatus, { error: error.apiError })
+    return {
+      statusCode: error.httpStatus,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: error.apiError }),
+      diagnosticError: error,
+    }
   }
 
-  return jsonResponse(500, {
-    error: {
-      code: 'internal_server_error',
-      message: 'Fertilizer enrichment server request failed unexpectedly.',
-    },
-  })
+  return {
+    statusCode: 500,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      error: {
+        code: 'internal_server_error',
+        message: 'Fertilizer enrichment server request failed unexpectedly.',
+      },
+    }),
+    diagnosticError: error,
+  }
 }
 
 function ensureEnabled(deps: FertilizerEnrichmentHttpHandlerDependencies): FertilizerEnrichmentServerService {

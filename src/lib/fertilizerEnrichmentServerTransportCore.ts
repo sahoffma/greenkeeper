@@ -83,6 +83,7 @@ function mapHandlerError(error: unknown): FertilizerEnrichmentHttpResponse {
       statusCode: error.httpStatus,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ error: error.apiError }),
+      diagnosticError: error,
     }
   }
 
@@ -95,6 +96,7 @@ function mapHandlerError(error: unknown): FertilizerEnrichmentHttpResponse {
         message: 'Fertilizer enrichment server request failed unexpectedly.',
       },
     }),
+    diagnosticError: error,
   }
 }
 

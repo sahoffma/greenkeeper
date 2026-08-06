@@ -26,10 +26,19 @@ export type FertilizerEnrichmentJobRepositoryErrorCode =
 export class FertilizerEnrichmentJobRepositoryError extends Error {
   readonly code: FertilizerEnrichmentJobRepositoryErrorCode
 
-  constructor(code: FertilizerEnrichmentJobRepositoryErrorCode, message: string) {
+  readonly cause?: unknown
+
+  constructor(
+    code: FertilizerEnrichmentJobRepositoryErrorCode,
+    message: string,
+    options?: { cause?: unknown },
+  ) {
     super(message)
     this.name = 'FertilizerEnrichmentJobRepositoryError'
     this.code = code
+    if (options?.cause !== undefined) {
+      this.cause = options.cause
+    }
   }
 }
 

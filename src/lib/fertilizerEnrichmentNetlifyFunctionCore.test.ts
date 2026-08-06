@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createFertilizerEnrichmentNetlifyHandler } from './fertilizerEnrichmentNetlifyFunctionCore'
+import { FertilizerEnrichmentJobRepositoryError } from './fertilizerEnrichmentJobRepositoryCore'
 import { FertilizerEnrichmentServerConfigurationError } from './fertilizerEnrichmentServerEnvironmentCore'
+import { FertilizerEnrichmentServerApiError } from './fertilizerEnrichmentServerServiceCore'
 import type { FertilizerEnrichmentServerRuntime } from './fertilizerEnrichmentServerCompositionCore'
+import type { FertilizerEnrichmentHttpResponse } from './fertilizerEnrichmentServerHandlerCore'
 import { createFertilizerEnrichmentProductionHttpHandlers } from './fertilizerEnrichmentServerTransportCore'
 import { createFertilizerEnrichmentSessionCookieManager } from './fertilizerEnrichmentSessionCookieCore'
 
@@ -12,22 +15,22 @@ const sessionCookieManager = createFertilizerEnrichmentSessionCookieManager('coo
 
 function createMockRuntime() {
   const handlers = {
-    handleStart: vi.fn(async () => ({
+    handleStart: vi.fn(async (): Promise<FertilizerEnrichmentHttpResponse> => ({
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ job: { jobId: 'job-1' } }),
     })),
-    handleStatus: vi.fn(async () => ({
+    handleStatus: vi.fn(async (): Promise<FertilizerEnrichmentHttpResponse> => ({
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ job: { jobId: 'job-1' } }),
     })),
-    handleAdditionalSource: vi.fn(async () => ({
+    handleAdditionalSource: vi.fn(async (): Promise<FertilizerEnrichmentHttpResponse> => ({
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ job: { jobId: 'job-1' } }),
     })),
-    handleCancel: vi.fn(async () => ({
+    handleCancel: vi.fn(async (): Promise<FertilizerEnrichmentHttpResponse> => ({
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ job: { jobId: 'job-1' } }),
@@ -309,10 +312,76 @@ describe('fertilizerEnrichmentNetlifyFunctionCore', () => {
         functionName: 'fertilizer-enrichment-start',
         requestId: '40392437',
         phase: 'runtime_init',
-        errorCode: 'internal_server_error',
+        errorCode: 'configuration_incomplete',
         httpStatus: 500,
+        internalError: expect.objectContaining({
+          subtype: 'adapter_creation',
+          rootErrorName: 'FertilizerEnrichmentServerConfigurationError',
+        }),
       }),
     )
     expect(JSON.stringify(consoleError.mock.calls[0])).not.toContain('SUPABASE_SERVICE_ROLE_KEY')
+  })
+
+  it('logs internal error diagnostics for HTTP 500 start failures with preserved cause chain', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const runtime = createMockRuntime()
+
+    const supabaseError = {
+      code: 'PGRST116',
+      message: 'JSON object requested, multiple (or no) rows returned',
+    }
+    const repositoryError = new FertilizerEnrichmentJobRepositoryError(
+      'persistence_unavailable',
+      'Enrichment job persistence write failed.',
+      { cause: supabaseError },
+    )
+    runtime.handlers.handleStart.mockResolvedValue({
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        error: {
+          code: 'internal_server_error',
+          message: 'Fertilizer enrichment server request failed unexpectedly.',
+        },
+      }),
+      diagnosticError: new FertilizerEnrichmentServerApiError(
+        { code: 'internal_server_error', message: 'Fertilizer enrichment server request failed unexpectedly.' },
+        500,
+        { cause: repositoryError },
+      ),
+    } as FertilizerEnrichmentHttpResponse)
+
+    const handler = createFertilizerEnrichmentNetlifyHandler('start', () => runtime)
+    await handler(
+      {
+        httpMethod: 'POST',
+        body: JSON.stringify({ idempotencyKey: 'idem-1', input: { objectCategory: 'fertilizer' } }),
+        headers: { 'x-nf-request-id': 'a1baff1d' },
+      } as never,
+      {} as never,
+    )
+
+    expect(consoleError).toHaveBeenCalledTimes(1)
+    expect(consoleError.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        functionName: 'fertilizer-enrichment-start',
+        requestId: 'a1baff1d',
+        phase: 'persistence',
+        errorCode: 'repository_persistence_unavailable',
+        httpStatus: 500,
+        internalError: expect.objectContaining({
+          subtype: 'supabase_persistence',
+          supabase: {
+            code: 'PGRST116',
+            target: null,
+          },
+        }),
+      }),
+    )
+
+    const serialized = JSON.stringify(consoleError.mock.calls[0])
+    expect(serialized).not.toContain('idem-1')
+    expect(serialized).not.toContain('objectCategory')
   })
 })

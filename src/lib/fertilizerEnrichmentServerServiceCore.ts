@@ -44,11 +44,20 @@ export class FertilizerEnrichmentServerApiError extends Error {
 
   readonly httpStatus: number
 
-  constructor(apiError: FertilizerEnrichmentApiError, httpStatus: number) {
+  readonly cause?: unknown
+
+  constructor(
+    apiError: FertilizerEnrichmentApiError,
+    httpStatus: number,
+    options?: { cause?: unknown },
+  ) {
     super(apiError.message)
     this.name = 'FertilizerEnrichmentServerApiError'
     this.apiError = apiError
     this.httpStatus = httpStatus
+    if (options?.cause !== undefined) {
+      this.cause = options.cause
+    }
   }
 }
 
@@ -97,8 +106,9 @@ function apiError(
   code: FertilizerEnrichmentApiError['code'],
   message: string,
   httpStatus: number,
+  cause?: unknown,
 ): FertilizerEnrichmentServerApiError {
-  return new FertilizerEnrichmentServerApiError({ code, message }, httpStatus)
+  return new FertilizerEnrichmentServerApiError({ code, message }, httpStatus, { cause })
 }
 
 function assertNonEmptyString(value: unknown, fieldName: string, maxLength = 256): string {
@@ -478,24 +488,28 @@ export function mapFertilizerEnrichmentRepositoryError(
         'temporarily_unavailable',
         'Fertilizer enrichment persistence is temporarily unavailable.',
         503,
+        error,
       )
     case 'invalid_stored_record':
       return apiError(
         'internal_server_error',
         FERTILIZER_ENRICHMENT_SERVER_UNEXPECTED_FAILURE_MESSAGE,
         500,
+        error,
       )
     case 'idempotency_conflict':
       return apiError(
         'idempotency_conflict',
         'Enrichment job idempotency conflict.',
         409,
+        error,
       )
     case 'revision_conflict':
       return apiError(
         'revision_conflict',
         'Enrichment job was updated concurrently.',
         409,
+        error,
       )
   }
 }
@@ -706,6 +720,7 @@ function mapUnexpectedError(error: unknown): FertilizerEnrichmentServerApiError 
     'internal_server_error',
     FERTILIZER_ENRICHMENT_SERVER_UNEXPECTED_FAILURE_MESSAGE,
     500,
+    error instanceof Error ? error : undefined,
   )
 }
 

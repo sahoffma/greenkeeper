@@ -34,6 +34,7 @@ function mapPersistenceError(error: unknown): FertilizerEnrichmentJobRepositoryE
   return new FertilizerEnrichmentJobRepositoryError(
     'persistence_unavailable',
     'Fertilizer enrichment job persistence failed.',
+    { cause: error instanceof Error || (error && typeof error === 'object') ? error : undefined },
   )
 }
 
@@ -52,18 +53,21 @@ function mapInsertError(error: {
       return new FertilizerEnrichmentJobRepositoryError(
         'idempotency_conflict',
         'Enrichment job start idempotency conflict.',
+        { cause: error },
       )
     }
 
     return new FertilizerEnrichmentJobRepositoryError(
       'persistence_unavailable',
       'Enrichment job persistence write failed.',
+      { cause: error },
     )
   }
 
   return new FertilizerEnrichmentJobRepositoryError(
     'persistence_unavailable',
     'Enrichment job persistence write failed.',
+    { cause: error },
   )
 }
 
@@ -118,6 +122,7 @@ export function createPersistentFertilizerEnrichmentJobRepository(
           throw new FertilizerEnrichmentJobRepositoryError(
             'persistence_unavailable',
             'Failed to load enrichment job.',
+            { cause: error },
           )
         }
 
@@ -153,6 +158,7 @@ export function createPersistentFertilizerEnrichmentJobRepository(
           throw new FertilizerEnrichmentJobRepositoryError(
             'persistence_unavailable',
             'Failed to find enrichment job by idempotency key.',
+            { cause: error },
           )
         }
 
@@ -230,6 +236,7 @@ export function createPersistentFertilizerEnrichmentJobRepository(
           throw new FertilizerEnrichmentJobRepositoryError(
             'persistence_unavailable',
             'Failed to update enrichment job.',
+            { cause: error },
           )
         }
 
@@ -263,6 +270,7 @@ export function createPersistentFertilizerEnrichmentJobRepository(
           throw new FertilizerEnrichmentJobRepositoryError(
             'persistence_unavailable',
             'Failed to delete expired enrichment jobs.',
+            { cause: error },
           )
         }
 
