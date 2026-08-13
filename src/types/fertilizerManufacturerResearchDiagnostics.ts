@@ -16,11 +16,51 @@ export type FertilizerManufacturerResearchFallbackRecommendation =
   | 'optional_back_photo'
   | 'none'
 
+import type { FertilizerNutrientMatrixKey } from './fertilizerReadiness'
 import type { FertilizerManufacturerResearchTiming } from './fertilizerManufacturerResearchTiming'
 import type {
   FertilizerManufacturerResearchSearchProviderOutcome,
   FertilizerManufacturerResearchSourceStrategy,
 } from './fertilizerManufacturerResearchSearch'
+
+export type StructuredDeclarationCompletenessRejectionReason =
+  | 'none'
+  | 'npk_only'
+  | 'no_declaration_section'
+  | 'insufficient_matrix'
+  | 'identity_mismatch'
+  | 'unknown'
+
+export interface StructuredDeclarationCompletenessValidation {
+  modelClaimedComplete: boolean
+  declarationSectionEvidencePresent: boolean
+  matrixCompletenessAccepted: boolean
+  rejectionReason: StructuredDeclarationCompletenessRejectionReason
+}
+
+export interface FertilizerManufacturerNutrientPresenceDiagnostic {
+  nutrientKey: FertilizerNutrientMatrixKey
+  presentInStructuredResult: boolean
+  positiveInStructuredResult: boolean
+  presentAfterAdapter: boolean
+  presentAfterMerge: boolean
+  presentAfterNormalization: boolean
+}
+
+export interface FertilizerManufacturerNutrientChainDiagnostics {
+  structuredMatrixEntryCount: number
+  structuredPositiveEntryCount: number
+  structuredZeroEntryCount: number
+  structuredNullEntryCount: number
+  adapterMatrixEntryCount: number
+  adapterPositiveEntryCount: number
+  mergedMatrixEntryCount: number
+  mergedPositiveEntryCount: number
+  normalizedMatrixEntryCount: number
+  normalizedPositiveEntryCount: number
+  declarationCompletenessValidation: StructuredDeclarationCompletenessValidation | null
+  nutrientPresence: FertilizerManufacturerNutrientPresenceDiagnostic[]
+}
 
 export interface FertilizerManufacturerResearchDiagnostics {
   productIdentityComplete: boolean
@@ -54,4 +94,5 @@ export interface FertilizerManufacturerResearchDiagnostics {
   directCandidateFallbackUsed: boolean
   researchSourceStrategy: FertilizerManufacturerResearchSourceStrategy
   officialDeclarationFound: boolean
+  nutrientChainDiagnostics?: FertilizerManufacturerNutrientChainDiagnostics | null
 }

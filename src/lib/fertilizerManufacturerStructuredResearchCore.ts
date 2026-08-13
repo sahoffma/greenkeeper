@@ -9,9 +9,18 @@ import {
   countOfficialSearchResults,
   normalizeSearchCategory,
 } from './fertilizerManufacturerResearchSearchProviderCore'
+import {
+  countStructuredMatrixEntries,
+  type StructuredMatrixCounts,
+} from './fertilizerManufacturerNutrientChainDiagnosticsCore'
+import type {
+  StructuredDeclarationCompletenessValidation,
+} from '../types/fertilizerManufacturerResearchDiagnostics'
 import { PRODUCT_RECOGNIZE_IMAGE_MODEL } from './productRecognizeImageCore'
 
 export const MANUFACTURER_RESEARCH_STRUCTURED_BUDGET_MS = 16_000
+
+const NPK_MATRIX_KEYS = ['nitrogen', 'phosphate', 'potash'] as const
 
 const nutrientMatrixSchemaProperties = Object.fromEntries(
   FERTILIZER_NUTRIENT_MATRIX_KEYS.map((key) => [key, { type: ['number', 'null'] }]),
@@ -132,6 +141,9 @@ export interface ManufacturerStructuredResearchAttemptResult {
   structuredDeclarationComplete: boolean
   structuredPositiveNutrientCount: number
   identityMatch: boolean
+  structuredRecord: ManufacturerStructuredResearchRecord | null
+  declarationCompletenessValidation: StructuredDeclarationCompletenessValidation | null
+  structuredMatrixCounts: StructuredMatrixCounts | null
 }
 
 export function buildManufacturerStructuredResearchPrompt(input: {
@@ -159,7 +171,7 @@ export function buildManufacturerStructuredResearchPrompt(input: {
       'reputable_retailer_only_as_supplement',
     ],
     instruction:
-      'Recherchiere das konkrete Düngerprodukt ausschließlich über das Web-Search-Tool anhand der kanonischen Produktidentität. Keine Bilddaten, keine Modell-Erinnerung, keine Schätzungen. Priorität: 1) offizielle Herstellerseite, 2) offizielles Hersteller-PDF/Datenblatt, 3) offizieller Herstellerkatalog, 4) seriöse Händlerseite nur ergänzend. Bei Widersprüchen hat die offizielle Herstellerquelle Vorrang. Markiere declarationComplete nur dann true, wenn die gewählte Quelle tatsächlich eine vollständige Zusammensetzung/Deklaration enthält. Übernimm Nährstoffwerte nur, wenn sie in der Quelle ausdrücklich deklariert sind; fehlende Werte als null belassen, keine erfundenen 0-Werte für nicht deklarierte Nährstoffe. NPK nur übernehmen, wenn klar zur identifizierten Variante gehörig.',
+      'Recherchiere das konkrete Düngerprodukt ausschließlich über das Web-Search-Tool anhand der kanonischen Produktidentität. Keine Bilddaten, keine Modell-Erinnerung, keine Schätzungen. Priorität: 1) offizielle Herstellerseite, 2) offizielles Hersteller-PDF/Datenblatt, 3) offizieller Herstellerkatalog, 4) seriöse Händlerseite nur ergänzend. Bei Widersprüchen hat die offizielle Herstellerquelle Vorrang. Lies die vollständige Hersteller-Zusammensetzung/Deklaration aus (NPK plus Zusatz- und Spurennährstoffe wie Magnesium, Calcium, Schwefel, Eisen, Mangan, Kupfer, Zink, Bor, Molybdän). Trage alle explizit deklarierten Werte in nutrientMatrix mit den kanonischen Schlüsseln ein (nitrogen, phosphate, potash, magnesium, calcium, sulfur, iron, manganese, copper, zinc, boron, molybdenum; keine Abkürzungen wie Fe oder S). Mappe Oxidformen auf unsere Schlüssel: K2O→potash, P2O5→phosphate, MgO→magnesium, CaO→calcium, SO3→sulfur. Setze declarationComplete nur true, wenn die offizielle Quelle eine vollständige Zusammensetzungs-/Deklarationssektion enthält und du mindestens einen Zusatz- oder Spurennährstoff außerhalb reiner NPK-Makros extrahiert hast oder die Quelle ausdrücklich alle Nährstoffe vollständig auflistet. Eine reine NPK-Zeile ohne Zusammensetzung ist nicht vollständig. Übernimm Nährstoffwerte nur, wenn sie in der Quelle ausdrücklich deklariert sind; explizit deklarierte 0-Werte als 0 setzen; fehlende Werte als null belassen, keine erfundenen 0-Werte für nicht deklarierte Nährstoffe. NPK nur übernehmen, wenn klar zur identifizierten Variante gehörig.',
   })
 }
 
@@ -257,16 +269,110 @@ export function selectPrimaryStructuredResearchSource(
 export function countStructuredPositiveNutrients(
   record: Pick<ManufacturerStructuredResearchRecord, 'nutrientMatrix' | 'npk'>,
 ): number {
-  let count = 0
+  return countStructuredMatrixEntries(record).structuredPositiveEntryCount
+}
 
-  for (const key of FERTILIZER_NUTRIENT_MATRIX_KEYS) {
+function hasSecondaryOrTraceNutrientEvidence(
+  record: Pick<ManufacturerStructuredResearchRecord, 'nutrientMatrix'>,
+): boolean {
+  return FERTILIZER_NUTRIENT_MATRIX_KEYS.some((key) => {
+    if ((NPK_MATRIX_KEYS as readonly string[]).includes(key)) {
+      return false
+    }
+
     const value = record.nutrientMatrix[key]
-    if (typeof value === 'number' && value > 0) {
-      count += 1
+    return typeof value === 'number'
+  })
+}
+
+export function syncStructuredNpkIntoNutrientMatrix(
+  record: ManufacturerStructuredResearchRecord,
+): ManufacturerStructuredResearchRecord {
+  if (!record.npk) {
+    return record
+  }
+
+  const nutrientMatrix = { ...record.nutrientMatrix }
+  nutrientMatrix.nitrogen = nutrientMatrix.nitrogen ?? record.npk.nitrogen
+  nutrientMatrix.phosphate = nutrientMatrix.phosphate ?? record.npk.phosphate
+  nutrientMatrix.potash = nutrientMatrix.potash ?? record.npk.potash
+
+  return {
+    ...record,
+    nutrientMatrix,
+  }
+}
+
+export function validateStructuredDeclarationCompleteness(input: {
+  record: ManufacturerStructuredResearchRecord
+  primarySource: ManufacturerStructuredResearchSourceRecord | null
+}): StructuredDeclarationCompletenessValidation {
+  const modelClaimedComplete = input.record.declarationComplete
+  const declarationSectionEvidencePresent = hasSecondaryOrTraceNutrientEvidence(input.record)
+
+  if (!input.record.identityMatch) {
+    return {
+      modelClaimedComplete,
+      declarationSectionEvidencePresent,
+      matrixCompletenessAccepted: false,
+      rejectionReason: 'identity_mismatch',
     }
   }
 
-  return count
+  if (
+    !input.primarySource ||
+    !isOfficialStructuredSourceCategory(input.primarySource.category)
+  ) {
+    return {
+      modelClaimedComplete,
+      declarationSectionEvidencePresent,
+      matrixCompletenessAccepted: false,
+      rejectionReason: 'no_declaration_section',
+    }
+  }
+
+  if (!modelClaimedComplete) {
+    return {
+      modelClaimedComplete,
+      declarationSectionEvidencePresent,
+      matrixCompletenessAccepted: false,
+      rejectionReason: 'insufficient_matrix',
+    }
+  }
+
+  if (!declarationSectionEvidencePresent) {
+    return {
+      modelClaimedComplete,
+      declarationSectionEvidencePresent,
+      matrixCompletenessAccepted: false,
+      rejectionReason: 'npk_only',
+    }
+  }
+
+  if (
+    input.record.npk == null ||
+    (input.record.productForm !== 'granular' && input.record.productForm !== 'liquid')
+  ) {
+    return {
+      modelClaimedComplete,
+      declarationSectionEvidencePresent,
+      matrixCompletenessAccepted: false,
+      rejectionReason: 'insufficient_matrix',
+    }
+  }
+
+  return {
+    modelClaimedComplete,
+    declarationSectionEvidencePresent,
+    matrixCompletenessAccepted: true,
+    rejectionReason: 'none',
+  }
+}
+
+export function resolveValidatedStructuredDeclarationComplete(
+  validation: StructuredDeclarationCompletenessValidation,
+): boolean {
+  return validation.matrixCompletenessAccepted
 }
 
 export function parseManufacturerStructuredResearchRecord(
@@ -335,7 +441,7 @@ export function parseManufacturerStructuredResearchRecord(
       ? record.productForm
       : 'unknown'
 
-  return {
+  return syncStructuredNpkIntoNutrientMatrix({
     manufacturer: record.manufacturer.trim(),
     productLine: typeof record.productLine === 'string' ? record.productLine.trim() : null,
     productName: record.productName.trim(),
@@ -346,23 +452,36 @@ export function parseManufacturerStructuredResearchRecord(
     identityMatch: record.identityMatch,
     confidence: record.confidence,
     sources,
-  }
+  })
 }
 
 export function mapStructuredResearchToAdapterResult(input: {
   record: ManufacturerStructuredResearchRecord
   identity: FertilizerEnrichmentIdentity
   retrievedAt: string
+  declarationCompletenessValidation?: StructuredDeclarationCompletenessValidation
 }): FertilizerSourceAdapterResult | null {
   const primarySource = selectPrimaryStructuredResearchSource(input.record.sources)
   if (!primarySource || !input.record.identityMatch) {
     return null
   }
 
+  const validation =
+    input.declarationCompletenessValidation ??
+    validateStructuredDeclarationCompleteness({
+      record: input.record,
+      primarySource,
+    })
+  const declarationComplete = resolveValidatedStructuredDeclarationComplete(validation)
+
   const sourceId = `manufacturer-web-search:${primarySource.url}`
   const extractedNutrients = FERTILIZER_NUTRIENT_MATRIX_KEYS.flatMap((key) => {
     const value = input.record.nutrientMatrix[key]
-    if (typeof value !== 'number' || value <= 0) {
+    if (typeof value !== 'number') {
+      return []
+    }
+
+    if (!declarationComplete && value <= 0) {
       return []
     }
 
@@ -377,7 +496,7 @@ export function mapStructuredResearchToAdapterResult(input: {
   })
 
   const status =
-    input.record.declarationComplete &&
+    declarationComplete &&
     isOfficialStructuredSourceCategory(primarySource.category) &&
     input.record.npk != null &&
     (input.record.productForm === 'granular' || input.record.productForm === 'liquid')
@@ -428,10 +547,14 @@ export function mapStructuredResearchToAdapterResult(input: {
           ...extractedNutrients.map((nutrient) => nutrient.key),
         ],
         nutrientSectionLocated: extractedNutrients.length > 0 || input.record.npk != null,
-        nutrientSectionFullyCaptured: input.record.declarationComplete,
+        nutrientSectionFullyCaptured: declarationComplete,
         variantMatched: input.record.identityMatch,
         productScopeConfirmed: input.record.identityMatch,
-        coverageNotes: input.record.declarationComplete ? null : 'structured_research_incomplete',
+        coverageNotes: declarationComplete
+          ? null
+          : validation.rejectionReason === 'npk_only'
+            ? 'structured_research_npk_only'
+            : 'structured_research_incomplete',
       },
       evidence: [
         {
@@ -490,7 +613,7 @@ export function createOpenAiManufacturerStructuredResearchProvider(
           {
             role: 'system',
             content:
-              'Du recherchierst kanonische Herstellerinformationen für Düngerprodukte. Nutze das Web-Search-Tool und gib ein strukturiertes, quellenbasiertes Ergebnis zurück. Keine Erfindungen.',
+              'Du recherchierst kanonische Herstellerinformationen für Düngerprodukte. Nutze das Web-Search-Tool und gib ein strukturiertes, quellenbasiertes Ergebnis zurück. Extrahiere die vollständige offizielle Zusammensetzung inklusive Zusatz- und Spurennährstoffe in die kanonischen nutrientMatrix-Schlüssel. Keine Erfindungen, keine reinen NPK-Schätzungen ohne Zusammensetzungssektion.',
           },
           {
             role: 'user',
@@ -566,6 +689,9 @@ export async function runManufacturerStructuredResearchAttempt(input: {
     structuredDeclarationComplete: false,
     structuredPositiveNutrientCount: 0,
     identityMatch: false,
+    structuredRecord: null,
+    declarationCompletenessValidation: null,
+    structuredMatrixCounts: null,
   })
 
   if (!input.structuredResearchProvider) {
@@ -603,12 +729,22 @@ export async function runManufacturerStructuredResearchAttempt(input: {
       })),
     )
 
+    const primarySource = selectPrimaryStructuredResearchSource(record.sources)
+    const declarationCompletenessValidation = validateStructuredDeclarationCompleteness({
+      record,
+      primarySource,
+    })
+    const structuredDeclarationComplete =
+      resolveValidatedStructuredDeclarationComplete(declarationCompletenessValidation)
+    const structuredMatrixCounts = countStructuredMatrixEntries(record)
+
     const adapterResult = mapStructuredResearchToAdapterResult({
       record,
       identity: input.identity,
       retrievedAt,
+      declarationCompletenessValidation,
     })
-    const structuredPositiveNutrientCount = countStructuredPositiveNutrients(record)
+    const structuredPositiveNutrientCount = structuredMatrixCounts.structuredPositiveEntryCount
 
     return {
       adapterResult,
@@ -617,9 +753,12 @@ export async function runManufacturerStructuredResearchAttempt(input: {
       webSearchSourceCount,
       officialWebSearchSourceCount,
       structuredResearchResultPresent: true,
-      structuredDeclarationComplete: record.declarationComplete,
+      structuredDeclarationComplete,
       structuredPositiveNutrientCount,
       identityMatch: record.identityMatch,
+      structuredRecord: record,
+      declarationCompletenessValidation,
+      structuredMatrixCounts,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'manufacturer_research_structured_error'

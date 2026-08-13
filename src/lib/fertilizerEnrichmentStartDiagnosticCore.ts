@@ -181,6 +181,20 @@ export interface FertilizerEnrichmentStartManufacturerResearchDiagnostic {
   researchFailureStage: string
   researchSourceStrategy: string
   manufacturerResearchTiming: Record<string, unknown> | null
+  structuredMatrixEntryCount: number
+  structuredPositiveEntryCount: number
+  adapterMatrixEntryCount: number
+  adapterPositiveEntryCount: number
+  mergedMatrixEntryCount: number
+  mergedPositiveEntryCount: number
+  normalizedMatrixEntryCount: number
+  normalizedPositiveEntryCount: number
+  declarationCompletenessValidation: {
+    modelClaimedComplete: boolean
+    declarationSectionEvidencePresent: boolean
+    matrixCompletenessAccepted: boolean
+    rejectionReason: string
+  } | null
 }
 
 export interface FertilizerEnrichmentStartOutcomeWarningDiagnostic {
@@ -983,6 +997,8 @@ function readManufacturerResearchDiagnosticSummary(
 
   const timing = readObjectRecord(diagnostics.manufacturerResearchTiming)
   const { fetchAttempts: _fetchAttempts, ...timingSummary } = timing ?? {}
+  const nutrientChain = readObjectRecord(diagnostics.nutrientChainDiagnostics)
+  const declarationValidation = readObjectRecord(nutrientChain?.declarationCompletenessValidation)
 
   return {
     searchProviderConfigured: readBooleanDiagnostic(diagnostics, 'searchProviderConfigured'),
@@ -1005,6 +1021,28 @@ function readManufacturerResearchDiagnosticSummary(
     researchFailureStage: readStringDiagnostic(diagnostics, 'researchFailureStage'),
     researchSourceStrategy: readStringDiagnostic(diagnostics, 'researchSourceStrategy'),
     manufacturerResearchTiming: timing ? timingSummary : null,
+    structuredMatrixEntryCount: readNumberDiagnostic(nutrientChain, 'structuredMatrixEntryCount'),
+    structuredPositiveEntryCount: readNumberDiagnostic(nutrientChain, 'structuredPositiveEntryCount'),
+    adapterMatrixEntryCount: readNumberDiagnostic(nutrientChain, 'adapterMatrixEntryCount'),
+    adapterPositiveEntryCount: readNumberDiagnostic(nutrientChain, 'adapterPositiveEntryCount'),
+    mergedMatrixEntryCount: readNumberDiagnostic(nutrientChain, 'mergedMatrixEntryCount'),
+    mergedPositiveEntryCount: readNumberDiagnostic(nutrientChain, 'mergedPositiveEntryCount'),
+    normalizedMatrixEntryCount: readNumberDiagnostic(nutrientChain, 'normalizedMatrixEntryCount'),
+    normalizedPositiveEntryCount: readNumberDiagnostic(nutrientChain, 'normalizedPositiveEntryCount'),
+    declarationCompletenessValidation: declarationValidation
+      ? {
+          modelClaimedComplete: readBooleanDiagnostic(declarationValidation, 'modelClaimedComplete'),
+          declarationSectionEvidencePresent: readBooleanDiagnostic(
+            declarationValidation,
+            'declarationSectionEvidencePresent',
+          ),
+          matrixCompletenessAccepted: readBooleanDiagnostic(
+            declarationValidation,
+            'matrixCompletenessAccepted',
+          ),
+          rejectionReason: readStringDiagnostic(declarationValidation, 'rejectionReason'),
+        }
+      : null,
   }
 }
 

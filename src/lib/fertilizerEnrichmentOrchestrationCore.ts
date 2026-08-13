@@ -38,6 +38,7 @@ import {
 } from './fertilizerSourceAdapterMergeCore'
 import { CAPTURE_RECOGNITION_PACKAGING_REFERENCE_ID } from './fertilizerCaptureRecognitionPackagingCore'
 import { buildFertilizerCaptureNutrientPipelineDiagnostics } from './fertilizerCaptureNutrientPipelineDiagnosticsCore'
+import { buildManufacturerNutrientChainDiagnostics } from './fertilizerManufacturerNutrientChainDiagnosticsCore'
 import { readManufacturerResearchDiagnostics } from './fertilizerManufacturerResearchDiagnosticsCore'
 
 export const FERTILIZER_SOURCE_ADAPTER_EXECUTION_ORDER: readonly FertilizerSourceAdapterType[] = [
@@ -334,8 +335,65 @@ function attachNutrientPipelineDiagnostics(
     pipelineResult?: FertilizerEnrichmentPipelineResult | null
   },
 ): FertilizerEnrichmentOrchestrationResultBase {
+  const manufacturerAdapterResult = context.adapterResults.find(
+    (result) =>
+      result.adapterType === 'manufacturer_product_page' &&
+      (result.status === 'success' || result.status === 'partial'),
+  )
+  const existingResearchDiagnostics =
+    readManufacturerResearchDiagnostics(context.input) ?? base.manufacturerResearchDiagnostics ?? null
+  const normalizedNutrientMatrix =
+    context.pipelineResult?.normalizationResult.enrichmentResult.nutrientMatrix ?? null
+  const pipelineChainDiagnostics = buildManufacturerNutrientChainDiagnostics({
+    adapterResult: manufacturerAdapterResult ?? null,
+    rawDeclarationInput: context.rawDeclarationInput ?? null,
+    normalizedNutrientMatrix,
+    declarationCompletenessValidation:
+      existingResearchDiagnostics?.nutrientChainDiagnostics?.declarationCompletenessValidation ??
+      null,
+  })
+  const existingChainDiagnostics = existingResearchDiagnostics?.nutrientChainDiagnostics
+
+  const nutrientChainDiagnostics = existingChainDiagnostics
+    ? {
+        ...existingChainDiagnostics,
+        adapterMatrixEntryCount: pipelineChainDiagnostics.adapterMatrixEntryCount,
+        adapterPositiveEntryCount: pipelineChainDiagnostics.adapterPositiveEntryCount,
+        mergedMatrixEntryCount: pipelineChainDiagnostics.mergedMatrixEntryCount,
+        mergedPositiveEntryCount: pipelineChainDiagnostics.mergedPositiveEntryCount,
+        normalizedMatrixEntryCount: pipelineChainDiagnostics.normalizedMatrixEntryCount,
+        normalizedPositiveEntryCount: pipelineChainDiagnostics.normalizedPositiveEntryCount,
+        nutrientPresence: existingChainDiagnostics.nutrientPresence.map((entry) => {
+          const mergedEntry = context.rawDeclarationInput?.nutrientMatrix[entry.nutrientKey]
+          const normalizedEntry = normalizedNutrientMatrix?.[entry.nutrientKey]
+          const adapterNutrient =
+            manufacturerAdapterResult &&
+            (manufacturerAdapterResult.status === 'success' ||
+              manufacturerAdapterResult.status === 'partial')
+              ? manufacturerAdapterResult.extraction?.extractedNutrients?.find(
+                  (nutrient: { key: string }) => nutrient.key === entry.nutrientKey,
+                )
+              : null
+
+          return {
+            ...entry,
+            presentAfterAdapter: adapterNutrient?.value != null,
+            presentAfterMerge:
+              mergedEntry?.status === 'declared' && mergedEntry.value != null,
+            presentAfterNormalization: normalizedEntry?.value != null,
+          }
+        }),
+      }
+    : pipelineChainDiagnostics
+
   return {
     ...base,
+    manufacturerResearchDiagnostics: existingResearchDiagnostics
+      ? {
+          ...existingResearchDiagnostics,
+          nutrientChainDiagnostics,
+        }
+      : base.manufacturerResearchDiagnostics,
     nutrientPipelineDiagnostics: buildFertilizerCaptureNutrientPipelineDiagnostics({
       visionAnalysis: context.input.captureRecognitionPackagingBasis?.npk
         ? {
@@ -349,8 +407,7 @@ function attachNutrientPipelineDiagnostics(
         null,
       adapterResults: context.adapterResults,
       rawDeclarationInput: context.rawDeclarationInput ?? null,
-      normalizedNutrientMatrix:
-        context.pipelineResult?.normalizationResult.enrichmentResult.nutrientMatrix ?? null,
+      normalizedNutrientMatrix,
     }),
   }
 }

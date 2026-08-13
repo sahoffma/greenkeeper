@@ -44,6 +44,7 @@ import {
   runManufacturerStructuredResearchAttempt,
   type FertilizerManufacturerStructuredResearchProvider,
 } from './fertilizerManufacturerStructuredResearchCore'
+import { buildManufacturerNutrientChainDiagnostics } from './fertilizerManufacturerNutrientChainDiagnosticsCore'
 import type {
   FertilizerManufacturerResearchSearchProviderOutcome,
   FertilizerManufacturerResearchSourceStrategy,
@@ -411,6 +412,12 @@ function finalizeDiagnostics(input: {
     fallbackRecommendation: input.bestResult ? 'none' : resolveFallbackRecommendation(stage),
     manufacturerResearchTiming: input.timing,
     officialDeclarationFound: input.bestResult?.status === 'success',
+    nutrientChainDiagnostics: buildManufacturerNutrientChainDiagnostics({
+      structuredRecord: input.structuredAttempt?.structuredRecord ?? null,
+      adapterResult: input.bestResult ?? input.structuredAttempt?.adapterResult ?? null,
+      declarationCompletenessValidation:
+        input.structuredAttempt?.declarationCompletenessValidation ?? null,
+    }),
   }
 }
 

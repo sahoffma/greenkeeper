@@ -10,9 +10,16 @@ import {
   mapStructuredResearchToAdapterResult,
   parseManufacturerStructuredResearchRecord,
   selectPrimaryStructuredResearchSource,
+  syncStructuredNpkIntoNutrientMatrix,
+  validateStructuredDeclarationCompleteness,
   type FertilizerManufacturerStructuredResearchProvider,
   type ManufacturerStructuredResearchRecord,
 } from './fertilizerManufacturerStructuredResearchCore'
+import { countStructuredMatrixEntries } from './fertilizerManufacturerNutrientChainDiagnosticsCore'
+import { buildRawFertilizerDeclarationInput } from './fertilizerSourceAdapterMergeCore'
+import { evaluateRawFertilizerDeclaration } from './fertilizerNormalizationReadinessPipelineCore'
+import { mapEnrichmentNutrientMatrixToSaved } from './fertilizerProductProfileSaveCore'
+import type { FertilizerEnrichmentOrchestrationInput } from '../types/fertilizerEnrichmentOrchestration'
 
 const IDENTITY: FertilizerEnrichmentIdentity = {
   manufacturer: 'Example Manufacturer GmbH',
@@ -327,5 +334,215 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
 
     expect(result.diagnostics.directCandidateFallbackUsed).toBe(true)
     expect(result.adapterResult?.status).toBe('success')
+  })
+
+  it('rejects model-declared complete NPK-only structured research', () => {
+    const record = buildStructuredRecord({
+      npk: { nitrogen: 0, phosphate: 0, potash: 30 },
+      nutrientMatrix: {
+        nitrogen: 0,
+        phosphate: 0,
+        potash: 30,
+        nitrateNitrogen: null,
+        ammoniumNitrogen: null,
+        ureaNitrogen: null,
+        organicNitrogen: null,
+        magnesium: null,
+        calcium: null,
+        sulfur: null,
+        iron: null,
+        manganese: null,
+        copper: null,
+        zinc: null,
+        boron: null,
+        molybdenum: null,
+      },
+      declarationComplete: true,
+    })
+
+    const validation = validateStructuredDeclarationCompleteness({
+      record,
+      primarySource: record.sources[0]!,
+    })
+
+    expect(validation.rejectionReason).toBe('npk_only')
+    expect(validation.matrixCompletenessAccepted).toBe(false)
+
+    const adapterResult = mapStructuredResearchToAdapterResult({
+      record,
+      identity: IDENTITY,
+      retrievedAt: '2026-07-29T10:00:00.000Z',
+      declarationCompletenessValidation: validation,
+    })
+
+    expect(adapterResult?.status).toBe('partial')
+    if (adapterResult?.status === 'success' || adapterResult?.status === 'partial') {
+      expect(adapterResult.extraction?.coverageMetadata?.nutrientSectionFullyCaptured).toBe(false)
+    }
+  })
+
+  it('preserves NPK iron and sulfur through adapter merge and normalization', () => {
+    const record = syncStructuredNpkIntoNutrientMatrix(
+      buildStructuredRecord({
+        npk: { nitrogen: 0, phosphate: 0, potash: 30 },
+        nutrientMatrix: {
+          nitrogen: null,
+          phosphate: null,
+          potash: 30,
+          nitrateNitrogen: null,
+          ammoniumNitrogen: null,
+          ureaNitrogen: null,
+          organicNitrogen: null,
+          magnesium: 0,
+          calcium: 0,
+          sulfur: 10.2,
+          iron: 3,
+          manganese: 0.1,
+          copper: 0.1,
+          zinc: 0.1,
+          boron: null,
+          molybdenum: null,
+        },
+      }),
+    )
+
+    const adapterResult = mapStructuredResearchToAdapterResult({
+      record,
+      identity: IDENTITY,
+      retrievedAt: '2026-07-29T10:00:00.000Z',
+    })
+
+    expect(adapterResult?.status).toBe('success')
+    if (adapterResult?.status === 'success' || adapterResult?.status === 'partial') {
+      expect(
+        adapterResult.extraction?.extractedNutrients?.find((entry) => entry.key === 'iron')?.value,
+      ).toBe(3)
+      expect(
+        adapterResult.extraction?.extractedNutrients?.find((entry) => entry.key === 'sulfur')
+          ?.declarationBasis,
+      ).toBe('SO3')
+      expect(
+        adapterResult.extraction?.extractedNutrients?.find((entry) => entry.key === 'potash')
+          ?.declarationBasis,
+      ).toBe('K2O')
+      expect(
+        adapterResult.extraction?.extractedNutrients?.find((entry) => entry.key === 'magnesium')
+          ?.declarationBasis,
+      ).toBe('MgO')
+    }
+
+    const orchestrationInput = {
+      objectCategory: 'fertilizer',
+      identity: IDENTITY,
+      allowedInputChannels: ['capture_flow'],
+      sourceHints: [],
+      captureRecognitionPackagingBasis: {
+        sourceId: 'textIdentityBasis',
+        manufacturer: IDENTITY.manufacturer,
+        officialName: IDENTITY.officialName,
+        productLine: IDENTITY.productLine ?? null,
+        variant: IDENTITY.variant,
+        productForm: 'granular',
+        npk: { nitrogen: 0, phosphate: 0, potash: 30 },
+      },
+      idempotencyKey: 'structured-merge-test',
+    } satisfies FertilizerEnrichmentOrchestrationInput
+
+    const raw = buildRawFertilizerDeclarationInput(orchestrationInput, [adapterResult!], {
+      enrichmentRunId: 'run-structured-merge',
+      extractedAt: '2026-07-29T10:00:00.000Z',
+    })
+
+    expect(raw.nutrientMatrix.iron?.value).toBe(3)
+    expect(raw.nutrientMatrix.sulfur?.value).toBe(10.2)
+    expect(raw.nutrientMatrix.boron?.status).toBe('not_declared')
+
+    const pipeline = evaluateRawFertilizerDeclaration(raw, {
+      normalizedAt: '2026-07-29T10:00:00.000Z',
+      normalizationRunId: 'norm-structured-merge',
+      evaluatedAt: '2026-07-29T10:00:05.000Z',
+    })
+
+    expect(pipeline.readinessResult.status).toBe('ready')
+    expect(pipeline.normalizationResult.enrichmentResult.nutrientMatrix.iron?.value).toBe(3)
+    expect(pipeline.normalizationResult.enrichmentResult.nutrientMatrix.sulfur?.value).toBe(10.2)
+    expect(
+      pipeline.normalizationResult.enrichmentResult.nutrientMatrix.boron?.normalization,
+    ).toBe('dl014_zero')
+
+    const saved = mapEnrichmentNutrientMatrixToSaved(
+      pipeline.normalizationResult.enrichmentResult.nutrientMatrix,
+    )
+    expect(saved.iron?.value).toBe(3)
+    expect(saved.sulfur?.value).toBe(10.2)
+  })
+
+  it('does not zero-fill when structured declaration completeness is rejected', () => {
+    const record = buildStructuredRecord({
+      npk: { nitrogen: 0, phosphate: 0, potash: 30 },
+      nutrientMatrix: {
+        nitrogen: 0,
+        phosphate: 0,
+        potash: 30,
+        nitrateNitrogen: null,
+        ammoniumNitrogen: null,
+        ureaNitrogen: null,
+        organicNitrogen: null,
+        magnesium: null,
+        calcium: null,
+        sulfur: null,
+        iron: null,
+        manganese: null,
+        copper: null,
+        zinc: null,
+        boron: null,
+        molybdenum: null,
+      },
+      declarationComplete: true,
+    })
+    const validation = validateStructuredDeclarationCompleteness({
+      record,
+      primarySource: record.sources[0]!,
+    })
+    const adapterResult = mapStructuredResearchToAdapterResult({
+      record,
+      identity: IDENTITY,
+      retrievedAt: '2026-07-29T10:00:00.000Z',
+      declarationCompletenessValidation: validation,
+    })
+
+    const orchestrationInput = {
+      objectCategory: 'fertilizer',
+      identity: IDENTITY,
+      allowedInputChannels: ['capture_flow'],
+      sourceHints: [],
+      captureRecognitionPackagingBasis: {
+        sourceId: 'textIdentityBasis',
+        manufacturer: IDENTITY.manufacturer,
+        officialName: IDENTITY.officialName,
+        productLine: IDENTITY.productLine ?? null,
+        variant: IDENTITY.variant,
+        productForm: 'granular',
+        npk: { nitrogen: 0, phosphate: 0, potash: 30 },
+      },
+      idempotencyKey: 'structured-no-zero-fill',
+    } satisfies FertilizerEnrichmentOrchestrationInput
+
+    const raw = buildRawFertilizerDeclarationInput(orchestrationInput, [adapterResult!], {
+      enrichmentRunId: 'run-no-zero-fill',
+      extractedAt: '2026-07-29T10:00:00.000Z',
+    })
+
+    expect(raw.nutrientMatrix.iron?.status).not.toBe('not_declared')
+    expect(raw.nutrientMatrix.boron?.status).not.toBe('not_declared')
+  })
+
+  it('counts structured matrix entries without logging raw declaration text', () => {
+    const record = buildStructuredRecord()
+    const counts = countStructuredMatrixEntries(record)
+
+    expect(counts.structuredPositiveEntryCount).toBeGreaterThanOrEqual(4)
+    expect(counts.structuredNullEntryCount).toBeGreaterThan(0)
+    expect(countStructuredPositiveNutrients(record)).toBe(counts.structuredPositiveEntryCount)
   })
 })

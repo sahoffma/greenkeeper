@@ -136,6 +136,34 @@ function resolveRecognitionPackagingSourceId(
   return null
 }
 
+function resolveMatrixCompletionSourceId(
+  input: FertilizerEnrichmentOrchestrationInput,
+  extractions: Array<{ result: ExtractableAdapterResult }>,
+  coverageMetadata: RawFertilizerDeclarationCoverageMetadata,
+): string | null {
+  const packagingSourceId = resolveRecognitionPackagingSourceId(input, extractions)
+  if (packagingSourceId) {
+    return packagingSourceId
+  }
+
+  if (!coverageMetadata.nutrientSectionFullyCaptured) {
+    return null
+  }
+
+  for (const entry of extractions) {
+    const result = entry.result
+    if (
+      result.adapterType === 'manufacturer_product_page' &&
+      result.extraction.coverageMetadata?.nutrientSectionFullyCaptured === true &&
+      (result.status === 'success' || result.status === 'partial')
+    ) {
+      return result.sourceId
+    }
+  }
+
+  return null
+}
+
 function resolveIdentityManufacturer(
   input: FertilizerEnrichmentOrchestrationInput,
   extractions: Array<{ result: ExtractableAdapterResult }>,
@@ -199,12 +227,12 @@ function applyRecognitionPackagingMatrixCompletion(
   nutrientMatrix: RawFertilizerDeclarationInput['nutrientMatrix'],
   npk: Pick<RawFertilizerDeclarationInput, 'npk'>['npk'],
   coverageMetadata: RawFertilizerDeclarationCoverageMetadata,
-  packagingSourceId: string | null,
+  completionSourceId: string | null,
 ): RawFertilizerDeclarationInput['nutrientMatrix'] {
   if (
     !coverageMetadata.nutrientSectionFullyCaptured ||
     !coverageMetadata.productScopeConfirmed ||
-    packagingSourceId == null
+    completionSourceId == null
   ) {
     return nutrientMatrix
   }
@@ -228,7 +256,7 @@ function applyRecognitionPackagingMatrixCompletion(
         status: 'declared',
         value: npkValue.value,
         declarationBasis: npkValue.declarationBasis ?? defaultDeclarationBasisForMatrixKey(key),
-        provenanceIds: npkValue.provenanceIds ?? [packagingSourceId],
+        provenanceIds: npkValue.provenanceIds ?? [completionSourceId],
       }
     }
   }
@@ -254,7 +282,7 @@ function applyRecognitionPackagingMatrixCompletion(
     completed[key] = {
       status: 'not_declared',
       declarationBasis: defaultDeclarationBasisForMatrixKey(key),
-      provenanceIds: [packagingSourceId],
+      provenanceIds: [completionSourceId],
     }
   }
 
@@ -785,7 +813,7 @@ export function buildRawFertilizerDeclarationInput(
       conflictIds: [],
     },
     coverageMetadata,
-    resolveRecognitionPackagingSourceId(input, merged.extractions),
+    resolveMatrixCompletionSourceId(input, merged.extractions, coverageMetadata),
   )
 
   const hasNpkBasis =

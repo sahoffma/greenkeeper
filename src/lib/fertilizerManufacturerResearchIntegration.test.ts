@@ -7,6 +7,7 @@ import { orchestrateFertilizerEnrichment } from './fertilizerEnrichmentOrchestra
 import { createFertilizerEnrichmentProductionAdapterDependencies } from './fertilizerEnrichmentProductionAdapterCore'
 import { recognitionFromImageAnalysis } from './productRecognizeIdentityCore'
 import { buildFertilizerEnrichmentOrchestrationInputFromTextIdentity } from './fertilizerTextIdentityEnrichmentInputCore'
+import { mapEnrichmentNutrientMatrixToSaved } from './fertilizerProductProfileSaveCore'
 import type { FertilizerManufacturerStructuredResearchProvider } from './fertilizerManufacturerStructuredResearchCore'
 
 const FIXED_NOW = '2026-07-29T10:00:00.000Z'
@@ -342,5 +343,74 @@ describe('fertilizerManufacturerResearchIntegration', () => {
 
     expect(result.status).not.toBe('intake_ready')
     expect(result.rawDeclarationInput?.nutrientMatrix.iron?.status).not.toBe('not_declared')
+  })
+
+  it('rejects NPK-only structured research even when the model claims declarationComplete', async () => {
+    vi.stubGlobal('fetch', mockFetchForOfficialSources())
+
+    const input = buildFertilizerEnrichmentOrchestrationInputFromTextIdentity(
+      {
+        manufacturer: 'Rasendoktor',
+        productLine: 'Professional',
+        officialName: 'Stress-Manager',
+        variant: '0-0-30',
+        productForm: 'granular',
+        npk: { nitrogen: 0, phosphate: 0, potash: 30 },
+      },
+      { enrichmentIdempotencyKey: 'npk-only-structured-research' },
+    )
+
+    const result = await orchestrateFertilizerEnrichment(input, {
+      ...createProductionDependencies({
+        declarationComplete: true,
+        includeMicronutrients: false,
+      }),
+      now: () => FIXED_NOW,
+      createOrchestrationRunId: () => 'orch-npk-only-structured',
+      createNormalizationRunId: () => 'norm-npk-only-structured',
+    })
+
+    expect(
+      result.manufacturerResearchDiagnostics?.nutrientChainDiagnostics?.declarationCompletenessValidation
+        ?.rejectionReason,
+    ).toBe('npk_only')
+    expect(result.status).toBe('intake_ready')
+    expect(result.rawDeclarationInput?.nutrientMatrix.iron?.value).toBe(3)
+    expect(result.rawDeclarationInput?.nutrientMatrix.sulfur?.value).toBe(10.2)
+  })
+
+  it('reaches intake_ready and profile-save mapping through structured research', async () => {
+    const input = buildFertilizerEnrichmentOrchestrationInputFromTextIdentity(
+      {
+        manufacturer: 'Rasendoktor',
+        productLine: 'Professional',
+        officialName: 'Stress-Manager',
+        variant: '0-0-30',
+        productForm: 'granular',
+        npk: { nitrogen: 0, phosphate: 0, potash: 30 },
+      },
+      { enrichmentIdempotencyKey: 'structured-profile-save' },
+    )
+
+    const result = await orchestrateFertilizerEnrichment(input, {
+      ...createProductionDependencies(),
+      now: () => FIXED_NOW,
+      createOrchestrationRunId: () => 'orch-structured-profile-save',
+      createNormalizationRunId: () => 'norm-structured-profile-save',
+    })
+
+    expect(result.status).toBe('intake_ready')
+    if (result.status !== 'intake_ready') {
+      return
+    }
+
+    const saved = mapEnrichmentNutrientMatrixToSaved(
+      result.pipelineResult.normalizationResult.enrichmentResult.nutrientMatrix,
+    )
+    expect(saved.iron?.value).toBe(3)
+    expect(saved.sulfur?.value).toBe(10.2)
+    expect(
+      result.manufacturerResearchDiagnostics?.nutrientChainDiagnostics?.normalizedPositiveEntryCount,
+    ).toBeGreaterThan(1)
   })
 })
