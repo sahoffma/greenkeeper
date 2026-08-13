@@ -41,8 +41,23 @@ const PROFESSIONAL_STRESS_IDENTITY: FertilizerEnrichmentIdentity = {
   hasIdentityAmbiguity: false,
 }
 
-const OFFICIAL_URL = 'https://example-manufacturer.de/universal-feed'
+const OFFICIAL_URL = 'https://example-manufacturer.de/professional/universal-feed-10-5-20'
+const STRESS_OFFICIAL_URL = 'https://example.test/professional/stress-manager-0-0-30'
 const RETAILER_URL = 'https://shop.example/universal-feed'
+
+function verifiedStressManagerSource() {
+  return {
+    url: STRESS_OFFICIAL_URL,
+    title: 'Professional Stress-Manager 0-0-30',
+    category: 'official_manufacturer' as const,
+    sourceIdentity: {
+      manufacturer: 'Rasendoktor GmbH',
+      productLine: 'Professional',
+      productName: 'Stress-Manager',
+      npkLabel: '0-0-30',
+    },
+  }
+}
 
 function defaultStructuredNutrientDeclarationBases(): ManufacturerStructuredResearchRecord['nutrientDeclarationBases'] {
   return {
@@ -109,8 +124,14 @@ function buildStructuredRecord(
     sources: [
       {
         url: OFFICIAL_URL,
-        title: 'Official product page',
+        title: 'Professional Universal Feed 10-5-20',
         category: 'official_manufacturer',
+        sourceIdentity: {
+          manufacturer: 'Example Manufacturer GmbH',
+          productLine: 'Professional',
+          productName: 'Universal Feed',
+          npkLabel: '10-5-20',
+        },
       },
     ],
     ...recordOverrides,
@@ -448,6 +469,7 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
           boron: null,
           molybdenum: null,
         },
+        sources: [verifiedStressManagerSource()],
       }),
     )
 
@@ -548,6 +570,7 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
         molybdenum: null,
       },
       declarationComplete: true,
+      sources: [verifiedStressManagerSource()],
     })
     const validation = validateStructuredDeclarationCompleteness({
       record,

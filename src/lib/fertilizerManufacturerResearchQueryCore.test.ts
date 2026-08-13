@@ -30,6 +30,13 @@ describe('fertilizerManufacturerResearchQueryCore', () => {
 
     expect(queries.some((query) => query.includes('Stress Manager'))).toBe(true)
     expect(queries.some((query) => query.includes('site:rasendoktor.de'))).toBe(true)
+    expect(queries.some((query) => query.includes('Professional'))).toBe(true)
+    expect(queries.some((query) => query.includes('0-0-30'))).toBe(true)
+    expect(
+      queries.some(
+        (query) => query.includes('site:rasendoktor.de') && query.includes('Professional'),
+      ),
+    ).toBe(true)
     expect(queries.some((query) => query.includes('Produktdatenblatt'))).toBe(true)
     expect(queries.some((query) => query.includes('Zusammensetzung'))).toBe(true)
     expect(queries.some((query) => query.includes('technical data'))).toBe(true)

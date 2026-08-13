@@ -417,6 +417,7 @@ function finalizeDiagnostics(input: {
       adapterResult: input.bestResult ?? input.structuredAttempt?.adapterResult ?? null,
       declarationCompletenessValidation:
         input.structuredAttempt?.declarationCompletenessValidation ?? null,
+      identityValidation: input.structuredAttempt?.identityValidation ?? null,
     }),
   }
 }

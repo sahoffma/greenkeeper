@@ -9,6 +9,7 @@ import type {
   ManufacturerStructuredResearchRecord,
   ManufacturerStructuredResearchSourceRecord,
 } from './fertilizerManufacturerStructuredResearchCore'
+import { evaluateStructuredResearchSourceIdentityEvidence } from './fertilizerManufacturerStructuredResearchSourceIdentityCore'
 
 export type StructuredResearchIdentityRejectionReason =
   | 'none'
@@ -17,6 +18,10 @@ export type StructuredResearchIdentityRejectionReason =
   | 'product_line_mismatch'
   | 'npk_mismatch'
   | 'model_identity_mismatch'
+  | 'source_identity_mismatch'
+  | 'source_product_line_unverified'
+  | 'source_npk_unverified'
+  | 'identity_echo_suspected'
 
 export interface StructuredResearchIdentityValidation {
   modelClaimedIdentityMatch: boolean
@@ -26,6 +31,16 @@ export interface StructuredResearchIdentityValidation {
   recordProductLinePresent: boolean
   expectedNpkPresent: boolean
   recordNpkCompatible: boolean
+  structuredProductLinePresent: boolean
+  structuredProductLineMatch: boolean
+  structuredNpkMatch: boolean
+  canonicalDeclarationSourcePresent: boolean
+  canonicalDeclarationSourceIdentityVerified: boolean
+  canonicalDeclarationSourceProductLineVerified: boolean
+  canonicalDeclarationSourceNpkVerified: boolean
+  declarationSourceIdentityMismatch: boolean
+  structuredIdentityEchoSuspected: boolean
+  sourceBoundIdentityAccepted: boolean
 }
 
 function normalizeComparable(value: string | null | undefined): string {
@@ -129,54 +144,77 @@ export function validateStructuredResearchIdentityMatch(input: {
   const expectedNpk = resolveExpectedStructuredResearchNpk(input)
   const expectedProductLinePresent = Boolean(normalizeComparable(input.identity.productLine))
   const recordProductLinePresent = Boolean(normalizeComparable(input.record.productLine))
-  const recordNpkCompatible = npkTripletsCompatible(expectedNpk, input.record.npk)
+  const structuredProductLineMatch = productLinesCompatible(
+    input.identity.productLine,
+    input.record.productLine,
+  )
+  const structuredNpkMatch = npkTripletsCompatible(expectedNpk, input.record.npk)
+  const sourceEvidence = evaluateStructuredResearchSourceIdentityEvidence({
+    identity: input.identity,
+    npkLabel: input.npkLabel,
+    primarySource: input.primarySource,
+    recordProductLineMatchesExpected: structuredProductLineMatch,
+    recordNpkCompatible: structuredNpkMatch,
+  })
 
   const base = {
     modelClaimedIdentityMatch,
     expectedProductLinePresent,
     recordProductLinePresent,
     expectedNpkPresent: expectedNpk != null,
-    recordNpkCompatible,
+    recordNpkCompatible: structuredNpkMatch,
+    structuredProductLinePresent: recordProductLinePresent,
+    structuredProductLineMatch,
+    structuredNpkMatch,
+    ...sourceEvidence,
   }
 
+  const reject = (
+    rejectionReason: StructuredResearchIdentityRejectionReason,
+  ): StructuredResearchIdentityValidation => ({
+    ...base,
+    identityMatchAccepted: false,
+    rejectionReason,
+  })
+
   if (!modelClaimedIdentityMatch) {
-    return {
-      ...base,
-      identityMatchAccepted: false,
-      rejectionReason: 'model_identity_mismatch',
-    }
+    return reject('model_identity_mismatch')
   }
 
   if (!manufacturersCompatible(input.identity.manufacturer ?? '', input.record.manufacturer)) {
-    return {
-      ...base,
-      identityMatchAccepted: false,
-      rejectionReason: 'manufacturer_mismatch',
-    }
+    return reject('manufacturer_mismatch')
   }
 
   if (!productNamesCompatible(input.identity.officialName ?? '', input.record.productName)) {
-    return {
-      ...base,
-      identityMatchAccepted: false,
-      rejectionReason: 'product_name_mismatch',
-    }
+    return reject('product_name_mismatch')
   }
 
-  if (!productLinesCompatible(input.identity.productLine, input.record.productLine)) {
-    return {
-      ...base,
-      identityMatchAccepted: false,
-      rejectionReason: 'product_line_mismatch',
-    }
+  if (!structuredProductLineMatch) {
+    return reject('product_line_mismatch')
   }
 
-  if (!recordNpkCompatible) {
-    return {
-      ...base,
-      identityMatchAccepted: false,
-      rejectionReason: 'npk_mismatch',
-    }
+  if (!structuredNpkMatch) {
+    return reject('npk_mismatch')
+  }
+
+  if (!input.primarySource) {
+    return reject('source_identity_mismatch')
+  }
+
+  if (sourceEvidence.declarationSourceIdentityMismatch) {
+    return reject('source_identity_mismatch')
+  }
+
+  if (sourceEvidence.structuredIdentityEchoSuspected) {
+    return reject('identity_echo_suspected')
+  }
+
+  if (expectedProductLinePresent && !sourceEvidence.canonicalDeclarationSourceProductLineVerified) {
+    return reject('source_product_line_unverified')
+  }
+
+  if (expectedNpk != null && !sourceEvidence.canonicalDeclarationSourceNpkVerified) {
+    return reject('source_npk_unverified')
   }
 
   return {

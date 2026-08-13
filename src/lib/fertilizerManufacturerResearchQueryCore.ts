@@ -80,9 +80,18 @@ export function buildManufacturerResearchSearchQueries(input: {
   const brandToken = buildManufacturerBrandToken(manufacturer)
   if (brandToken) {
     for (const productVariant of productVariants) {
-      queries.add(`site:${brandToken}.de ${productVariant} Dünger`.trim())
-      queries.add(`site:${brandToken}.de ${productVariant} ${npk}`.trim())
-      queries.add(`site:${brandToken}.com ${productVariant} fertilizer`.trim())
+      queries.add(
+        [`site:${brandToken}.de`, productLine, productVariant, 'Dünger', npk].filter(Boolean).join(' ').trim(),
+      )
+      queries.add(
+        [`site:${brandToken}.de`, productLine, productVariant, npk].filter(Boolean).join(' ').trim(),
+      )
+      queries.add(
+        [`site:${brandToken}.com`, productLine, productVariant, 'fertilizer', npk]
+          .filter(Boolean)
+          .join(' ')
+          .trim(),
+      )
     }
   }
 

@@ -11,8 +11,8 @@ import { mapEnrichmentNutrientMatrixToSaved } from './fertilizerProductProfileSa
 import type { FertilizerManufacturerStructuredResearchProvider } from './fertilizerManufacturerStructuredResearchCore'
 
 const FIXED_NOW = '2026-07-29T10:00:00.000Z'
-const OFFICIAL_PRODUCT_URL = 'https://www.rasendoktor.de/duenger/stress-manager'
-const OFFICIAL_PDF_URL = 'https://www.rasendoktor.de/downloads/stress-manager.pdf'
+const OFFICIAL_PRODUCT_URL = 'https://www.rasendoktor.de/professional/stress-manager-0-0-30'
+const OFFICIAL_PDF_URL = 'https://www.rasendoktor.de/downloads/professional-stress-manager-0-0-30.pdf'
 
 function createOfficialStructuredResearchProvider(options?: {
   declarationComplete?: boolean
@@ -77,8 +77,14 @@ function createOfficialStructuredResearchProvider(options?: {
           sources: [
             {
               url: sourceUrl,
-              title: sourceUrl,
+              title: 'Professional Stress-Manager 0-0-30',
               category: sourceUrl.endsWith('.pdf') ? 'official_document' : 'official_manufacturer',
+              sourceIdentity: {
+                manufacturer: 'Rasendoktor',
+                productLine: 'Professional',
+                productName: 'Stress-Manager',
+                npkLabel: '0-0-30',
+              },
             },
           ],
         },
@@ -135,7 +141,7 @@ function mockFetchForOfficialSources() {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
 
-    if (url === OFFICIAL_PRODUCT_URL) {
+    if (url.includes('rasendoktor.de') && url.includes('stress-manager') && !url.endsWith('.pdf')) {
       return {
         status: 200,
         ok: true,
@@ -148,7 +154,7 @@ function mockFetchForOfficialSources() {
       } as unknown as Response
     }
 
-    if (url === OFFICIAL_PDF_URL) {
+    if (url.includes('rasendoktor.de') && url.endsWith('.pdf')) {
       const pdfBody = `%PDF-1.4\n1 0 obj\n<<>>\nendobj\nstream\n(${fullOfficialDeclarationPdfText()})\nendstream`
       return {
         status: 200,

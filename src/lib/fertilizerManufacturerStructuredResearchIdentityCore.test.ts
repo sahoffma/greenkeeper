@@ -5,7 +5,10 @@ import {
   productLinesCompatible,
   validateStructuredResearchIdentityMatch,
 } from './fertilizerManufacturerStructuredResearchIdentityCore'
-import type { ManufacturerStructuredResearchRecord } from './fertilizerManufacturerStructuredResearchCore'
+import type {
+  ManufacturerStructuredResearchRecord,
+  ManufacturerStructuredResearchSourceRecord,
+} from './fertilizerManufacturerStructuredResearchCore'
 
 const IDENTITY: FertilizerEnrichmentIdentity = {
   manufacturer: 'Rasendoktor GmbH',
@@ -15,6 +18,20 @@ const IDENTITY: FertilizerEnrichmentIdentity = {
   identityFingerprint: 'fp',
   identityConfidence: 1,
   hasIdentityAmbiguity: false,
+}
+
+function verifiedProfessionalSource(): ManufacturerStructuredResearchSourceRecord {
+  return {
+    url: 'https://example.test/professional/stress-manager-0-0-30',
+    title: 'Professional Stress-Manager 0-0-30',
+    category: 'official_manufacturer',
+    sourceIdentity: {
+      manufacturer: 'Rasendoktor',
+      productLine: 'Professional',
+      productName: 'Stress-Manager',
+      npkLabel: '0-0-30',
+    },
+  }
 }
 
 function buildRecord(
@@ -65,13 +82,7 @@ function buildRecord(
     declarationComplete: true,
     identityMatch: true,
     confidence: 0.95,
-    sources: [
-      {
-        url: 'https://example.test/professional-stress-manager',
-        title: 'Professional Stress-Manager',
-        category: 'official_manufacturer',
-      },
-    ],
+    sources: [verifiedProfessionalSource()],
     ...overrides,
   }
 }
@@ -92,6 +103,11 @@ describe('fertilizerManufacturerStructuredResearchIdentityCore', () => {
       }),
       identity: IDENTITY,
       npkLabel: '0-0-30',
+      primarySource: {
+        url: 'https://example.test/stressmanager',
+        title: 'Stressmanager',
+        category: 'official_manufacturer',
+      },
     })
 
     expect(validation.identityMatchAccepted).toBe(false)
@@ -112,20 +128,23 @@ describe('fertilizerManufacturerStructuredResearchIdentityCore', () => {
       }),
       identity: IDENTITY,
       npkLabel: '0-0-30',
+      primarySource: verifiedProfessionalSource(),
     })
 
     expect(validation.identityMatchAccepted).toBe(false)
     expect(validation.rejectionReason).toBe('npk_mismatch')
   })
 
-  it('accepts professional stress-manager with matching npk', () => {
+  it('accepts professional stress-manager with matching npk and verified source', () => {
     const validation = validateStructuredResearchIdentityMatch({
       record: buildRecord(),
       identity: IDENTITY,
       npkLabel: '0-0-30',
+      primarySource: verifiedProfessionalSource(),
     })
 
     expect(validation.identityMatchAccepted).toBe(true)
+    expect(validation.sourceBoundIdentityAccepted).toBe(true)
     expect(validation.rejectionReason).toBe('none')
   })
 

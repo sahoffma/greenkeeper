@@ -38,6 +38,23 @@ export interface StructuredDeclarationCompletenessValidation {
   rejectionReason: StructuredDeclarationCompletenessRejectionReason
 }
 
+export interface StructuredResearchIdentityValidationSummary {
+  modelClaimedIdentityMatch: boolean
+  identityMatchAccepted: boolean
+  rejectionReason: string
+  expectedProductLinePresent: boolean
+  structuredProductLinePresent: boolean
+  structuredProductLineMatch: boolean
+  structuredNpkMatch: boolean
+  canonicalDeclarationSourcePresent: boolean
+  canonicalDeclarationSourceIdentityVerified: boolean
+  canonicalDeclarationSourceProductLineVerified: boolean
+  canonicalDeclarationSourceNpkVerified: boolean
+  declarationSourceIdentityMismatch: boolean
+  structuredIdentityEchoSuspected: boolean
+  sourceBoundIdentityAccepted: boolean
+}
+
 export interface FertilizerManufacturerNutrientPresenceDiagnostic {
   nutrientKey: FertilizerNutrientMatrixKey
   presentInStructuredResult: boolean
@@ -59,6 +76,7 @@ export interface FertilizerManufacturerNutrientChainDiagnostics {
   normalizedMatrixEntryCount: number
   normalizedPositiveEntryCount: number
   declarationCompletenessValidation: StructuredDeclarationCompletenessValidation | null
+  structuredIdentityValidation: StructuredResearchIdentityValidationSummary | null
   nutrientPresence: FertilizerManufacturerNutrientPresenceDiagnostic[]
 }
 

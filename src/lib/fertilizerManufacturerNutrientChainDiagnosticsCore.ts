@@ -5,7 +5,9 @@ import type { FertilizerSourceAdapterResult } from '../types/fertilizerEnrichmen
 import type {
   FertilizerManufacturerNutrientChainDiagnostics,
   StructuredDeclarationCompletenessValidation,
+  StructuredResearchIdentityValidationSummary,
 } from '../types/fertilizerManufacturerResearchDiagnostics'
+import type { StructuredResearchIdentityValidation } from './fertilizerManufacturerStructuredResearchIdentityCore'
 
 export type { FertilizerManufacturerNutrientChainDiagnostics, StructuredDeclarationCompletenessValidation }
 
@@ -189,12 +191,38 @@ export function buildNutrientPresenceSnapshots(input: {
   })
 }
 
+export function summarizeStructuredResearchIdentityValidation(
+  validation: StructuredResearchIdentityValidation | null | undefined,
+): StructuredResearchIdentityValidationSummary | null {
+  if (!validation) {
+    return null
+  }
+
+  return {
+    modelClaimedIdentityMatch: validation.modelClaimedIdentityMatch,
+    identityMatchAccepted: validation.identityMatchAccepted,
+    rejectionReason: validation.rejectionReason,
+    expectedProductLinePresent: validation.expectedProductLinePresent,
+    structuredProductLinePresent: validation.structuredProductLinePresent,
+    structuredProductLineMatch: validation.structuredProductLineMatch,
+    structuredNpkMatch: validation.structuredNpkMatch,
+    canonicalDeclarationSourcePresent: validation.canonicalDeclarationSourcePresent,
+    canonicalDeclarationSourceIdentityVerified: validation.canonicalDeclarationSourceIdentityVerified,
+    canonicalDeclarationSourceProductLineVerified: validation.canonicalDeclarationSourceProductLineVerified,
+    canonicalDeclarationSourceNpkVerified: validation.canonicalDeclarationSourceNpkVerified,
+    declarationSourceIdentityMismatch: validation.declarationSourceIdentityMismatch,
+    structuredIdentityEchoSuspected: validation.structuredIdentityEchoSuspected,
+    sourceBoundIdentityAccepted: validation.sourceBoundIdentityAccepted,
+  }
+}
+
 export function buildManufacturerNutrientChainDiagnostics(input: {
   structuredRecord?: StructuredNutrientMatrixRecord | null
   adapterResult?: FertilizerSourceAdapterResult | null
   rawDeclarationInput?: RawFertilizerDeclarationInput | null
   normalizedNutrientMatrix?: FertilizerEnrichmentNutrientMatrix | null
   declarationCompletenessValidation?: StructuredDeclarationCompletenessValidation | null
+  identityValidation?: StructuredResearchIdentityValidation | null
 }): FertilizerManufacturerNutrientChainDiagnostics {
   const structuredCounts = countStructuredMatrixEntries(input.structuredRecord)
   const adapterCounts = countAdapterMatrixEntries(input.adapterResult)
@@ -208,6 +236,7 @@ export function buildManufacturerNutrientChainDiagnostics(input: {
     mergedPositiveEntryCount: mergedCounts.mergedPositiveEntryCountBeforeNormalization,
     ...normalizedCounts,
     declarationCompletenessValidation: input.declarationCompletenessValidation ?? null,
+    structuredIdentityValidation: summarizeStructuredResearchIdentityValidation(input.identityValidation),
     nutrientPresence: buildNutrientPresenceSnapshots(input),
   }
 }

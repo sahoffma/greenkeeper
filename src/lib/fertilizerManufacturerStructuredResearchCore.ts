@@ -21,6 +21,7 @@ import {
   validateStructuredResearchIdentityMatch,
   type StructuredResearchIdentityValidation,
 } from './fertilizerManufacturerStructuredResearchIdentityCore'
+import type { StructuredResearchSourceIdentityRecord } from './fertilizerManufacturerStructuredResearchSourceIdentityCore'
 
 export const MANUFACTURER_RESEARCH_STRUCTURED_BUDGET_MS = 16_000
 
@@ -89,8 +90,19 @@ export const manufacturerStructuredResearchSchema = {
               'other_web',
             ],
           },
+          sourceIdentity: {
+            type: 'object',
+            properties: {
+              manufacturer: { type: ['string', 'null'] },
+              productLine: { type: ['string', 'null'] },
+              productName: { type: ['string', 'null'] },
+              npkLabel: { type: ['string', 'null'] },
+            },
+            required: ['manufacturer', 'productLine', 'productName', 'npkLabel'],
+            additionalProperties: false,
+          },
         },
-        required: ['url', 'title', 'category'],
+        required: ['url', 'title', 'category', 'sourceIdentity'],
         additionalProperties: false,
       },
     },
@@ -115,6 +127,7 @@ export interface ManufacturerStructuredResearchSourceRecord {
   url: string
   title: string
   category: FertilizerOfficialSourceCandidateCategory
+  sourceIdentity?: StructuredResearchSourceIdentityRecord | null
 }
 
 export interface ManufacturerStructuredResearchRecord {
@@ -190,7 +203,7 @@ export function buildManufacturerStructuredResearchPrompt(input: {
       'reputable_retailer_only_as_supplement',
     ],
     instruction:
-      'Recherchiere das konkrete Düngerprodukt ausschließlich über das Web-Search-Tool anhand der kanonischen Produktidentität inklusive productLine und NPK. Keine Bilddaten, keine Modell-Erinnerung, keine Schätzungen. Priorität: 1) offizielle Herstellerseite, 2) offizielles Hersteller-PDF/Datenblatt, 3) offizieller Herstellerkatalog, 4) seriöse Händlerseite nur ergänzend. Bei Widersprüchen hat die offizielle Herstellerquelle Vorrang. Lies die vollständige Hersteller-Zusammensetzung/Deklaration aus (NPK plus Zusatz- und Spurennährstoffe). Trage Werte in nutrientMatrix und die exakte Herstellerbasis in nutrientDeclarationBases ein. Für Schwefel: S bleibt S, SO3 bleibt SO3 — keine Umbenennung. identityMatch nur true bei Übereinstimmung von manufacturer, productLine, productName und NPK mit der kanonischen Identität; ähnliche Produktnamen anderer Produktlinie oder widersprechende NPK sind kein Match. Setze declarationComplete nur true bei vollständiger Zusammensetzungssektion mit mindestens einem Zusatz-/Spurennährstoff außerhalb reiner NPK-Makros. Fehlende Werte als null, keine erfundenen 0-Werte.',
+      'Recherchiere das konkrete Düngerprodukt ausschließlich über das Web-Search-Tool anhand der kanonischen Produktidentität inklusive productLine und NPK. Keine Bilddaten, keine Modell-Erinnerung, keine Schätzungen. Priorität: 1) offizielle Herstellerseite, 2) offizielles Hersteller-PDF/Datenblatt, 3) offizeller Herstellerkatalog, 4) seriöse Händlerseite nur ergänzend. Bei Widersprüchen hat die offizielle Herstellerquelle Vorrang. Lies die vollständige Hersteller-Zusammensetzung/Deklaration aus (NPK plus Zusatz- und Spurennährstoffe). Trage Werte in nutrientMatrix und die exakte Herstellerbasis in nutrientDeclarationBases ein. Für Schwefel: S bleibt S, SO3 bleibt SO3 — keine Umbenennung. Nährstoffwerte dürfen nur aus Quellen übernommen werden, die exakt zur gesuchten Produktvariante gehören; keine Mischung ähnlich benannter Varianten. Identity-Felder (manufacturer, productLine, productName, npk) dürfen nicht aus dem Input übernommen werden, wenn die verwendete Quelle sie nicht belegt — trage pro Source sourceIdentity mit den aus der Quelle belegten Identitätsfeldern ein. Jede Deklaration muss einer konkreten Source zugeordnet sein. identityMatch nur true bei Übereinstimmung von manufacturer, productLine, productName und NPK mit der kanonischen Identität und der verwendeten Quelle; ähnliche Produktnamen anderer Produktlinie oder widersprechende NPK sind kein Match. Setze declarationComplete nur true bei vollständiger Zusammensetzungssektion mit mindestens einem Zusatz-/Spurennährstoff außerhalb reiner NPK-Makros und nur wenn die kanonische Quelle dieselbe Variante eindeutig trägt. Bei Unsicherheit keine vollständige Deklaration behaupten. Fehlende Werte als null, keine erfundenen 0-Werte.',
   })
 }
 
@@ -461,11 +474,37 @@ export function parseManufacturerStructuredResearchRecord(
           return []
         }
 
+        const sourceIdentityRecord =
+          item.sourceIdentity && typeof item.sourceIdentity === 'object'
+            ? (item.sourceIdentity as Record<string, unknown>)
+            : null
+        const sourceIdentity = sourceIdentityRecord
+          ? {
+              manufacturer:
+                typeof sourceIdentityRecord.manufacturer === 'string'
+                  ? sourceIdentityRecord.manufacturer.trim()
+                  : null,
+              productLine:
+                typeof sourceIdentityRecord.productLine === 'string'
+                  ? sourceIdentityRecord.productLine.trim()
+                  : null,
+              productName:
+                typeof sourceIdentityRecord.productName === 'string'
+                  ? sourceIdentityRecord.productName.trim()
+                  : null,
+              npkLabel:
+                typeof sourceIdentityRecord.npkLabel === 'string'
+                  ? sourceIdentityRecord.npkLabel.trim()
+                  : null,
+            }
+          : null
+
         return [
           {
             url: item.url,
             title: item.title.trim() || item.url,
             category: normalizeSearchCategory(String(item.category ?? 'other_web'), item.url),
+            sourceIdentity,
           },
         ]
       })
@@ -663,7 +702,7 @@ export function createOpenAiManufacturerStructuredResearchProvider(
           {
             role: 'system',
             content:
-              'Du recherchierst kanonische Herstellerinformationen für Düngerprodukte. Nutze das Web-Search-Tool und gib ein strukturiertes, quellenbasiertes Ergebnis zurück. Extrahiere die vollständige offizielle Zusammensetzung inklusive Zusatz- und Spurennährstoffe in die kanonischen nutrientMatrix-Schlüssel. Keine Erfindungen, keine reinen NPK-Schätzungen ohne Zusammensetzungssektion.',
+              'Du recherchierst kanonische Herstellerinformationen für Düngerprodukte. Nutze das Web-Search-Tool und gib ein strukturiertes, quellenbasiertes Ergebnis zurück. Extrahiere die vollständige offizielle Zusammensetzung inklusive Zusatz- und Spurennährstoffe in die kanonischen nutrientMatrix-Schlüssel. Keine Erfindungen, keine reinen NPK-Schätzungen ohne Zusammensetzungssektion. Nährstoffwerte nur aus Quellen übernehmen, die exakt zur gesuchten Produktvariante gehören. Pro Source sourceIdentity mit aus der Quelle belegten Identitätsfeldern angeben. Identity-Felder nicht aus dem Input spiegeln, wenn die Quelle sie nicht belegt.',
           },
           {
             role: 'user',

@@ -200,6 +200,22 @@ export interface FertilizerEnrichmentStartManufacturerResearchDiagnostic {
     matrixCompletenessAccepted: boolean
     rejectionReason: string
   } | null
+  structuredIdentityValidation: {
+    modelClaimedIdentityMatch: boolean
+    identityMatchAccepted: boolean
+    rejectionReason: string
+    expectedProductLinePresent: boolean
+    structuredProductLinePresent: boolean
+    structuredProductLineMatch: boolean
+    structuredNpkMatch: boolean
+    canonicalDeclarationSourcePresent: boolean
+    canonicalDeclarationSourceIdentityVerified: boolean
+    canonicalDeclarationSourceProductLineVerified: boolean
+    canonicalDeclarationSourceNpkVerified: boolean
+    declarationSourceIdentityMismatch: boolean
+    structuredIdentityEchoSuspected: boolean
+    sourceBoundIdentityAccepted: boolean
+  } | null
 }
 
 export interface FertilizerEnrichmentStartOutcomeWarningDiagnostic {
@@ -1021,6 +1037,7 @@ function readManufacturerResearchDiagnosticSummary(
   const { fetchAttempts: _fetchAttempts, ...timingSummary } = timing ?? {}
   const nutrientChain = readObjectRecord(diagnostics.nutrientChainDiagnostics)
   const declarationValidation = readObjectRecord(nutrientChain?.declarationCompletenessValidation)
+  const identityValidation = readObjectRecord(nutrientChain?.structuredIdentityValidation)
 
   return {
     searchProviderConfigured: readBooleanDiagnostic(diagnostics, 'searchProviderConfigured'),
@@ -1063,6 +1080,54 @@ function readManufacturerResearchDiagnosticSummary(
             'matrixCompletenessAccepted',
           ),
           rejectionReason: readStringDiagnostic(declarationValidation, 'rejectionReason'),
+        }
+      : null,
+    structuredIdentityValidation: identityValidation
+      ? {
+          modelClaimedIdentityMatch: readBooleanDiagnostic(identityValidation, 'modelClaimedIdentityMatch'),
+          identityMatchAccepted: readBooleanDiagnostic(identityValidation, 'identityMatchAccepted'),
+          rejectionReason: readStringDiagnostic(identityValidation, 'rejectionReason'),
+          expectedProductLinePresent: readBooleanDiagnostic(
+            identityValidation,
+            'expectedProductLinePresent',
+          ),
+          structuredProductLinePresent: readBooleanDiagnostic(
+            identityValidation,
+            'structuredProductLinePresent',
+          ),
+          structuredProductLineMatch: readBooleanDiagnostic(
+            identityValidation,
+            'structuredProductLineMatch',
+          ),
+          structuredNpkMatch: readBooleanDiagnostic(identityValidation, 'structuredNpkMatch'),
+          canonicalDeclarationSourcePresent: readBooleanDiagnostic(
+            identityValidation,
+            'canonicalDeclarationSourcePresent',
+          ),
+          canonicalDeclarationSourceIdentityVerified: readBooleanDiagnostic(
+            identityValidation,
+            'canonicalDeclarationSourceIdentityVerified',
+          ),
+          canonicalDeclarationSourceProductLineVerified: readBooleanDiagnostic(
+            identityValidation,
+            'canonicalDeclarationSourceProductLineVerified',
+          ),
+          canonicalDeclarationSourceNpkVerified: readBooleanDiagnostic(
+            identityValidation,
+            'canonicalDeclarationSourceNpkVerified',
+          ),
+          declarationSourceIdentityMismatch: readBooleanDiagnostic(
+            identityValidation,
+            'declarationSourceIdentityMismatch',
+          ),
+          structuredIdentityEchoSuspected: readBooleanDiagnostic(
+            identityValidation,
+            'structuredIdentityEchoSuspected',
+          ),
+          sourceBoundIdentityAccepted: readBooleanDiagnostic(
+            identityValidation,
+            'sourceBoundIdentityAccepted',
+          ),
         }
       : null,
   }
