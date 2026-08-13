@@ -33,6 +33,23 @@ const ENRICHMENT_ERROR_MESSAGES: Record<string, string> = {
   internal_server_error: 'Die Produktanreicherung ist fehlgeschlagen.',
 }
 
+async function readFertilizerEnrichmentJsonPayload(
+  response: Response,
+): Promise<{ job?: FertilizerEnrichmentJob; error?: FertilizerEnrichmentApiError }> {
+  try {
+    return (await response.json()) as {
+      job?: FertilizerEnrichmentJob
+      error?: FertilizerEnrichmentApiError
+    }
+  } catch {
+    throw new FertilizerEnrichmentClientError(
+      'Die Anreicherungsantwort konnte nicht gelesen werden.',
+      response.status >= 500 ? 'temporarily_unavailable' : 'client_error',
+      response.status,
+    )
+  }
+}
+
 async function readAuthHeaders(): Promise<HeadersInit> {
   const { data } = await supabase.auth.getSession()
   const token = data.session?.access_token
@@ -94,7 +111,7 @@ export async function startFertilizerEnrichmentFromCapture(
     )
   }
 
-  const payload = (await response.json()) as { job?: FertilizerEnrichmentJob; error?: FertilizerEnrichmentApiError }
+  const payload = await readFertilizerEnrichmentJsonPayload(response)
 
   if (!response.ok) {
     throw mapEnrichmentClientError(response.status, payload)
@@ -124,7 +141,7 @@ export async function getFertilizerEnrichmentStatus(jobId: string): Promise<Fert
     )
   }
 
-  const payload = (await response.json()) as { job?: FertilizerEnrichmentJob; error?: FertilizerEnrichmentApiError }
+  const payload = await readFertilizerEnrichmentJsonPayload(response)
 
   if (!response.ok) {
     throw mapEnrichmentClientError(response.status, payload)

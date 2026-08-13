@@ -23,6 +23,7 @@ export interface FertilizerManufacturerProductPageAdapterDependencies {
       input: FertilizerEnrichmentOrchestrationInput
       orchestrationRunId: string
       attempt: number
+      fetchTimeoutMs?: number
     },
   ) => Promise<FertilizerManufacturerDocumentFetchResult>
   searchProvider?: FertilizerManufacturerResearchSearchProvider | null
@@ -112,11 +113,12 @@ export async function runFertilizerManufacturerProductPageAdapter(
       packageSizeLabel: resolvePackageSizeLabel(context.input),
       searchProvider: dependencies.searchProvider ?? null,
       fetchProvider: {
-        fetchSource: (url) =>
+        fetchSource: (url, options) =>
           dependencies.fetchDocument(url, {
             input: context.input,
             orchestrationRunId: context.orchestrationRunId,
             attempt: context.attempt,
+            fetchTimeoutMs: options?.timeoutMs,
           }),
       },
     })

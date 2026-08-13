@@ -13,6 +13,8 @@ export type FertilizerManufacturerResearchFallbackRecommendation =
   | 'optional_back_photo'
   | 'none'
 
+import type { FertilizerManufacturerResearchTiming } from './fertilizerManufacturerResearchTiming'
+
 export interface FertilizerManufacturerResearchDiagnostics {
   productIdentityComplete: boolean
   automaticResearchAttempted: boolean
@@ -27,4 +29,5 @@ export interface FertilizerManufacturerResearchDiagnostics {
   declaredPositiveNutrientCount: number
   researchFailureStage: FertilizerManufacturerResearchFailureStage
   fallbackRecommendation: FertilizerManufacturerResearchFallbackRecommendation
+  manufacturerResearchTiming?: FertilizerManufacturerResearchTiming | null
 }

@@ -1,5 +1,6 @@
 import type { FertilizerEnrichmentOrchestrationInput } from '../types/fertilizerEnrichmentOrchestration'
 import type { FertilizerManufacturerResearchDiagnostics } from '../types/fertilizerManufacturerResearchDiagnostics'
+import { createEmptyManufacturerResearchTiming } from './fertilizerManufacturerResearchTimingCore'
 
 export function readManufacturerResearchDiagnostics(
   input: FertilizerEnrichmentOrchestrationInput,
@@ -22,5 +23,6 @@ export function createEmptyManufacturerResearchDiagnostics(): FertilizerManufact
     declaredPositiveNutrientCount: 0,
     researchFailureStage: 'search_not_attempted',
     fallbackRecommendation: 'retry_search',
+    manufacturerResearchTiming: createEmptyManufacturerResearchTiming(),
   }
 }

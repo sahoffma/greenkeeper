@@ -188,6 +188,7 @@ export interface FertilizerEnrichmentStartOutcomeWarningDiagnostic {
   }
   packagingInlineProcessed: boolean
   manufacturerHttpFetchAttempted: boolean
+  manufacturerResearchTiming: Record<string, unknown> | null
   formDiagnostic: FertilizerEnrichmentStartFormDiagnostic | null
 }
 
@@ -940,6 +941,19 @@ export function buildFertilizerEnrichmentStartFormDiagnostic(input: {
   }
 }
 
+function readManufacturerResearchTimingSummary(
+  jobResult: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const diagnostics = readObjectRecord(jobResult.manufacturerResearchDiagnostics)
+  const timing = readObjectRecord(diagnostics?.manufacturerResearchTiming)
+  if (!timing) {
+    return null
+  }
+
+  const { fetchAttempts: _fetchAttempts, ...summary } = timing
+  return summary
+}
+
 export function buildFertilizerEnrichmentStartOutcomeWarningDiagnostic(input: {
   requestId: string | null
   httpStatus: number
@@ -1001,6 +1015,7 @@ export function buildFertilizerEnrichmentStartOutcomeWarningDiagnostic(input: {
       input.inputCounts.captureInlineSourceTextCount > 0 &&
       selectedAdapterTypes.includes('packaging'),
     manufacturerHttpFetchAttempted: selectedAdapterTypes.includes('manufacturer_product_document'),
+    manufacturerResearchTiming: readManufacturerResearchTimingSummary(jobResult),
     formDiagnostic: buildFertilizerEnrichmentStartFormDiagnostic({
       requestBody: input.requestBody,
       jobResult,

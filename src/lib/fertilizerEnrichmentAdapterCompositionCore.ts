@@ -16,6 +16,7 @@ export interface FertilizerEnrichmentAdapterCompositionDependencies {
       input: FertilizerEnrichmentOrchestrationInput
       orchestrationRunId: string
       attempt: number
+      fetchTimeoutMs?: number
     },
   ) => Promise<FertilizerManufacturerDocumentFetchResult>
   manufacturerResearchSearchProvider?: FertilizerManufacturerResearchSearchProvider | null

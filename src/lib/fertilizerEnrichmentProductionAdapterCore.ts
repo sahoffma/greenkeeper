@@ -42,7 +42,10 @@ export function createFertilizerEnrichmentProductionAdapterDependencies(options:
       }
 
       if (isExternalSourceReference(sourceRef.trim())) {
-        return fetchExternalManufacturerDocument(sourceRef, { now })
+        return fetchExternalManufacturerDocument(sourceRef, {
+          now,
+          timeoutMs: context.fetchTimeoutMs,
+        })
       }
 
       return { ok: false, errorCode: 'unsupported_source', retryable: false }
