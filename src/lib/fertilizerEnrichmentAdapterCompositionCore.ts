@@ -3,7 +3,7 @@ import type { FertilizerEnrichmentSourceHint } from '../types/fertilizerEnrichme
 import type { FertilizerManufacturerDocumentFetchResult } from './fertilizerManufacturerProductDocumentAdapterCore'
 import { createFertilizerManufacturerProductDocumentAdapter } from './fertilizerManufacturerProductDocumentAdapterCore'
 import { createFertilizerManufacturerProductPageAdapter } from './fertilizerManufacturerProductPageAdapterCore'
-import type { FertilizerManufacturerResearchSearchProvider } from './fertilizerManufacturerResearchCore'
+import type { FertilizerManufacturerStructuredResearchProvider } from './fertilizerManufacturerResearchCore'
 import { createFertilizerPackagingSourceAdapter } from './fertilizerPackagingSourceAdapterCore'
 import { createFertilizerUserDocumentAdapter } from './fertilizerUserDocumentAdapterCore'
 import type { OrchestrateFertilizerEnrichmentDependencies } from './fertilizerEnrichmentOrchestrationCore'
@@ -19,7 +19,7 @@ export interface FertilizerEnrichmentAdapterCompositionDependencies {
       fetchTimeoutMs?: number
     },
   ) => Promise<FertilizerManufacturerDocumentFetchResult>
-  manufacturerResearchSearchProvider?: FertilizerManufacturerResearchSearchProvider | null
+  manufacturerResearchStructuredProvider?: FertilizerManufacturerStructuredResearchProvider | null
   resolveUserDocumentSource?: (
     hint: FertilizerEnrichmentSourceHint,
     context: {
@@ -71,7 +71,7 @@ export function createFertilizerEnrichmentOrchestrationDependencies(
       createFertilizerManufacturerProductPageAdapter({
         fetchDocument: (sourceUrl, context) =>
           dependencies.fetchManufacturerDocument!(sourceUrl, context),
-        searchProvider: dependencies.manufacturerResearchSearchProvider ?? null,
+        structuredResearchProvider: dependencies.manufacturerResearchStructuredProvider ?? null,
       }),
     )
   }

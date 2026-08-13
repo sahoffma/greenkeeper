@@ -27,20 +27,23 @@ import {
   isResearchBudgetExhausted,
   limitOfficialResearchCandidates,
   logManufacturerResearchTiming,
-  MANUFACTURER_RESEARCH_MAX_OFFICIAL_CANDIDATES,
+  MANUFACTURER_RESEARCH_DIRECT_FALLBACK_MAX_CANDIDATES,
+  MANUFACTURER_RESEARCH_DIRECT_FALLBACK_RESERVE_MS,
   MANUFACTURER_RESEARCH_MAX_PARALLEL_FETCHES,
   MANUFACTURER_RESEARCH_PER_FETCH_TIMEOUT_MS,
   MANUFACTURER_RESEARCH_TOTAL_BUDGET_MS,
   mapFetchResultToResearchOutcome,
+  remainingResearchBudgetMs,
   resolvePerFetchTimeoutMs,
   resolveResearchFetchSourceKind,
   resolveResearchFetchSourcePriority,
   summarizeFetchAttempts,
 } from './fertilizerManufacturerResearchTimingCore'
 import {
-  MANUFACTURER_RESEARCH_SEARCH_BUDGET_MS,
-  runManufacturerResearchSearchAttempt,
-} from './fertilizerManufacturerResearchSearchProviderCore'
+  MANUFACTURER_RESEARCH_STRUCTURED_BUDGET_MS,
+  runManufacturerStructuredResearchAttempt,
+  type FertilizerManufacturerStructuredResearchProvider,
+} from './fertilizerManufacturerStructuredResearchCore'
 import type {
   FertilizerManufacturerResearchSearchProviderOutcome,
   FertilizerManufacturerResearchSourceStrategy,
@@ -48,12 +51,14 @@ import type {
 import { extractPdfTextFromBytes } from './fertilizerPdfTextExtractionCore'
 
 export {
+  MANUFACTURER_RESEARCH_DIRECT_FALLBACK_MAX_CANDIDATES,
   MANUFACTURER_RESEARCH_MAX_OFFICIAL_CANDIDATES,
   MANUFACTURER_RESEARCH_MAX_PARALLEL_FETCHES,
   MANUFACTURER_RESEARCH_PER_FETCH_TIMEOUT_MS,
   MANUFACTURER_RESEARCH_TOTAL_BUDGET_MS,
 } from './fertilizerManufacturerResearchTimingCore'
-export { MANUFACTURER_RESEARCH_SEARCH_BUDGET_MS } from './fertilizerManufacturerResearchSearchProviderCore'
+export { MANUFACTURER_RESEARCH_STRUCTURED_BUDGET_MS } from './fertilizerManufacturerStructuredResearchCore'
+export type { FertilizerManufacturerStructuredResearchProvider } from './fertilizerManufacturerStructuredResearchCore'
 
 export type FertilizerOfficialSourceCandidateCategory =
   | 'official_manufacturer'
@@ -80,6 +85,10 @@ export interface FertilizerManufacturerResearchSearchProvider {
   }): Promise<FertilizerOfficialSourceCandidate[]>
 }
 
+/** @deprecated Legacy URL-discovery provider; production uses structured web research. */
+export type FertilizerManufacturerResearchLegacySearchProvider =
+  FertilizerManufacturerResearchSearchProvider
+
 export interface FertilizerManufacturerResearchFetchProvider {
   fetchSource(
     url: string,
@@ -94,6 +103,7 @@ export interface FertilizerManufacturerResearchResult {
 
 export interface FertilizerManufacturerResearchRuntimeOptions {
   totalBudgetMs?: number
+  structuredBudgetMs?: number
   perFetchTimeoutMs?: number
   maxOfficialCandidates?: number
   maxParallelFetches?: number
@@ -198,7 +208,11 @@ function countDeclaredPositiveNutrients(
 
 function resolveFailureStage(input: {
   identityComplete: boolean
-  searchAttempted: boolean
+  structuredAttempted: boolean
+  structuredOutcome: FertilizerManufacturerResearchSearchProviderOutcome
+  structuredResultPresent: boolean
+  structuredDeclarationComplete: boolean
+  directCandidateFallbackUsed: boolean
   candidateCount: number
   fetchedCount: number
   parsedCount: number
@@ -208,11 +222,46 @@ function resolveFailureStage(input: {
     return 'identity_incomplete'
   }
 
-  if (!input.searchAttempted) {
+  if (!input.structuredAttempted) {
     return 'search_not_attempted'
   }
 
-  if (input.candidateCount === 0) {
+  if (
+    input.structuredOutcome === 'timeout' &&
+    !input.directCandidateFallbackUsed &&
+    input.fetchedCount === 0
+  ) {
+    return 'structured_research_timeout'
+  }
+
+  if (
+    input.structuredOutcome === 'timeout' &&
+    input.directCandidateFallbackUsed &&
+    input.fetchedCount === 0 &&
+    input.candidateCount === 0
+  ) {
+    return 'structured_research_timeout'
+  }
+
+  if (
+    input.structuredResultPresent &&
+    !input.structuredDeclarationComplete &&
+    !input.directCandidateFallbackUsed &&
+    input.fetchedCount === 0
+  ) {
+    return 'structured_research_incomplete'
+  }
+
+  if (
+    !input.structuredResultPresent &&
+    (input.structuredOutcome === 'no_results' || input.structuredOutcome === 'error') &&
+    input.fetchedCount === 0 &&
+    input.candidateCount === 0
+  ) {
+    return 'structured_research_no_source'
+  }
+
+  if (input.candidateCount === 0 && input.fetchedCount === 0) {
     return 'no_candidates'
   }
 
@@ -237,9 +286,12 @@ function resolveFallbackRecommendation(
   switch (stage) {
     case 'fetch_failed':
     case 'no_candidates':
+    case 'structured_research_timeout':
+    case 'structured_research_no_source':
       return 'retry_search'
     case 'parse_failed':
     case 'declaration_missing':
+    case 'structured_research_incomplete':
       return 'provide_document'
     case 'identity_incomplete':
       return 'provide_document'
@@ -248,6 +300,49 @@ function resolveFallbackRecommendation(
     case 'none':
       return 'none'
   }
+}
+
+function shouldUseDirectCandidateFallback(input: {
+  structuredAttempt: Awaited<ReturnType<typeof runManufacturerStructuredResearchAttempt>> | null
+}): boolean {
+  if (!input.structuredAttempt) {
+    return true
+  }
+
+  if (input.structuredAttempt.outcome === 'timeout') {
+    return true
+  }
+
+  if (input.structuredAttempt.outcome === 'error') {
+    return true
+  }
+
+  if (input.structuredAttempt.outcome === 'no_results') {
+    return true
+  }
+
+  if (
+    input.structuredAttempt.adapterResult?.status === 'success' &&
+    input.structuredAttempt.structuredDeclarationComplete
+  ) {
+    return false
+  }
+
+  if (
+    input.structuredAttempt.adapterResult?.status === 'success' &&
+    !input.structuredAttempt.structuredDeclarationComplete
+  ) {
+    return true
+  }
+
+  if (
+    input.structuredAttempt.adapterResult?.status === 'partial' &&
+    !input.structuredAttempt.structuredDeclarationComplete
+  ) {
+    return true
+  }
+
+  return input.structuredAttempt.adapterResult == null
 }
 
 async function extractFetchedDocumentText(
@@ -277,7 +372,9 @@ function finalizeDiagnostics(input: {
   parsedCount: number
   declarationSectionFound: boolean
   declaredPositiveNutrientCount: number
-  searchAttempted: boolean
+  structuredAttempted: boolean
+  structuredAttempt: Awaited<ReturnType<typeof runManufacturerStructuredResearchAttempt>> | null
+  directCandidateFallbackUsed: boolean
   candidateCount: number
   identityComplete: boolean
   logTiming: boolean
@@ -286,7 +383,14 @@ function finalizeDiagnostics(input: {
     ? 'none'
     : resolveFailureStage({
         identityComplete: input.identityComplete,
-        searchAttempted: input.searchAttempted,
+        structuredAttempted: input.structuredAttempted,
+        structuredOutcome:
+          input.structuredAttempt?.outcome ??
+          (input.structuredAttempted ? 'error' : 'not_configured'),
+        structuredResultPresent: input.structuredAttempt?.structuredResearchResultPresent ?? false,
+        structuredDeclarationComplete:
+          input.structuredAttempt?.structuredDeclarationComplete ?? false,
+        directCandidateFallbackUsed: input.directCandidateFallbackUsed,
         candidateCount: input.candidateCount,
         fetchedCount: input.fetchedCount,
         parsedCount: input.parsedCount,
@@ -555,6 +659,8 @@ export async function runAutomaticManufacturerResearch(input: {
   hintedUrls?: string[]
   npkLabel?: string | null
   packageSizeLabel?: string | null
+  structuredResearchProvider?: FertilizerManufacturerStructuredResearchProvider | null
+  /** @deprecated Use structuredResearchProvider instead. */
   searchProvider?: FertilizerManufacturerResearchSearchProvider | null
   fetchProvider: FertilizerManufacturerResearchFetchProvider
   runtime?: FertilizerManufacturerResearchRuntimeOptions
@@ -565,7 +671,7 @@ export async function runAutomaticManufacturerResearch(input: {
   const perFetchTimeoutMs =
     input.runtime?.perFetchTimeoutMs ?? MANUFACTURER_RESEARCH_PER_FETCH_TIMEOUT_MS
   const maxOfficialCandidates =
-    input.runtime?.maxOfficialCandidates ?? MANUFACTURER_RESEARCH_MAX_OFFICIAL_CANDIDATES
+    input.runtime?.maxOfficialCandidates ?? MANUFACTURER_RESEARCH_DIRECT_FALLBACK_MAX_CANDIDATES
   const maxParallelFetches =
     input.runtime?.maxParallelFetches ?? MANUFACTURER_RESEARCH_MAX_PARALLEL_FETCHES
   const logTiming = input.runtime?.logTiming ?? true
@@ -594,92 +700,85 @@ export async function runAutomaticManufacturerResearch(input: {
   })
   timing.candidateBuildMs = now() - candidateBuildStartedAtMs
 
-  let candidates = defaultCandidates
-  let searchAttempted = identityComplete
-  const discoveredUrlSet = new Set<string>()
-  const searchProviderConfigured = Boolean(input.searchProvider)
+  const structuredResearchProvider = input.structuredResearchProvider ?? null
+  const searchProviderConfigured = Boolean(structuredResearchProvider)
   let searchProviderAttempted = false
   let searchProviderOutcome: FertilizerManufacturerResearchSearchProviderOutcome =
     searchProviderConfigured ? 'error' : 'not_configured'
+  let searchProviderDurationMs = 0
   let researchSourceStrategy: FertilizerManufacturerResearchSourceStrategy = 'direct_candidates_only'
   let searchResultCount = 0
   let officialSearchResultCount = 0
+  let webSearchToolCallObserved = false
+  let structuredResearchResultPresent = false
+  let structuredDeclarationComplete = false
+  let structuredPositiveNutrientCount = 0
+  let directCandidateFallbackUsed = false
+  let structuredAttempt: Awaited<ReturnType<typeof runManufacturerStructuredResearchAttempt>> | null =
+    null
+  let bestResult: FertilizerSourceAdapterResult | null = null
 
-  if (identityComplete && input.searchProvider) {
+  if (identityComplete && structuredResearchProvider) {
     searchProviderAttempted = true
-    const searchProviderStartedAtMs = now()
-    const searchAttempt = await runManufacturerResearchSearchAttempt({
-      searchProvider: input.searchProvider,
+    const structuredBudgetMs = Math.min(
+      input.runtime?.structuredBudgetMs ?? MANUFACTURER_RESEARCH_STRUCTURED_BUDGET_MS,
+      Math.max(
+        remainingResearchBudgetMs(researchStartedAtMs, totalBudgetMs, now()) -
+          MANUFACTURER_RESEARCH_DIRECT_FALLBACK_RESERVE_MS,
+        1_000,
+      ),
+    )
+    const structuredStartedAtMs = now()
+    structuredAttempt = await runManufacturerStructuredResearchAttempt({
+      structuredResearchProvider,
       identity: input.identity,
       queries,
       manufacturerDomain,
-      urlCandidates: defaultCandidates.map((candidate) => candidate.url),
-      timeoutMs: Math.min(
-        MANUFACTURER_RESEARCH_SEARCH_BUDGET_MS,
-        totalBudgetMs - 500,
-      ),
+      npkLabel: input.npkLabel,
+      packageSizeLabel: input.packageSizeLabel,
+      timeoutMs: structuredBudgetMs,
     })
-    timing.searchProviderMs = now() - searchProviderStartedAtMs
-    searchProviderOutcome = searchAttempt.outcome
-    searchResultCount = searchAttempt.searchResultCount
-    officialSearchResultCount = searchAttempt.officialSearchResultCount
+    timing.searchProviderMs = now() - structuredStartedAtMs
+    searchProviderDurationMs = timing.searchProviderMs
+    searchProviderOutcome = structuredAttempt.outcome
+    searchResultCount = structuredAttempt.webSearchSourceCount
+    officialSearchResultCount = structuredAttempt.officialWebSearchSourceCount
+    webSearchToolCallObserved = structuredAttempt.webSearchToolCallObserved
+    structuredResearchResultPresent = structuredAttempt.structuredResearchResultPresent
+    structuredDeclarationComplete = structuredAttempt.structuredDeclarationComplete
+    structuredPositiveNutrientCount = structuredAttempt.structuredPositiveNutrientCount
 
-    for (const candidate of searchAttempt.candidates) {
-      discoveredUrlSet.add(candidate.url)
-    }
-
-    const hintedCandidates = buildDefaultOfficialSourceCandidates({
-      identity: input.identity,
-      manufacturerDomain,
-      hintedUrls,
-    }).filter((candidate) => hintedUrls.includes(candidate.url))
-
-    if (searchAttempt.candidates.length > 0) {
-      candidates = limitOfficialResearchCandidates({
-        candidates: rankOfficialSourceCandidates([
-          ...searchAttempt.candidates,
-          ...hintedCandidates.filter(
-            (candidate) => !searchAttempt.candidates.some((entry) => entry.url === candidate.url),
-          ),
-        ]),
-        hintedUrls,
-        maxCandidates: maxOfficialCandidates,
-      })
-      researchSourceStrategy = 'search_only'
-    } else {
-      candidates = limitOfficialResearchCandidates({
-        candidates: defaultCandidates,
-        hintedUrls,
-        maxCandidates: maxOfficialCandidates,
-      })
-      researchSourceStrategy = 'search_then_direct'
+    if (
+      structuredAttempt.adapterResult?.status === 'success' &&
+      structuredAttempt.structuredDeclarationComplete
+    ) {
+      researchSourceStrategy = 'structured_web_research'
+      bestResult = structuredAttempt.adapterResult
+    } else if (
+      structuredAttempt.adapterResult &&
+      !shouldUseDirectCandidateFallback({ structuredAttempt })
+    ) {
+      researchSourceStrategy = 'structured_web_research'
+      bestResult = structuredAttempt.adapterResult
     }
   } else if (identityComplete) {
-    candidates = limitOfficialResearchCandidates({
-      candidates: defaultCandidates,
-      hintedUrls,
-      maxCandidates: maxOfficialCandidates,
-    })
-    researchSourceStrategy = 'direct_candidates_only'
     searchProviderOutcome = 'not_configured'
+    directCandidateFallbackUsed = true
+    researchSourceStrategy = 'direct_candidates_only'
   }
 
-  timing.candidateCount = candidates.length
-
-  const diagnosticsBase = {
+  const buildDiagnosticsBase = (candidateCount: number) => ({
     productIdentityComplete: identityComplete,
     automaticResearchAttempted: identityComplete,
-    manufacturerSearchAttempted: searchAttempted,
+    manufacturerSearchAttempted: searchProviderAttempted || directCandidateFallbackUsed,
     manufacturerDomainResolved: manufacturerDomain != null,
     searchVariantCount: searchVariants.length,
-    officialSourceCandidateCount: candidates.length,
+    officialSourceCandidateCount: candidateCount,
     officialSourceFetchedCount: 0,
-    officialDocumentCandidateCount: candidates.filter((candidate) =>
-      candidate.url.toLowerCase().includes('.pdf'),
-    ).length,
+    officialDocumentCandidateCount: 0,
     officialDocumentParsedCount: 0,
     declarationSectionFound: false,
-    declaredPositiveNutrientCount: 0,
+    declaredPositiveNutrientCount: structuredPositiveNutrientCount,
     searchProviderConfigured,
     searchProviderAttempted,
     searchQueryCount: searchProviderAttempted ? queries.length : 0,
@@ -687,23 +786,33 @@ export async function runAutomaticManufacturerResearch(input: {
     officialSearchResultCount,
     officialSearchResultFetchedCount: 0,
     searchProviderOutcome,
+    searchProviderDurationMs,
+    webSearchToolCallObserved,
+    webSearchSourceCount: searchResultCount,
+    officialWebSearchSourceCount: officialSearchResultCount,
+    structuredResearchResultPresent,
+    structuredDeclarationComplete,
+    structuredPositiveNutrientCount,
+    directCandidateFallbackUsed,
     researchSourceStrategy,
-    officialDeclarationFound: false,
-  }
+    officialDeclarationFound: bestResult?.status === 'success',
+  })
 
   if (!identityComplete) {
     timing.totalResearchMs = now() - researchStartedAtMs
     return {
       adapterResult: null,
       diagnostics: finalizeDiagnostics({
-        diagnosticsBase,
+        diagnosticsBase: buildDiagnosticsBase(0),
         timing,
         bestResult: null,
         fetchedCount: 0,
         parsedCount: 0,
         declarationSectionFound: false,
         declaredPositiveNutrientCount: 0,
-        searchAttempted: false,
+        structuredAttempted: false,
+        structuredAttempt: null,
+        directCandidateFallbackUsed: false,
         candidateCount: 0,
         identityComplete,
         logTiming: false,
@@ -711,20 +820,76 @@ export async function runAutomaticManufacturerResearch(input: {
     }
   }
 
-  if (candidates.length === 0) {
+  if (bestResult) {
+    timing.candidateCount = 0
     timing.totalResearchMs = now() - researchStartedAtMs
     return {
-      adapterResult: null,
+      adapterResult: bestResult,
+      diagnostics: finalizeDiagnostics({
+        diagnosticsBase: buildDiagnosticsBase(0),
+        timing,
+        bestResult,
+        fetchedCount: 0,
+        parsedCount: 0,
+        declarationSectionFound: structuredDeclarationComplete,
+        declaredPositiveNutrientCount: structuredPositiveNutrientCount,
+        structuredAttempted: searchProviderAttempted,
+        structuredAttempt,
+        directCandidateFallbackUsed: false,
+        candidateCount: 0,
+        identityComplete,
+        logTiming,
+      }),
+    }
+  }
+
+  const useDirectFallback =
+    directCandidateFallbackUsed ||
+    shouldUseDirectCandidateFallback({ structuredAttempt })
+
+  if (useDirectFallback) {
+    directCandidateFallbackUsed = true
+    researchSourceStrategy = structuredResearchProvider
+      ? 'structured_then_direct_fallback'
+      : 'direct_candidates_only'
+  }
+
+  let candidates: FertilizerOfficialSourceCandidate[] = []
+  const discoveredUrlSet = new Set<string>()
+
+  if (useDirectFallback) {
+    candidates = limitOfficialResearchCandidates({
+      candidates: defaultCandidates,
+      hintedUrls,
+      maxCandidates: maxOfficialCandidates,
+    })
+  }
+
+  timing.candidateCount = candidates.length
+
+  const diagnosticsBase = buildDiagnosticsBase(candidates.length)
+  diagnosticsBase.directCandidateFallbackUsed = directCandidateFallbackUsed
+  diagnosticsBase.researchSourceStrategy = researchSourceStrategy
+  diagnosticsBase.officialDocumentCandidateCount = candidates.filter((candidate) =>
+    candidate.url.toLowerCase().includes('.pdf'),
+  ).length
+
+  if (!useDirectFallback || candidates.length === 0) {
+    timing.totalResearchMs = now() - researchStartedAtMs
+    return {
+      adapterResult: structuredAttempt?.adapterResult ?? null,
       diagnostics: finalizeDiagnostics({
         diagnosticsBase,
         timing,
-        bestResult: null,
+        bestResult: structuredAttempt?.adapterResult ?? null,
         fetchedCount: 0,
         parsedCount: 0,
-        declarationSectionFound: false,
-        declaredPositiveNutrientCount: 0,
-        searchAttempted,
-        candidateCount: 0,
+        declarationSectionFound: structuredDeclarationComplete,
+        declaredPositiveNutrientCount: structuredPositiveNutrientCount,
+        structuredAttempted: searchProviderAttempted,
+        structuredAttempt,
+        directCandidateFallbackUsed,
+        candidateCount: candidates.length,
         identityComplete,
         logTiming: false,
       }),
@@ -751,20 +916,36 @@ export async function runAutomaticManufacturerResearch(input: {
   timing.parseSuccessCount = processed.parsedCount
   timing.totalResearchMs = now() - researchStartedAtMs
 
+  const mergedBestResult =
+    processed.bestResult?.status === 'success'
+      ? processed.bestResult
+      : processed.bestResult ?? structuredAttempt?.adapterResult ?? null
+  const mergedDeclaredPositiveNutrientCount = Math.max(
+    structuredPositiveNutrientCount,
+    processed.declaredPositiveNutrientCount,
+  )
+  const mergedDeclarationSectionFound =
+    processed.declarationSectionFound || structuredDeclarationComplete
+
   return {
-    adapterResult: processed.bestResult,
+    adapterResult: mergedBestResult,
     diagnostics: finalizeDiagnostics({
       diagnosticsBase: {
         ...diagnosticsBase,
         officialSearchResultFetchedCount: processed.officialSearchResultFetchedCount,
+        declaredPositiveNutrientCount: mergedDeclaredPositiveNutrientCount,
+        declarationSectionFound: mergedDeclarationSectionFound,
+        officialDeclarationFound: mergedBestResult?.status === 'success',
       },
       timing,
-      bestResult: processed.bestResult,
+      bestResult: mergedBestResult,
       fetchedCount: processed.fetchedCount,
       parsedCount: processed.parsedCount,
-      declarationSectionFound: processed.declarationSectionFound,
-      declaredPositiveNutrientCount: processed.declaredPositiveNutrientCount,
-      searchAttempted,
+      declarationSectionFound: mergedDeclarationSectionFound,
+      declaredPositiveNutrientCount: mergedDeclaredPositiveNutrientCount,
+      structuredAttempted: searchProviderAttempted,
+      structuredAttempt,
+      directCandidateFallbackUsed,
       candidateCount: candidates.length,
       identityComplete,
       logTiming,

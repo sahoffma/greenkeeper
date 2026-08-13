@@ -1,6 +1,9 @@
 export type FertilizerManufacturerResearchFailureStage =
   | 'identity_incomplete'
   | 'search_not_attempted'
+  | 'structured_research_timeout'
+  | 'structured_research_no_source'
+  | 'structured_research_incomplete'
   | 'no_candidates'
   | 'fetch_failed'
   | 'parse_failed'
@@ -41,6 +44,14 @@ export interface FertilizerManufacturerResearchDiagnostics {
   officialSearchResultCount: number
   officialSearchResultFetchedCount: number
   searchProviderOutcome: FertilizerManufacturerResearchSearchProviderOutcome
+  searchProviderDurationMs: number
+  webSearchToolCallObserved: boolean
+  webSearchSourceCount: number
+  officialWebSearchSourceCount: number
+  structuredResearchResultPresent: boolean
+  structuredDeclarationComplete: boolean
+  structuredPositiveNutrientCount: number
+  directCandidateFallbackUsed: boolean
   researchSourceStrategy: FertilizerManufacturerResearchSourceStrategy
   officialDeclarationFound: boolean
 }

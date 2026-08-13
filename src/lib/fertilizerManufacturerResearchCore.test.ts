@@ -41,6 +41,10 @@ Calcium (CaO): 0%
 Declaration section complete`
 }
 
+const failingStructuredProvider = {
+  runStructuredWebResearch: async () => null,
+}
+
 describe('fertilizerManufacturerResearchCore', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -76,16 +80,7 @@ describe('fertilizerManufacturerResearchCore', () => {
   it('parses a matching official HTML source into an adapter result', async () => {
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
-      searchProvider: {
-        discoverOfficialSources: async () => [
-          {
-            url: OFFICIAL_URL,
-            title: OFFICIAL_URL,
-            category: 'official_manufacturer',
-            priority: 5,
-          },
-        ],
-      },
+      structuredResearchProvider: failingStructuredProvider,
       fetchProvider: {
         fetchSource: async () => ({
           ok: true,
@@ -96,7 +91,7 @@ describe('fertilizerManufacturerResearchCore', () => {
           statusCode: 200,
         }),
       },
-      runtime: { logTiming: false },
+      runtime: { logTiming: false, maxParallelFetches: 1 },
     })
 
     expect(result.adapterResult?.status).toMatch(/success|partial/)
@@ -135,12 +130,8 @@ describe('fertilizerManufacturerResearchCore', () => {
 
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
-      searchProvider: {
-        discoverOfficialSources: async () => [
-          { url: 'https://example.de/slow', title: 'slow', category: 'official_manufacturer', priority: 5 },
-          { url: OFFICIAL_URL, title: 'good', category: 'official_manufacturer', priority: 4 },
-        ],
-      },
+      hintedUrls: ['https://example.de/slow', OFFICIAL_URL],
+      structuredResearchProvider: failingStructuredProvider,
       fetchProvider: {
         fetchSource: async (url, options) => {
           fetchCalls.push(currentTime)
@@ -180,13 +171,8 @@ describe('fertilizerManufacturerResearchCore', () => {
 
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
-      searchProvider: {
-        discoverOfficialSources: async () => [
-          { url: OFFICIAL_URL, title: 'first', category: 'official_manufacturer', priority: 5 },
-          { url: 'https://example.de/second', title: 'second', category: 'official_manufacturer', priority: 4 },
-          { url: 'https://example.de/third', title: 'third', category: 'official_manufacturer', priority: 3 },
-        ],
-      },
+      hintedUrls: [OFFICIAL_URL, 'https://example.de/second', 'https://example.de/third'],
+      structuredResearchProvider: failingStructuredProvider,
       fetchProvider: {
         fetchSource: async () => {
           fetchCount += 1
@@ -213,15 +199,7 @@ describe('fertilizerManufacturerResearchCore', () => {
 
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
-      searchProvider: {
-        discoverOfficialSources: async () =>
-          Array.from({ length: 20 }, (_entry, index) => ({
-            url: `https://example.de/candidate-${index}`,
-            title: `candidate-${index}`,
-            category: 'official_manufacturer' as const,
-            priority: 5,
-          })),
-      },
+      structuredResearchProvider: failingStructuredProvider,
       fetchProvider: {
         fetchSource: async (_url, options) => {
           const waitMs = options?.timeoutMs ?? MANUFACTURER_RESEARCH_PER_FETCH_TIMEOUT_MS
@@ -245,11 +223,8 @@ describe('fertilizerManufacturerResearchCore', () => {
   it('maps invalid URL candidates to invalid_url without throwing', async () => {
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
-      searchProvider: {
-        discoverOfficialSources: async () => [
-          { url: 'not-a-valid-url', title: 'bad', category: 'official_manufacturer', priority: 5 },
-        ],
-      },
+      hintedUrls: ['not-a-valid-url'],
+      structuredResearchProvider: failingStructuredProvider,
       fetchProvider: {
         fetchSource: async () => {
           throw new Error('fetch should not be called for invalid url')
@@ -312,11 +287,7 @@ describe('fertilizerManufacturerResearchCore', () => {
   it('returns intake-ready success diagnostics when a full declaration is found', async () => {
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
-      searchProvider: {
-        discoverOfficialSources: async () => [
-          { url: OFFICIAL_URL, title: OFFICIAL_URL, category: 'official_manufacturer', priority: 5 },
-        ],
-      },
+      structuredResearchProvider: failingStructuredProvider,
       fetchProvider: {
         fetchSource: async () => ({
           ok: true,
@@ -327,7 +298,7 @@ describe('fertilizerManufacturerResearchCore', () => {
           statusCode: 200,
         }),
       },
-      runtime: { logTiming: false },
+      runtime: { logTiming: false, maxParallelFetches: 1 },
     })
 
     expect(result.adapterResult?.status).toBe('success')
@@ -337,11 +308,7 @@ describe('fertilizerManufacturerResearchCore', () => {
   it('returns controlled fetch_failed diagnostics instead of throwing when no source matches', async () => {
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
-      searchProvider: {
-        discoverOfficialSources: async () => [
-          { url: OFFICIAL_URL, title: OFFICIAL_URL, category: 'official_manufacturer', priority: 5 },
-        ],
-      },
+      structuredResearchProvider: failingStructuredProvider,
       fetchProvider: {
         fetchSource: async () => ({ ok: false, errorCode: 'source_not_found', retryable: false }),
       },

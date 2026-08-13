@@ -9,13 +9,20 @@ import type {
 import { validateFertilizerManufacturerDocumentSource } from './fertilizerManufacturerDocumentSourceValidatorCore'
 
 /** Overall budget for automatic manufacturer research inside the Netlify function. */
-export const MANUFACTURER_RESEARCH_TOTAL_BUDGET_MS = 12_000
+export const MANUFACTURER_RESEARCH_TOTAL_BUDGET_MS = 20_000
 
-/** Per HTTP fetch timeout during automatic research. */
+/** Reserve kept for direct URL fallback after structured web research. */
+export const MANUFACTURER_RESEARCH_DIRECT_FALLBACK_RESERVE_MS = 4_000
+
+/** Per HTTP fetch timeout during direct URL fallback. */
 export const MANUFACTURER_RESEARCH_PER_FETCH_TIMEOUT_MS = 4_000
 
-/** Maximum ranked official URL candidates when no search provider narrows the list. */
-export const MANUFACTURER_RESEARCH_MAX_OFFICIAL_CANDIDATES = 12
+/** Maximum direct URL candidates used only as secondary fallback. */
+export const MANUFACTURER_RESEARCH_MAX_OFFICIAL_CANDIDATES = 4
+
+/** Alias for fallback candidate cap. */
+export const MANUFACTURER_RESEARCH_DIRECT_FALLBACK_MAX_CANDIDATES =
+  MANUFACTURER_RESEARCH_MAX_OFFICIAL_CANDIDATES
 
 /** Parallel fetch concurrency during automatic research. */
 export const MANUFACTURER_RESEARCH_MAX_PARALLEL_FETCHES = 3

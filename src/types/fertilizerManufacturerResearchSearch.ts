@@ -7,5 +7,5 @@ export type FertilizerManufacturerResearchSearchProviderOutcome =
 
 export type FertilizerManufacturerResearchSourceStrategy =
   | 'direct_candidates_only'
-  | 'search_then_direct'
-  | 'search_only'
+  | 'structured_web_research'
+  | 'structured_then_direct_fallback'

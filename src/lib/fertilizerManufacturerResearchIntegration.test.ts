@@ -7,32 +7,77 @@ import { orchestrateFertilizerEnrichment } from './fertilizerEnrichmentOrchestra
 import { createFertilizerEnrichmentProductionAdapterDependencies } from './fertilizerEnrichmentProductionAdapterCore'
 import { recognitionFromImageAnalysis } from './productRecognizeIdentityCore'
 import { buildFertilizerEnrichmentOrchestrationInputFromTextIdentity } from './fertilizerTextIdentityEnrichmentInputCore'
-import type { FertilizerManufacturerResearchSearchProvider } from './fertilizerManufacturerResearchCore'
+import type { FertilizerManufacturerStructuredResearchProvider } from './fertilizerManufacturerStructuredResearchCore'
 
 const FIXED_NOW = '2026-07-29T10:00:00.000Z'
 const OFFICIAL_PRODUCT_URL = 'https://www.rasendoktor.de/duenger/stress-manager'
 const OFFICIAL_PDF_URL = 'https://www.rasendoktor.de/downloads/stress-manager.pdf'
 
-function createOfficialSearchProvider(
-  urls: string[] = [OFFICIAL_PRODUCT_URL],
-): FertilizerManufacturerResearchSearchProvider {
+function createOfficialStructuredResearchProvider(options?: {
+  declarationComplete?: boolean
+  sourceUrl?: string
+  outcome?: 'success' | 'empty'
+  includeMicronutrients?: boolean
+}): FertilizerManufacturerStructuredResearchProvider {
   return {
-    discoverOfficialSources: async () =>
-      urls.map((url, index) => ({
-        url,
-        title: url,
-        category: url.endsWith('.pdf') ? 'official_document' : 'official_manufacturer',
-        priority: 5 - index,
-      })),
+    runStructuredWebResearch: async () => {
+      if (options?.outcome === 'empty') {
+        return null
+      }
+
+      const sourceUrl = options?.sourceUrl ?? OFFICIAL_PRODUCT_URL
+      const includeMicronutrients = options?.includeMicronutrients ?? true
+      return {
+        record: {
+          manufacturer: 'Rasendoktor',
+          productLine: 'Professional',
+          productName: 'Stress-Manager',
+          productForm: 'granular',
+          npk: { nitrogen: 0, phosphate: 0, potash: 30 },
+          nutrientMatrix: {
+            nitrogen: 0,
+            phosphate: 0,
+            potash: 30,
+            nitrateNitrogen: null,
+            ammoniumNitrogen: null,
+            ureaNitrogen: null,
+            organicNitrogen: null,
+            magnesium: null,
+            calcium: null,
+            sulfur: includeMicronutrients ? 10.2 : null,
+            iron: includeMicronutrients ? 3 : null,
+            manganese: includeMicronutrients ? 0.1 : null,
+            copper: includeMicronutrients ? 0.1 : null,
+            zinc: includeMicronutrients ? 0.1 : null,
+            boron: null,
+            molybdenum: null,
+          },
+          declarationComplete: options?.declarationComplete ?? true,
+          identityMatch: true,
+          confidence: 0.95,
+          sources: [
+            {
+              url: sourceUrl,
+              title: sourceUrl,
+              category: sourceUrl.endsWith('.pdf') ? 'official_document' : 'official_manufacturer',
+            },
+          ],
+        },
+        webSearchToolCallObserved: true,
+      }
+    },
   }
 }
 
 function createProductionDependencies(options?: {
-  searchUrls?: string[]
+  declarationComplete?: boolean
+  sourceUrl?: string
+  outcome?: 'success' | 'empty'
+  includeMicronutrients?: boolean
 }) {
   return createFertilizerEnrichmentOrchestrationDependencies({
     ...createFertilizerEnrichmentProductionAdapterDependencies({ now: () => FIXED_NOW }),
-    manufacturerResearchSearchProvider: createOfficialSearchProvider(options?.searchUrls),
+    manufacturerResearchStructuredProvider: createOfficialStructuredResearchProvider(options),
   })
 }
 
@@ -221,28 +266,6 @@ describe('fertilizerManufacturerResearchIntegration', () => {
   })
 
   it('parses official PDF datasheets during automatic research', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input)
-        if (url.endsWith('.pdf')) {
-          const pdfBody = `%PDF-1.4\nstream\n(${fullOfficialDeclarationPdfText()})\nendstream`
-          return {
-            status: 200,
-            ok: true,
-            url: OFFICIAL_PDF_URL,
-            headers: {
-              get: (name: string) =>
-                name.toLowerCase() === 'content-type' ? 'application/pdf' : null,
-            },
-            arrayBuffer: async () => new TextEncoder().encode(pdfBody).buffer,
-          } as unknown as Response
-        }
-
-        return mockFetchForOfficialSources()(input)
-      }),
-    )
-
     const input = buildFertilizerEnrichmentOrchestrationInputFromTextIdentity(
       {
         manufacturer: 'Rasendoktor',
@@ -256,12 +279,12 @@ describe('fertilizerManufacturerResearchIntegration', () => {
     )
 
     const result = await orchestrateFertilizerEnrichment(input, {
-      ...createProductionDependencies({ searchUrls: [OFFICIAL_PDF_URL] }),
+      ...createProductionDependencies({ sourceUrl: OFFICIAL_PDF_URL }),
       now: () => FIXED_NOW,
     })
 
     expect(result.status).toBe('intake_ready')
-    expect(result.manufacturerResearchDiagnostics?.officialDocumentParsedCount).toBeGreaterThan(0)
+    expect(result.manufacturerResearchDiagnostics?.structuredResearchResultPresent).toBe(true)
   })
 
   it('does not recommend upload_back_photo before automatic research has been attempted', async () => {
@@ -286,7 +309,7 @@ describe('fertilizerManufacturerResearchIntegration', () => {
     )
 
     const result = await orchestrateFertilizerEnrichment(input, {
-      ...createProductionDependencies({ searchUrls: ['https://example.test/missing'] }),
+      ...createProductionDependencies({ outcome: 'empty' }),
       now: () => FIXED_NOW,
     })
 
@@ -297,38 +320,6 @@ describe('fertilizerManufacturerResearchIntegration', () => {
   })
 
   it('does not invent zero values when research finds no declaration', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input)
-        if (url === OFFICIAL_PRODUCT_URL) {
-          return {
-            status: 200,
-            ok: true,
-            url,
-            headers: {
-              get: (name: string) =>
-                name.toLowerCase() === 'content-type' ? 'text/html; charset=utf-8' : null,
-            },
-            arrayBuffer: async () =>
-              new TextEncoder()
-                .encode(
-                  '<html><body><h1>Stress-Manager</h1><p>Manufacturer: Rasendoktor</p><p>Product: Stress-Manager</p><p>NPK 0-0-30</p></body></html>',
-                )
-                .buffer,
-          } as unknown as Response
-        }
-
-        return {
-          status: 404,
-          ok: false,
-          url,
-          headers: { get: () => null },
-          arrayBuffer: async () => new ArrayBuffer(0),
-        } as unknown as Response
-      }),
-    )
-
     const input = buildFertilizerEnrichmentOrchestrationInputFromTextIdentity(
       {
         manufacturer: 'Rasendoktor',
@@ -342,7 +333,10 @@ describe('fertilizerManufacturerResearchIntegration', () => {
     )
 
     const result = await orchestrateFertilizerEnrichment(input, {
-      ...createProductionDependencies(),
+      ...createProductionDependencies({
+        declarationComplete: false,
+        includeMicronutrients: false,
+      }),
       now: () => FIXED_NOW,
     })
 

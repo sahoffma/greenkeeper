@@ -10,7 +10,7 @@ import { rethrowIfContractError } from './fertilizerEnrichmentOrchestrationCore'
 import {
   isProductIdentityCompleteForResearch,
   runAutomaticManufacturerResearch,
-  type FertilizerManufacturerResearchSearchProvider,
+  type FertilizerManufacturerStructuredResearchProvider,
 } from './fertilizerManufacturerResearchCore'
 
 export const FERTILIZER_MANUFACTURER_PRODUCT_PAGE_ADAPTER_TYPE =
@@ -26,7 +26,7 @@ export interface FertilizerManufacturerProductPageAdapterDependencies {
       fetchTimeoutMs?: number
     },
   ) => Promise<FertilizerManufacturerDocumentFetchResult>
-  searchProvider?: FertilizerManufacturerResearchSearchProvider | null
+  structuredResearchProvider?: FertilizerManufacturerStructuredResearchProvider | null
   now?: () => string
 }
 
@@ -111,7 +111,7 @@ export async function runFertilizerManufacturerProductPageAdapter(
       hintedUrls: collectHintedUrls(context.input),
       npkLabel: resolveNpkLabel(context.input),
       packageSizeLabel: resolvePackageSizeLabel(context.input),
-      searchProvider: dependencies.searchProvider ?? null,
+      structuredResearchProvider: dependencies.structuredResearchProvider ?? null,
       fetchProvider: {
         fetchSource: (url, options) =>
           dependencies.fetchDocument(url, {

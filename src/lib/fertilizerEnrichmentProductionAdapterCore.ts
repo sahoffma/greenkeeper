@@ -4,7 +4,7 @@ import { fetchExternalManufacturerDocument } from './fertilizerEnrichmentHttpMan
 import type { FertilizerEnrichmentSourceStorage } from './fertilizerEnrichmentSourceStorageCore'
 import { createFertilizerEnrichmentStoredSourceAdapterDependencies } from './fertilizerEnrichmentStoredSourceResolverCore'
 import { isExternalSourceReference } from './fertilizerEnrichmentStorageLocatorCore'
-import { createConfiguredManufacturerResearchSearchProvider } from './fertilizerManufacturerResearchSearchProviderCore'
+import { createConfiguredManufacturerStructuredResearchProvider } from './fertilizerManufacturerStructuredResearchCore'
 
 function defaultNow(): string {
   return new Date().toISOString()
@@ -98,7 +98,7 @@ export function createFertilizerEnrichmentProductionAdapterDependencies(options:
 
       return { ok: false, errorCode: 'unsupported_source', retryable: false }
     },
-    manufacturerResearchSearchProvider: createConfiguredManufacturerResearchSearchProvider(
+    manufacturerResearchStructuredProvider: createConfiguredManufacturerStructuredResearchProvider(
       options.openAiApiKey,
     ),
   }

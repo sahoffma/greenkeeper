@@ -56,15 +56,45 @@ Declaration section complete`
           retrievedAt: '2026-07-29T10:00:00.000Z',
           statusCode: 200,
         }),
-        searchProvider: {
-          discoverOfficialSources: async () => [
-            {
-              url: OFFICIAL_URL,
-              title: OFFICIAL_URL,
-              category: 'official_manufacturer',
-              priority: 5,
+        structuredResearchProvider: {
+          runStructuredWebResearch: async () => ({
+            record: {
+              manufacturer: 'Rasendoktor',
+              productLine: 'Professional',
+              productName: 'Stress-Manager',
+              productForm: 'granular',
+              npk: { nitrogen: 0, phosphate: 0, potash: 30 },
+              nutrientMatrix: {
+                nitrogen: 0,
+                phosphate: 0,
+                potash: 30,
+                nitrateNitrogen: null,
+                ammoniumNitrogen: null,
+                ureaNitrogen: null,
+                organicNitrogen: null,
+                magnesium: null,
+                calcium: null,
+                sulfur: 10.2,
+                iron: 3,
+                manganese: null,
+                copper: null,
+                zinc: null,
+                boron: null,
+                molybdenum: null,
+              },
+              declarationComplete: true,
+              identityMatch: true,
+              confidence: 0.95,
+              sources: [
+                {
+                  url: OFFICIAL_URL,
+                  title: OFFICIAL_URL,
+                  category: 'official_manufacturer',
+                },
+              ],
             },
-          ],
+            webSearchToolCallObserved: true,
+          }),
         },
       },
     )

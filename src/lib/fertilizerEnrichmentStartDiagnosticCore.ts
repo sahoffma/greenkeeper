@@ -166,6 +166,23 @@ export interface FertilizerEnrichmentStartFormDiagnostic {
     | 'missing'
 }
 
+export interface FertilizerEnrichmentStartManufacturerResearchDiagnostic {
+  searchProviderConfigured: boolean
+  searchProviderAttempted: boolean
+  searchProviderOutcome: string
+  searchProviderDurationMs: number
+  webSearchToolCallObserved: boolean
+  webSearchSourceCount: number
+  officialWebSearchSourceCount: number
+  structuredResearchResultPresent: boolean
+  structuredDeclarationComplete: boolean
+  structuredPositiveNutrientCount: number
+  directCandidateFallbackUsed: boolean
+  researchFailureStage: string
+  researchSourceStrategy: string
+  manufacturerResearchTiming: Record<string, unknown> | null
+}
+
 export interface FertilizerEnrichmentStartOutcomeWarningDiagnostic {
   functionName: typeof FERTILIZER_ENRICHMENT_START_FUNCTION_NAME
   requestId: string | null
@@ -188,6 +205,7 @@ export interface FertilizerEnrichmentStartOutcomeWarningDiagnostic {
   }
   packagingInlineProcessed: boolean
   manufacturerHttpFetchAttempted: boolean
+  manufacturerResearchDiagnostics: FertilizerEnrichmentStartManufacturerResearchDiagnostic | null
   manufacturerResearchTiming: Record<string, unknown> | null
   formDiagnostic: FertilizerEnrichmentStartFormDiagnostic | null
 }
@@ -941,17 +959,59 @@ export function buildFertilizerEnrichmentStartFormDiagnostic(input: {
   }
 }
 
-function readManufacturerResearchTimingSummary(
+function readBooleanDiagnostic(record: Record<string, unknown> | null, key: string): boolean {
+  return record?.[key] === true
+}
+
+function readNumberDiagnostic(record: Record<string, unknown> | null, key: string): number {
+  const value = record?.[key]
+  return typeof value === 'number' ? value : 0
+}
+
+function readStringDiagnostic(record: Record<string, unknown> | null, key: string): string {
+  const value = record?.[key]
+  return typeof value === 'string' ? value : 'unknown'
+}
+
+function readManufacturerResearchDiagnosticSummary(
   jobResult: Record<string, unknown>,
-): Record<string, unknown> | null {
+): FertilizerEnrichmentStartManufacturerResearchDiagnostic | null {
   const diagnostics = readObjectRecord(jobResult.manufacturerResearchDiagnostics)
-  const timing = readObjectRecord(diagnostics?.manufacturerResearchTiming)
-  if (!timing) {
+  if (!diagnostics) {
     return null
   }
 
-  const { fetchAttempts: _fetchAttempts, ...summary } = timing
-  return summary
+  const timing = readObjectRecord(diagnostics.manufacturerResearchTiming)
+  const { fetchAttempts: _fetchAttempts, ...timingSummary } = timing ?? {}
+
+  return {
+    searchProviderConfigured: readBooleanDiagnostic(diagnostics, 'searchProviderConfigured'),
+    searchProviderAttempted: readBooleanDiagnostic(diagnostics, 'searchProviderAttempted'),
+    searchProviderOutcome: readStringDiagnostic(diagnostics, 'searchProviderOutcome'),
+    searchProviderDurationMs: readNumberDiagnostic(diagnostics, 'searchProviderDurationMs'),
+    webSearchToolCallObserved: readBooleanDiagnostic(diagnostics, 'webSearchToolCallObserved'),
+    webSearchSourceCount: readNumberDiagnostic(diagnostics, 'webSearchSourceCount'),
+    officialWebSearchSourceCount: readNumberDiagnostic(diagnostics, 'officialWebSearchSourceCount'),
+    structuredResearchResultPresent: readBooleanDiagnostic(
+      diagnostics,
+      'structuredResearchResultPresent',
+    ),
+    structuredDeclarationComplete: readBooleanDiagnostic(diagnostics, 'structuredDeclarationComplete'),
+    structuredPositiveNutrientCount: readNumberDiagnostic(
+      diagnostics,
+      'structuredPositiveNutrientCount',
+    ),
+    directCandidateFallbackUsed: readBooleanDiagnostic(diagnostics, 'directCandidateFallbackUsed'),
+    researchFailureStage: readStringDiagnostic(diagnostics, 'researchFailureStage'),
+    researchSourceStrategy: readStringDiagnostic(diagnostics, 'researchSourceStrategy'),
+    manufacturerResearchTiming: timing ? timingSummary : null,
+  }
+}
+
+function readManufacturerResearchTimingSummary(
+  jobResult: Record<string, unknown>,
+): Record<string, unknown> | null {
+  return readManufacturerResearchDiagnosticSummary(jobResult)?.manufacturerResearchTiming ?? null
 }
 
 export function buildFertilizerEnrichmentStartOutcomeWarningDiagnostic(input: {
@@ -1015,6 +1075,7 @@ export function buildFertilizerEnrichmentStartOutcomeWarningDiagnostic(input: {
       input.inputCounts.captureInlineSourceTextCount > 0 &&
       selectedAdapterTypes.includes('packaging'),
     manufacturerHttpFetchAttempted: selectedAdapterTypes.includes('manufacturer_product_document'),
+    manufacturerResearchDiagnostics: readManufacturerResearchDiagnosticSummary(jobResult),
     manufacturerResearchTiming: readManufacturerResearchTimingSummary(jobResult),
     formDiagnostic: buildFertilizerEnrichmentStartFormDiagnostic({
       requestBody: input.requestBody,

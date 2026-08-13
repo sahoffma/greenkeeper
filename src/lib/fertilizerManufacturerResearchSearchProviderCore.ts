@@ -64,7 +64,7 @@ function isOfficialSearchCategory(category: FertilizerOfficialSourceCandidateCat
   )
 }
 
-function normalizeSearchCategory(
+export function normalizeSearchCategory(
   category: string,
   url: string,
 ): FertilizerOfficialSourceCandidateCategory {

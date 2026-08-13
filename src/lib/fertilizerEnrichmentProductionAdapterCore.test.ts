@@ -45,7 +45,7 @@ describe('fertilizerEnrichmentProductionAdapterCore', () => {
   it('registers manufacturer fetch for external URLs without storage', async () => {
     const deps = createFertilizerEnrichmentProductionAdapterDependencies()
     expect(deps.fetchManufacturerDocument).toBeTypeOf('function')
-    expect(deps.manufacturerResearchSearchProvider).toBeNull()
+    expect(deps.manufacturerResearchStructuredProvider).toBeNull()
   })
 
   it('registers an OpenAI search provider when an API key is configured', () => {
@@ -53,7 +53,7 @@ describe('fertilizerEnrichmentProductionAdapterCore', () => {
       openAiApiKey: 'test-key',
     })
 
-    expect(deps.manufacturerResearchSearchProvider).toBeTypeOf('object')
-    expect(deps.manufacturerResearchSearchProvider?.discoverOfficialSources).toBeTypeOf('function')
+    expect(deps.manufacturerResearchStructuredProvider).toBeTypeOf('object')
+    expect(deps.manufacturerResearchStructuredProvider?.runStructuredWebResearch).toBeTypeOf('function')
   })
 })
