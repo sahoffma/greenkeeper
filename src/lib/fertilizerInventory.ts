@@ -66,6 +66,16 @@ export interface FertilizerStockListView {
   outOfStock: FertilizerStockListItem[]
 }
 
+export async function fetchActiveProductStockRows(): Promise<ActiveProductStockReadRow[]> {
+  const { data, error } = await supabase.rpc(LIST_ACTIVE_FERTILIZER_PRODUCT_STOCK_RPC)
+
+  if (error) {
+    throw mapInventoryError(error, 'Der Düngerbestand konnte nicht geladen werden.')
+  }
+
+  return parseActiveProductStockListPayload(data).items
+}
+
 export async function fetchFertilizerStockList(): Promise<FertilizerStockListView> {
   const { data, error } = await supabase.rpc(LIST_ACTIVE_FERTILIZER_PRODUCT_STOCK_RPC)
 

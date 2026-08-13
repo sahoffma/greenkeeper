@@ -16,6 +16,9 @@ import {
   recordFertilizerProductStockIntake,
   FertilizerProductStockPersistenceError,
 } from './fertilizerProductStockIntake'
+import { fetchActiveProductStockRows } from './fertilizerInventory'
+import { resolveSavedProductProfileIdForFamilyStockIntake } from './fertilizerProductStockFamilyIntakeCore'
+import { buildFertilizerProductFamilyKey } from './fertilizerProductVersionProjectionCore'
 import { buildRecognitionProductLabel } from './fertilizerRecognitionCore'
 import type { FertilizerCaptureInventorySaveResult } from '../types/fertilizerInventory'
 
@@ -156,9 +159,31 @@ export async function saveFertilizerCaptureToInventoryCore(
     })
 
     const intakeQuantity = buildProductStockIntakeQuantityFromCaptureDraft(confirmedDraft)
+    const productFamilyKey = buildFertilizerProductFamilyKey({
+      manufacturer: profileSave.profile.manufacturer ?? '',
+      productLine: profileSave.profile.productLine,
+      officialName: profileSave.profile.officialName ?? '',
+      variant: profileSave.profile.variant,
+    })
+
+    if (!productFamilyKey) {
+      throw new FertilizerCaptureInventorySaveError(
+        'Das Produkt konnte nicht eindeutig für die Bestandsaufnahme bestimmt werden.',
+        'not_save_ready',
+      )
+    }
+
+    const activeStockRows = await fetchActiveProductStockRows()
+    const familyIntakeResolution = resolveSavedProductProfileIdForFamilyStockIntake({
+      productFamilyKey,
+      baseUnit: intakeQuantity.baseUnit,
+      newSavedProductProfileId: profileSave.profile.id,
+      activeStockRows,
+    })
+
     const intakeResult = await recordFertilizerProductStockIntake({
       userId: input.userId,
-      savedProductProfileId: profileSave.profile.id,
+      savedProductProfileId: familyIntakeResolution.savedProductProfileId,
       baseUnit: intakeQuantity.baseUnit,
       quantity: intakeQuantity.quantity,
       reason: input.creationReason,
@@ -171,7 +196,7 @@ export async function saveFertilizerCaptureToInventoryCore(
     return {
       operationId: intakeResult.operationId,
       idempotencyKey: intakeResult.idempotencyKey,
-      savedProductProfileId: profileSave.profile.id,
+      savedProductProfileId: familyIntakeResolution.savedProductProfileId,
       productLabel,
       creationReason: input.creationReason,
       packageCount: intakeQuantity.packageCount,

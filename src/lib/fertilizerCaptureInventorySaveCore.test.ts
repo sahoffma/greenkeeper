@@ -26,13 +26,19 @@ vi.mock('./fertilizerProductStockIntake', () => ({
   recordFertilizerProductStockIntake: vi.fn(),
 }))
 
+vi.mock('./fertilizerInventory', () => ({
+  fetchActiveProductStockRows: vi.fn(),
+}))
+
 import { startFertilizerEnrichmentFromCapture } from './fertilizerEnrichmentClient'
 import { saveFertilizerProductProfileFromCapture } from './fertilizerProductProfileSaveClient'
 import { recordFertilizerProductStockIntake } from './fertilizerProductStockIntake'
+import { fetchActiveProductStockRows } from './fertilizerInventory'
 
 const mockStartEnrichment = vi.mocked(startFertilizerEnrichmentFromCapture)
 const mockSaveProfile = vi.mocked(saveFertilizerProductProfileFromCapture)
 const mockRecordIntake = vi.mocked(recordFertilizerProductStockIntake)
+const mockFetchActiveStockRows = vi.mocked(fetchActiveProductStockRows)
 
 function mockRecognitionResult(): ProductRecognizeResult {
   return {
@@ -84,6 +90,8 @@ describe('fertilizerCaptureInventorySaveCore', () => {
     mockStartEnrichment.mockReset()
     mockSaveProfile.mockReset()
     mockRecordIntake.mockReset()
+    mockFetchActiveStockRows.mockReset()
+    mockFetchActiveStockRows.mockResolvedValue([])
   })
 
   it('exposes exactly three creation reason options without inventory_correction', () => {
@@ -116,7 +124,16 @@ describe('fertilizerCaptureInventorySaveCore', () => {
         pipelineResult: { readinessResult: { status: 'ready' } },
       },
     } as never)
-    mockSaveProfile.mockResolvedValue({ profile: { id: 'profile-1' } } as never)
+    mockSaveProfile.mockResolvedValue({
+      profile: {
+        id: 'profile-1',
+        manufacturer: 'Rasendoktor',
+        productLine: 'Professional',
+        officialName: 'Frühjahr',
+        variant: '14-28-10',
+        productForm: 'granular',
+      },
+    } as never)
     mockRecordIntake.mockResolvedValue({
       operationId: 'op-1',
       idempotencyKey: 'capture-key:intake',
@@ -153,7 +170,16 @@ describe('fertilizerCaptureInventorySaveCore', () => {
         pipelineResult: { readinessResult: { status: 'ready' } },
       },
     } as never)
-    mockSaveProfile.mockResolvedValue({ profile: { id: 'profile-1' } } as never)
+    mockSaveProfile.mockResolvedValue({
+      profile: {
+        id: 'profile-1',
+        manufacturer: 'Rasendoktor',
+        productLine: 'Professional',
+        officialName: 'Frühjahr',
+        variant: '14-28-10',
+        productForm: 'granular',
+      },
+    } as never)
     mockRecordIntake.mockResolvedValue({
       operationId: 'op-1',
       idempotencyKey: 'capture-key:intake',
@@ -219,7 +245,16 @@ describe('fertilizerCaptureInventorySaveCore', () => {
         pipelineResult: { readinessResult: { status: 'ready' } },
       },
     } as never)
-    mockSaveProfile.mockResolvedValue({ profile: { id: 'profile-1' } } as never)
+    mockSaveProfile.mockResolvedValue({
+      profile: {
+        id: 'profile-1',
+        manufacturer: 'Rasendoktor',
+        productLine: 'Professional',
+        officialName: 'Frühjahr',
+        variant: '14-28-10',
+        productForm: 'granular',
+      },
+    } as never)
     mockRecordIntake.mockResolvedValue({
       operationId: 'op-1',
       idempotencyKey: 'capture-key:intake',
@@ -251,6 +286,67 @@ describe('fertilizerCaptureInventorySaveCore', () => {
     )
     expect(mockRecordIntake).toHaveBeenCalledWith(
       expect.objectContaining({ idempotencyKey: 'capture-key:intake' }),
+    )
+  })
+
+  it('adds intake to an existing canonical product stock for the same family', async () => {
+    mockStartEnrichment.mockResolvedValue({
+      jobId: 'job-1',
+      result: {
+        status: 'intake_ready',
+        pipelineResult: { readinessResult: { status: 'ready' } },
+      },
+    } as never)
+    mockSaveProfile.mockResolvedValue({
+      profile: {
+        id: 'profile-new-version',
+        manufacturer: 'Rasendoktor',
+        productLine: 'Professional',
+        officialName: 'Frühjahr',
+        variant: '14-28-10',
+        productForm: 'granular',
+      },
+    } as never)
+    mockFetchActiveStockRows.mockResolvedValue([
+      {
+        inventoryItemId: 'item-existing',
+        savedProductProfileId: 'profile-existing',
+        baseUnit: 'kg',
+        balance: 5,
+        manufacturer: 'Rasendoktor',
+        officialName: 'Frühjahr',
+        productLine: 'Professional',
+        variant: '14-28-10',
+        productForm: 'granular',
+        movementCount: 1,
+        lastMovementAt: '2026-01-01T00:00:00.000Z',
+      },
+    ])
+    mockRecordIntake.mockResolvedValue({
+      operationId: 'op-1',
+      idempotencyKey: 'capture-key:intake',
+      inventoryItemId: 'item-existing',
+      movementId: 'movement-2',
+      savedProductProfileId: 'profile-existing',
+      baseUnit: 'kg',
+      quantityDelta: 25,
+      reason: 'purchase',
+      movementAt: '2026-01-01T00:00:00.000Z',
+      itemCreated: false,
+      idempotencyReplay: false,
+    })
+
+    await saveFertilizerCaptureToInventoryCore({
+      draft: readyDraft(),
+      userId: 'user-1',
+      creationReason: 'purchase',
+    })
+
+    expect(mockRecordIntake).toHaveBeenCalledWith(
+      expect.objectContaining({
+        savedProductProfileId: 'profile-existing',
+        quantity: 25,
+      }),
     )
   })
 })
