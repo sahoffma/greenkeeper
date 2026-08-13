@@ -79,7 +79,7 @@ function mapAdapterSourceType(sourceType: FertilizerSourceAdapterSourceType): Fe
     case 'user_upload':
       return 'user_document'
     case 'web_search':
-      return 'other'
+      return 'manufacturer_page'
     default:
       return 'other'
   }
@@ -141,27 +141,14 @@ function resolveMatrixCompletionSourceId(
   extractions: Array<{ result: ExtractableAdapterResult }>,
   coverageMetadata: RawFertilizerDeclarationCoverageMetadata,
 ): string | null {
-  const packagingSourceId = resolveRecognitionPackagingSourceId(input, extractions)
-  if (packagingSourceId) {
-    return packagingSourceId
-  }
-
-  if (!coverageMetadata.nutrientSectionFullyCaptured) {
-    return null
-  }
-
-  for (const entry of extractions) {
-    const result = entry.result
-    if (
-      result.adapterType === 'manufacturer_product_page' &&
-      result.extraction.coverageMetadata?.nutrientSectionFullyCaptured === true &&
-      (result.status === 'success' || result.status === 'partial')
-    ) {
-      return result.sourceId
+  if (coverageMetadata.nutrientSectionFullyCaptured) {
+    const officialSourceId = resolveOfficialDeclarationSourceId(extractions)
+    if (officialSourceId) {
+      return officialSourceId
     }
   }
 
-  return null
+  return resolveRecognitionPackagingSourceId(input, extractions)
 }
 
 function resolveIdentityManufacturer(
@@ -289,6 +276,58 @@ function applyRecognitionPackagingMatrixCompletion(
   return completed
 }
 
+function isLowerPrioritySourceCategory(category: FertilizerEnrichmentSourceCategory): boolean {
+  return !OFFICIAL_SOURCE_CATEGORIES.has(category)
+}
+
+function valuesEquivalentForFieldMerge(
+  fieldPath: string,
+  primary: FieldContribution,
+  next: FieldContribution,
+): boolean {
+  if (
+    valuesEqual(primary.numericValue, next.numericValue, primary.declarationBasis, next.declarationBasis)
+  ) {
+    return true
+  }
+
+  if (primary.numericValue === next.numericValue && fieldPath.startsWith('npk.')) {
+    return true
+  }
+
+  return false
+}
+
+function officialSourceConfirmedVariant(
+  extractions: Array<{ result: ExtractableAdapterResult }>,
+): boolean {
+  return extractions.some(
+    ({ result }) =>
+      OFFICIAL_SOURCE_CATEGORIES.has(result.sourceCategory) &&
+      result.extraction.coverageMetadata?.productScopeConfirmed === true &&
+      result.extraction.coverageMetadata?.variantMatched === true,
+  )
+}
+
+function resolveOfficialDeclarationSourceId(
+  extractions: Array<{ result: ExtractableAdapterResult }>,
+): string | null {
+  for (const { result } of extractions) {
+    if (
+      !OFFICIAL_SOURCE_CATEGORIES.has(result.sourceCategory) ||
+      result.extraction.coverageMetadata?.nutrientSectionFullyCaptured !== true
+    ) {
+      continue
+    }
+
+    if (result.status === 'success' || result.status === 'partial') {
+      return result.sourceId
+    }
+  }
+
+  return null
+}
+
 function normalizeVariant(value: string | null | undefined): string | null {
   if (value == null) return null
   const trimmed = value.trim()
@@ -346,9 +385,7 @@ function mergeFieldContributions(
   const conflicts: FertilizerDeclarationConflict[] = []
 
   for (const next of sorted.slice(1)) {
-    if (
-      valuesEqual(primary.numericValue, next.numericValue, primary.declarationBasis, next.declarationBasis)
-    ) {
+    if (valuesEquivalentForFieldMerge(primary.fieldPath, primary, next)) {
       if (!provenanceIds.includes(next.provenanceId)) {
         provenanceIds.push(next.provenanceId)
       }
@@ -358,37 +395,11 @@ function mergeFieldContributions(
     const bothOfficial =
       OFFICIAL_SOURCE_CATEGORIES.has(primary.sourceCategory) &&
       OFFICIAL_SOURCE_CATEGORIES.has(next.sourceCategory)
-    const secondaryOverridesOfficial =
-      OFFICIAL_SOURCE_CATEGORIES.has(primary.sourceCategory) &&
-      next.sourceCategory === 'supplementary'
 
-    if (secondaryOverridesOfficial) {
-      conflicts.push({
-        conflictId: `${conflictIdPrefix}-${conflicts.length + 1}`,
-        type: primary.fieldPath.startsWith('npk.')
-          ? 'npk_conflict'
-          : primary.fieldPath.startsWith('nutrientMatrix.')
-            ? 'nutrient_value_conflict'
-            : 'source_version_conflict',
-        fieldPath: primary.fieldPath,
-        sourceIds: [primary.sourceId, next.sourceId],
-        values: [
-          {
-            sourceId: primary.sourceId,
-            value: primary.numericValue,
-            declarationBasis: primary.declarationBasis,
-          },
-          {
-            sourceId: next.sourceId,
-            value: next.numericValue,
-            declarationBasis: next.declarationBasis,
-          },
-        ],
-        blocking: true,
-        resolvable: true,
-        resolutionStatus: 'unresolved',
-        reasonCode: bothOfficial ? 'official_sources_mismatch' : 'secondary_source_mismatch',
-      })
+    if (
+      OFFICIAL_SOURCE_CATEGORIES.has(primary.sourceCategory) &&
+      isLowerPrioritySourceCategory(next.sourceCategory)
+    ) {
       continue
     }
 
@@ -486,9 +497,12 @@ function mergeCoverageMetadata(
   const anyLocated = extractions.some(
     (entry) => entry.result.extraction.coverageMetadata?.nutrientSectionLocated === true,
   )
-  const variantMatched = extractions.every(
-    (entry) => entry.result.extraction.coverageMetadata?.variantMatched !== false,
-  )
+  const officialVariantConfirmed = officialSourceConfirmedVariant(extractions)
+  const variantMatched =
+    officialVariantConfirmed ||
+    extractions.every(
+      (entry) => entry.result.extraction.coverageMetadata?.variantMatched !== false,
+    )
   const productScopeConfirmed = extractions.some(
     (entry) => entry.result.extraction.coverageMetadata?.productScopeConfirmed === true,
   )
@@ -514,6 +528,13 @@ function buildIdentity(
   const expectedVariant = normalizeVariant(base.variant)
 
   for (const { result } of extractions) {
+    if (
+      officialSourceConfirmedVariant(extractions) &&
+      isLowerPrioritySourceCategory(result.sourceCategory)
+    ) {
+      continue
+    }
+
     const adapterVariant = normalizeVariant(
       result.productVariantReference ?? result.extraction.extractedIdentity?.variant ?? null,
     )

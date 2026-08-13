@@ -10,6 +10,11 @@ import {
   resolveRecognitionFormEvidenceSourceField,
 } from './fertilizerRecognitionEnrichmentBasisCore'
 import { CAPTURE_RECOGNITION_PACKAGING_REFERENCE_ID } from './fertilizerCaptureRecognitionPackagingCore'
+import {
+  buildFertilizerSourceProvenanceReadinessDiagnostic,
+  type FertilizerSourceProvenanceReadinessDiagnostic,
+} from './fertilizerSourceProvenanceReadinessDiagnosticCore'
+import type { RawFertilizerDeclarationInput } from '../types/fertilizerDeclarationNormalization'
 
 export const FERTILIZER_ENRICHMENT_START_FUNCTION_NAME = 'fertilizer-enrichment-start'
 
@@ -217,11 +222,28 @@ export interface FertilizerEnrichmentStartOutcomeWarningDiagnostic {
     foundCount: number
     acceptedCount: number
   }
+  sourceProvenanceDiagnostic: FertilizerEnrichmentStartSourceProvenanceDiagnostic | null
   packagingInlineProcessed: boolean
   manufacturerHttpFetchAttempted: boolean
   manufacturerResearchDiagnostics: FertilizerEnrichmentStartManufacturerResearchDiagnostic | null
   manufacturerResearchTiming: Record<string, unknown> | null
   formDiagnostic: FertilizerEnrichmentStartFormDiagnostic | null
+}
+
+export interface FertilizerEnrichmentStartSourceProvenanceDiagnostic {
+  structuredDeclarationSourcePresent: boolean
+  structuredDeclarationSourceAccepted: boolean
+  declarationSourceIdPresent: boolean
+  declarationSourceType: string
+  declarationSourceOfficial: boolean
+  nutrientMatrixSourceIdPresent: boolean
+  nutrientMatrixSourceMatchesDeclarationSource: boolean
+  sourceConflictDetected: boolean
+  sourceConflictFieldCount: number
+  sourceConflictKinds: string[]
+  sourceConflictWinner: 'manufacturer' | 'packaging' | 'unresolved' | 'none'
+  acceptedManufacturerSourceCount: number
+  acceptedPackagingSourceCount: number
 }
 
 export interface FertilizerEnrichmentStartStackFrameDiagnostic {
@@ -1052,6 +1074,36 @@ function readManufacturerResearchTimingSummary(
   return readManufacturerResearchDiagnosticSummary(jobResult)?.manufacturerResearchTiming ?? null
 }
 
+function readRawDeclarationInput(jobResult: Record<string, unknown>): RawFertilizerDeclarationInput | null {
+  const pipelineResult = readObjectRecord(jobResult.pipelineResult)
+  const raw =
+    readObjectRecord(jobResult.rawDeclarationInput) ??
+    (pipelineResult ? readObjectRecord(pipelineResult.rawDeclarationInput) : null)
+
+  return raw as RawFertilizerDeclarationInput | null
+}
+
+function buildFertilizerEnrichmentStartSourceProvenanceDiagnostic(
+  jobResult: Record<string, unknown>,
+  adapterOutcomes: FertilizerEnrichmentStartAdapterOutcomeDiagnostic[],
+): FertilizerEnrichmentStartSourceProvenanceDiagnostic | null {
+  const raw = readRawDeclarationInput(jobResult)
+  if (!raw?.coverageMetadata) {
+    return null
+  }
+
+  const diagnostic: FertilizerSourceProvenanceReadinessDiagnostic =
+    buildFertilizerSourceProvenanceReadinessDiagnostic({
+      rawDeclarationInput: raw,
+      adapterOutcomes: adapterOutcomes.map((outcome) => ({
+        adapterType: outcome.adapterType,
+        status: outcome.status,
+      })),
+    })
+
+  return diagnostic
+}
+
 export function buildFertilizerEnrichmentStartOutcomeWarningDiagnostic(input: {
   requestId: string | null
   httpStatus: number
@@ -1109,6 +1161,10 @@ export function buildFertilizerEnrichmentStartOutcomeWarningDiagnostic(input: {
       foundCount: adapterOutcomes.length > 0 ? adapterOutcomes.length : attemptedAdapters.length,
       acceptedCount: successfulAdapters.length,
     },
+    sourceProvenanceDiagnostic: buildFertilizerEnrichmentStartSourceProvenanceDiagnostic(
+      jobResult,
+      adapterOutcomes,
+    ),
     packagingInlineProcessed:
       input.inputCounts.captureInlineSourceTextCount > 0 &&
       selectedAdapterTypes.includes('packaging'),

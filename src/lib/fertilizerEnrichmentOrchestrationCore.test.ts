@@ -488,7 +488,7 @@ describe('fertilizerEnrichmentOrchestrationCore', () => {
     expect(raw.sourceConflicts.some((conflict: FertilizerDeclarationConflict) => conflict.type === 'npk_conflict')).toBe(true)
   })
 
-  it('O-10: supplementary web value does not overwrite manufacturer value', () => {
+  it('O-10: supplementary web value does not overwrite manufacturer value or create conflict', () => {
     const raw = buildRawFertilizerDeclarationInput(
       buildOrchestrationInput(),
       [
@@ -507,7 +507,7 @@ describe('fertilizerEnrichmentOrchestrationCore', () => {
     )
 
     expect(raw.npk.nitrogen?.value).toBe(15)
-    expect(raw.sourceConflicts.length).toBeGreaterThan(0)
+    expect(raw.sourceConflicts).toHaveLength(0)
   })
 
   it('O-11: variant mismatch creates variant conflict', () => {
