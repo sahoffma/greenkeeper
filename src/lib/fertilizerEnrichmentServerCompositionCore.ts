@@ -85,6 +85,7 @@ export function createFertilizerEnrichmentServerRuntime(
       storage: environment.sourceStorage
         ? createFertilizerEnrichmentSupabaseSourceStorage(supabase, environment.sourceStorage)
         : null,
+      openAiApiKey: process.env.OPENAI_API_KEY,
     })
   const orchestrationDependencies = createFertilizerEnrichmentOrchestrationDependencies(
     adapterDependencies,

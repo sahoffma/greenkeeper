@@ -4,6 +4,7 @@ import { fetchExternalManufacturerDocument } from './fertilizerEnrichmentHttpMan
 import type { FertilizerEnrichmentSourceStorage } from './fertilizerEnrichmentSourceStorageCore'
 import { createFertilizerEnrichmentStoredSourceAdapterDependencies } from './fertilizerEnrichmentStoredSourceResolverCore'
 import { isExternalSourceReference } from './fertilizerEnrichmentStorageLocatorCore'
+import { createConfiguredManufacturerResearchSearchProvider } from './fertilizerManufacturerResearchSearchProviderCore'
 
 function defaultNow(): string {
   return new Date().toISOString()
@@ -26,6 +27,7 @@ function readReferenceId(hint: FertilizerEnrichmentSourceHint): string | null {
 export function createFertilizerEnrichmentProductionAdapterDependencies(options: {
   storage?: FertilizerEnrichmentSourceStorage | null
   now?: () => string
+  openAiApiKey?: string | null
 } = {}): FertilizerEnrichmentAdapterCompositionDependencies {
   const now = options.now ?? defaultNow
   const stored = options.storage
@@ -96,5 +98,8 @@ export function createFertilizerEnrichmentProductionAdapterDependencies(options:
 
       return { ok: false, errorCode: 'unsupported_source', retryable: false }
     },
+    manufacturerResearchSearchProvider: createConfiguredManufacturerResearchSearchProvider(
+      options.openAiApiKey,
+    ),
   }
 }

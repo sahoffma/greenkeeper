@@ -37,6 +37,14 @@ import {
   resolveResearchFetchSourcePriority,
   summarizeFetchAttempts,
 } from './fertilizerManufacturerResearchTimingCore'
+import {
+  MANUFACTURER_RESEARCH_SEARCH_BUDGET_MS,
+  runManufacturerResearchSearchAttempt,
+} from './fertilizerManufacturerResearchSearchProviderCore'
+import type {
+  FertilizerManufacturerResearchSearchProviderOutcome,
+  FertilizerManufacturerResearchSourceStrategy,
+} from '../types/fertilizerManufacturerResearchSearch'
 import { extractPdfTextFromBytes } from './fertilizerPdfTextExtractionCore'
 
 export {
@@ -45,6 +53,7 @@ export {
   MANUFACTURER_RESEARCH_PER_FETCH_TIMEOUT_MS,
   MANUFACTURER_RESEARCH_TOTAL_BUDGET_MS,
 } from './fertilizerManufacturerResearchTimingCore'
+export { MANUFACTURER_RESEARCH_SEARCH_BUDGET_MS } from './fertilizerManufacturerResearchSearchProviderCore'
 
 export type FertilizerOfficialSourceCandidateCategory =
   | 'official_manufacturer'
@@ -67,6 +76,7 @@ export interface FertilizerManufacturerResearchSearchProvider {
     queries: string[]
     manufacturerDomain: string | null
     urlCandidates: string[]
+    timeoutMs?: number
   }): Promise<FertilizerOfficialSourceCandidate[]>
 }
 
@@ -296,6 +306,7 @@ function finalizeDiagnostics(input: {
     researchFailureStage: stage,
     fallbackRecommendation: input.bestResult ? 'none' : resolveFallbackRecommendation(stage),
     manufacturerResearchTiming: input.timing,
+    officialDeclarationFound: input.bestResult?.status === 'success',
   }
 }
 
@@ -319,9 +330,11 @@ async function processResearchCandidates(input: {
   fetchAttempts: FertilizerManufacturerResearchFetchAttemptTiming[]
   fetchTotalMs: number
   parseTotalMs: number
+  officialSearchResultFetchedCount: number
 }> {
   let fetchedCount = 0
   let parsedCount = 0
+  let officialSearchResultFetchedCount = 0
   let declarationSectionFound = false
   let declaredPositiveNutrientCount = 0
   let bestResult: FertilizerSourceAdapterResult | null = null
@@ -421,6 +434,9 @@ async function processResearchCandidates(input: {
     }
 
     fetchedCount += 1
+    if (sourcePriority === 'search_result') {
+      officialSearchResultFetchedCount += 1
+    }
     fetchAttempts.push({
       candidateIndex,
       sourceKind: resolveResearchFetchSourceKind(candidate, fetchResult.contentType),
@@ -530,6 +546,7 @@ async function processResearchCandidates(input: {
     fetchAttempts,
     fetchTotalMs,
     parseTotalMs,
+    officialSearchResultFetchedCount,
   }
 }
 
@@ -580,18 +597,34 @@ export async function runAutomaticManufacturerResearch(input: {
   let candidates = defaultCandidates
   let searchAttempted = identityComplete
   const discoveredUrlSet = new Set<string>()
+  const searchProviderConfigured = Boolean(input.searchProvider)
+  let searchProviderAttempted = false
+  let searchProviderOutcome: FertilizerManufacturerResearchSearchProviderOutcome =
+    searchProviderConfigured ? 'error' : 'not_configured'
+  let researchSourceStrategy: FertilizerManufacturerResearchSourceStrategy = 'direct_candidates_only'
+  let searchResultCount = 0
+  let officialSearchResultCount = 0
 
   if (identityComplete && input.searchProvider) {
+    searchProviderAttempted = true
     const searchProviderStartedAtMs = now()
-    const discovered = await input.searchProvider.discoverOfficialSources({
+    const searchAttempt = await runManufacturerResearchSearchAttempt({
+      searchProvider: input.searchProvider,
       identity: input.identity,
       queries,
       manufacturerDomain,
       urlCandidates: defaultCandidates.map((candidate) => candidate.url),
+      timeoutMs: Math.min(
+        MANUFACTURER_RESEARCH_SEARCH_BUDGET_MS,
+        totalBudgetMs - 500,
+      ),
     })
     timing.searchProviderMs = now() - searchProviderStartedAtMs
+    searchProviderOutcome = searchAttempt.outcome
+    searchResultCount = searchAttempt.searchResultCount
+    officialSearchResultCount = searchAttempt.officialSearchResultCount
 
-    for (const candidate of discovered) {
+    for (const candidate of searchAttempt.candidates) {
       discoveredUrlSet.add(candidate.url)
     }
 
@@ -601,18 +634,34 @@ export async function runAutomaticManufacturerResearch(input: {
       hintedUrls,
     }).filter((candidate) => hintedUrls.includes(candidate.url))
 
-    candidates = rankOfficialSourceCandidates([
-      ...discovered,
-      ...hintedCandidates.filter(
-        (candidate) => !discovered.some((entry) => entry.url === candidate.url),
-      ),
-    ])
+    if (searchAttempt.candidates.length > 0) {
+      candidates = limitOfficialResearchCandidates({
+        candidates: rankOfficialSourceCandidates([
+          ...searchAttempt.candidates,
+          ...hintedCandidates.filter(
+            (candidate) => !searchAttempt.candidates.some((entry) => entry.url === candidate.url),
+          ),
+        ]),
+        hintedUrls,
+        maxCandidates: maxOfficialCandidates,
+      })
+      researchSourceStrategy = 'search_only'
+    } else {
+      candidates = limitOfficialResearchCandidates({
+        candidates: defaultCandidates,
+        hintedUrls,
+        maxCandidates: maxOfficialCandidates,
+      })
+      researchSourceStrategy = 'search_then_direct'
+    }
   } else if (identityComplete) {
     candidates = limitOfficialResearchCandidates({
       candidates: defaultCandidates,
       hintedUrls,
       maxCandidates: maxOfficialCandidates,
     })
+    researchSourceStrategy = 'direct_candidates_only'
+    searchProviderOutcome = 'not_configured'
   }
 
   timing.candidateCount = candidates.length
@@ -631,6 +680,15 @@ export async function runAutomaticManufacturerResearch(input: {
     officialDocumentParsedCount: 0,
     declarationSectionFound: false,
     declaredPositiveNutrientCount: 0,
+    searchProviderConfigured,
+    searchProviderAttempted,
+    searchQueryCount: searchProviderAttempted ? queries.length : 0,
+    searchResultCount,
+    officialSearchResultCount,
+    officialSearchResultFetchedCount: 0,
+    searchProviderOutcome,
+    researchSourceStrategy,
+    officialDeclarationFound: false,
   }
 
   if (!identityComplete) {
@@ -696,7 +754,10 @@ export async function runAutomaticManufacturerResearch(input: {
   return {
     adapterResult: processed.bestResult,
     diagnostics: finalizeDiagnostics({
-      diagnosticsBase,
+      diagnosticsBase: {
+        ...diagnosticsBase,
+        officialSearchResultFetchedCount: processed.officialSearchResultFetchedCount,
+      },
       timing,
       bestResult: processed.bestResult,
       fetchedCount: processed.fetchedCount,

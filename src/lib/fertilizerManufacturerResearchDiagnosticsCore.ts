@@ -24,5 +24,14 @@ export function createEmptyManufacturerResearchDiagnostics(): FertilizerManufact
     researchFailureStage: 'search_not_attempted',
     fallbackRecommendation: 'retry_search',
     manufacturerResearchTiming: createEmptyManufacturerResearchTiming(),
+    searchProviderConfigured: false,
+    searchProviderAttempted: false,
+    searchQueryCount: 0,
+    searchResultCount: 0,
+    officialSearchResultCount: 0,
+    officialSearchResultFetchedCount: 0,
+    searchProviderOutcome: 'not_configured',
+    researchSourceStrategy: 'direct_candidates_only',
+    officialDeclarationFound: false,
   }
 }

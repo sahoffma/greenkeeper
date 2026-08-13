@@ -31,6 +31,8 @@ describe('fertilizerManufacturerResearchQueryCore', () => {
     expect(queries.some((query) => query.includes('Stress Manager'))).toBe(true)
     expect(queries.some((query) => query.includes('site:rasendoktor.de'))).toBe(true)
     expect(queries.some((query) => query.includes('Produktdatenblatt'))).toBe(true)
+    expect(queries.some((query) => query.includes('Zusammensetzung'))).toBe(true)
+    expect(queries.some((query) => query.includes('technical data'))).toBe(true)
   })
 
   it('builds generic official URL candidates from domain and product name', () => {

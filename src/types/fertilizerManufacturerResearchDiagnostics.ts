@@ -14,6 +14,10 @@ export type FertilizerManufacturerResearchFallbackRecommendation =
   | 'none'
 
 import type { FertilizerManufacturerResearchTiming } from './fertilizerManufacturerResearchTiming'
+import type {
+  FertilizerManufacturerResearchSearchProviderOutcome,
+  FertilizerManufacturerResearchSourceStrategy,
+} from './fertilizerManufacturerResearchSearch'
 
 export interface FertilizerManufacturerResearchDiagnostics {
   productIdentityComplete: boolean
@@ -30,4 +34,13 @@ export interface FertilizerManufacturerResearchDiagnostics {
   researchFailureStage: FertilizerManufacturerResearchFailureStage
   fallbackRecommendation: FertilizerManufacturerResearchFallbackRecommendation
   manufacturerResearchTiming?: FertilizerManufacturerResearchTiming | null
+  searchProviderConfigured: boolean
+  searchProviderAttempted: boolean
+  searchQueryCount: number
+  searchResultCount: number
+  officialSearchResultCount: number
+  officialSearchResultFetchedCount: number
+  searchProviderOutcome: FertilizerManufacturerResearchSearchProviderOutcome
+  researchSourceStrategy: FertilizerManufacturerResearchSourceStrategy
+  officialDeclarationFound: boolean
 }
