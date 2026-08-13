@@ -31,12 +31,49 @@ const IDENTITY: FertilizerEnrichmentIdentity = {
   hasIdentityAmbiguity: false,
 }
 
+const PROFESSIONAL_STRESS_IDENTITY: FertilizerEnrichmentIdentity = {
+  manufacturer: 'Rasendoktor GmbH',
+  officialName: 'Stress-Manager',
+  productLine: 'Professional',
+  variant: '0-0-30',
+  identityFingerprint: 'fp-stress',
+  identityConfidence: 1,
+  hasIdentityAmbiguity: false,
+}
+
 const OFFICIAL_URL = 'https://example-manufacturer.de/universal-feed'
 const RETAILER_URL = 'https://shop.example/universal-feed'
+
+function defaultStructuredNutrientDeclarationBases(): ManufacturerStructuredResearchRecord['nutrientDeclarationBases'] {
+  return {
+    nitrogen: 'N',
+    phosphate: 'P2O5',
+    potash: 'K2O',
+    nitrateNitrogen: null,
+    ammoniumNitrogen: null,
+    ureaNitrogen: null,
+    organicNitrogen: null,
+    magnesium: null,
+    calcium: null,
+    sulfur: 'S',
+    iron: 'Fe',
+    manganese: null,
+    copper: null,
+    zinc: null,
+    boron: null,
+    molybdenum: null,
+  }
+}
 
 function buildStructuredRecord(
   overrides: Partial<ManufacturerStructuredResearchRecord> = {},
 ): ManufacturerStructuredResearchRecord {
+  const {
+    nutrientMatrix: nutrientMatrixOverrides,
+    nutrientDeclarationBases: nutrientDeclarationBasisOverrides,
+    ...recordOverrides
+  } = overrides
+
   return {
     manufacturer: 'Example Manufacturer GmbH',
     productLine: 'Professional',
@@ -60,6 +97,11 @@ function buildStructuredRecord(
       zinc: null,
       boron: null,
       molybdenum: null,
+      ...nutrientMatrixOverrides,
+    },
+    nutrientDeclarationBases: {
+      ...defaultStructuredNutrientDeclarationBases(),
+      ...nutrientDeclarationBasisOverrides,
     },
     declarationComplete: true,
     identityMatch: true,
@@ -71,7 +113,7 @@ function buildStructuredRecord(
         category: 'official_manufacturer',
       },
     ],
-    ...overrides,
+    ...recordOverrides,
   }
 }
 
@@ -338,11 +380,11 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
 
   it('rejects model-declared complete NPK-only structured research', () => {
     const record = buildStructuredRecord({
-      npk: { nitrogen: 0, phosphate: 0, potash: 30 },
+      npk: { nitrogen: 10, phosphate: 5, potash: 20 },
       nutrientMatrix: {
-        nitrogen: 0,
-        phosphate: 0,
-        potash: 30,
+        nitrogen: 10,
+        phosphate: 5,
+        potash: 20,
         nitrateNitrogen: null,
         ammoniumNitrogen: null,
         ureaNitrogen: null,
@@ -384,6 +426,9 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
   it('preserves NPK iron and sulfur through adapter merge and normalization', () => {
     const record = syncStructuredNpkIntoNutrientMatrix(
       buildStructuredRecord({
+        manufacturer: 'Rasendoktor GmbH',
+        productLine: 'Professional',
+        productName: 'Stress-Manager',
         npk: { nitrogen: 0, phosphate: 0, potash: 30 },
         nutrientMatrix: {
           nitrogen: null,
@@ -408,8 +453,9 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
 
     const adapterResult = mapStructuredResearchToAdapterResult({
       record,
-      identity: IDENTITY,
+      identity: PROFESSIONAL_STRESS_IDENTITY,
       retrievedAt: '2026-07-29T10:00:00.000Z',
+      npkLabel: '0-0-30',
     })
 
     expect(adapterResult?.status).toBe('success')
@@ -420,7 +466,7 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
       expect(
         adapterResult.extraction?.extractedNutrients?.find((entry) => entry.key === 'sulfur')
           ?.declarationBasis,
-      ).toBe('SO3')
+      ).toBe('S')
       expect(
         adapterResult.extraction?.extractedNutrients?.find((entry) => entry.key === 'potash')
           ?.declarationBasis,
@@ -433,15 +479,15 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
 
     const orchestrationInput = {
       objectCategory: 'fertilizer',
-      identity: IDENTITY,
+      identity: PROFESSIONAL_STRESS_IDENTITY,
       allowedInputChannels: ['capture_flow'],
       sourceHints: [],
       captureRecognitionPackagingBasis: {
         sourceId: 'textIdentityBasis',
-        manufacturer: IDENTITY.manufacturer,
-        officialName: IDENTITY.officialName,
-        productLine: IDENTITY.productLine ?? null,
-        variant: IDENTITY.variant,
+        manufacturer: PROFESSIONAL_STRESS_IDENTITY.manufacturer,
+        officialName: PROFESSIONAL_STRESS_IDENTITY.officialName,
+        productLine: PROFESSIONAL_STRESS_IDENTITY.productLine ?? null,
+        variant: PROFESSIONAL_STRESS_IDENTITY.variant,
         productForm: 'granular',
         npk: { nitrogen: 0, phosphate: 0, potash: 30 },
       },
@@ -479,6 +525,9 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
 
   it('does not zero-fill when structured declaration completeness is rejected', () => {
     const record = buildStructuredRecord({
+      manufacturer: 'Rasendoktor GmbH',
+      productLine: 'Professional',
+      productName: 'Stress-Manager',
       npk: { nitrogen: 0, phosphate: 0, potash: 30 },
       nutrientMatrix: {
         nitrogen: 0,
@@ -506,22 +555,23 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
     })
     const adapterResult = mapStructuredResearchToAdapterResult({
       record,
-      identity: IDENTITY,
+      identity: PROFESSIONAL_STRESS_IDENTITY,
       retrievedAt: '2026-07-29T10:00:00.000Z',
+      npkLabel: '0-0-30',
       declarationCompletenessValidation: validation,
     })
 
     const orchestrationInput = {
       objectCategory: 'fertilizer',
-      identity: IDENTITY,
+      identity: PROFESSIONAL_STRESS_IDENTITY,
       allowedInputChannels: ['capture_flow'],
       sourceHints: [],
       captureRecognitionPackagingBasis: {
         sourceId: 'textIdentityBasis',
-        manufacturer: IDENTITY.manufacturer,
-        officialName: IDENTITY.officialName,
-        productLine: IDENTITY.productLine ?? null,
-        variant: IDENTITY.variant,
+        manufacturer: PROFESSIONAL_STRESS_IDENTITY.manufacturer,
+        officialName: PROFESSIONAL_STRESS_IDENTITY.officialName,
+        productLine: PROFESSIONAL_STRESS_IDENTITY.productLine ?? null,
+        variant: PROFESSIONAL_STRESS_IDENTITY.variant,
         productForm: 'granular',
         npk: { nitrogen: 0, phosphate: 0, potash: 30 },
       },
@@ -535,6 +585,29 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
 
     expect(raw.nutrientMatrix.iron?.status).not.toBe('not_declared')
     expect(raw.nutrientMatrix.boron?.status).not.toBe('not_declared')
+  })
+
+  it('preserves SO3 basis separately from S', () => {
+    const record = buildStructuredRecord({
+      nutrientDeclarationBases: {
+        ...defaultStructuredNutrientDeclarationBases(),
+        sulfur: 'SO3',
+      },
+    })
+    const adapterResult = mapStructuredResearchToAdapterResult({
+      record,
+      identity: IDENTITY,
+      retrievedAt: '2026-07-29T10:00:00.000Z',
+      npkLabel: '10-5-20',
+    })
+
+    expect(adapterResult?.status).toBe('success')
+    if (adapterResult?.status === 'success' || adapterResult?.status === 'partial') {
+      expect(
+        adapterResult.extraction?.extractedNutrients?.find((entry) => entry.key === 'sulfur')
+          ?.declarationBasis,
+      ).toBe('SO3')
+    }
   })
 
   it('counts structured matrix entries without logging raw declaration text', () => {

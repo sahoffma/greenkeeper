@@ -13,6 +13,7 @@ import {
   type FertilizerNutrientMatrixKey,
 } from '../types/fertilizerReadiness'
 import { normalizeFingerprintPart } from './fertilizerInventoryCore'
+import { buildManufacturerBrandToken } from './fertilizerManufacturerResearchQueryCore'
 
 export class FertilizerProductVersionProjectionError extends Error {
   readonly code:
@@ -41,8 +42,12 @@ export function buildFertilizerProductFamilyKey(
     'manufacturer' | 'productLine' | 'officialName' | 'variant'
   >,
 ): string | null {
+  const manufacturerPart =
+    buildManufacturerBrandToken(identity.manufacturer) ??
+    normalizeFingerprintPart(identity.manufacturer)
+
   const parts = [
-    normalizeFingerprintPart(identity.manufacturer),
+    manufacturerPart,
     normalizeFingerprintPart(identity.productLine),
     normalizeFingerprintPart(identity.officialName),
     normalizeFingerprintPart(identity.variant),

@@ -43,7 +43,12 @@ describe('fertilizerCaptureNutrientPipelineDiagnosticsCore', () => {
           },
         },
       ],
-      rawDeclarationInput: null,
+      rawDeclarationInput: {
+        nutrientMatrix: {
+          iron: { status: 'declared', value: 3, declarationBasis: 'Fe', unit: '%' },
+          sulfur: { status: 'declared', value: 10.2, declarationBasis: 'S', unit: '%' },
+        },
+      } as never,
       normalizedNutrientMatrix: {
         iron: {
           value: 3,

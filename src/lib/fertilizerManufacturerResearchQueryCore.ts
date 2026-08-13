@@ -70,11 +70,11 @@ export function buildManufacturerResearchSearchQueries(input: {
   for (const productVariant of productVariants) {
     queries.add([manufacturer, productLine, productVariant, npk, packageSize].filter(Boolean).join(' ').trim())
     queries.add([manufacturer, productLine, productVariant, 'Dünger', npk].filter(Boolean).join(' ').trim())
-    queries.add([manufacturer, productVariant, 'Produktdatenblatt'].filter(Boolean).join(' ').trim())
-    queries.add([manufacturer, productVariant, 'Datenblatt'].filter(Boolean).join(' ').trim())
-    queries.add([manufacturer, productVariant, 'Zusammensetzung'].filter(Boolean).join(' ').trim())
-    queries.add([manufacturer, productVariant, 'technical data'].filter(Boolean).join(' ').trim())
-    queries.add([manufacturer, productVariant, 'NPK', npk].filter(Boolean).join(' ').trim())
+    queries.add([manufacturer, productLine, productVariant, 'Produktdatenblatt'].filter(Boolean).join(' ').trim())
+    queries.add([manufacturer, productLine, productVariant, 'Datenblatt'].filter(Boolean).join(' ').trim())
+    queries.add([manufacturer, productLine, productVariant, 'Zusammensetzung'].filter(Boolean).join(' ').trim())
+    queries.add([manufacturer, productLine, productVariant, 'technical data'].filter(Boolean).join(' ').trim())
+    queries.add([manufacturer, productLine, productVariant, 'NPK', npk].filter(Boolean).join(' ').trim())
   }
 
   const brandToken = buildManufacturerBrandToken(manufacturer)

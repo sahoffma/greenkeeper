@@ -308,7 +308,8 @@ function normalizeNutrientMatrix(
 
   for (const key of FERTILIZER_NUTRIENT_MATRIX_KEYS) {
     const fieldPath = `nutrientMatrix.${key}`
-    const fallbackBasis = defaultDeclarationBasisForMatrixKey(key)
+    const fallbackBasis =
+      key === 'sulfur' ? null : defaultDeclarationBasisForMatrixKey(key)
     const outcome = normalizeRawScalarValue(
       input.nutrientMatrix[key],
       fallbackBasis,
