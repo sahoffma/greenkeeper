@@ -33,6 +33,10 @@ import type {
   FertilizerManufacturerResearchSourceStrategy,
 } from '../types/fertilizerManufacturerResearchSearch'
 import { extractPdfTextFromBytes } from './fertilizerPdfTextExtractionCore'
+import {
+  maybeAttachManufacturerResearchV2Shadow,
+  type ManufacturerResearchV2Call,
+} from './fertilizerManufacturerResearchV2Core'
 
 export {
   MANUFACTURER_RESEARCH_DIRECT_FALLBACK_MAX_CANDIDATES,
@@ -93,6 +97,9 @@ export interface FertilizerManufacturerResearchRuntimeOptions {
   maxParallelFetches?: number
   now?: () => number
   logTiming?: boolean
+  manufacturerResearchV2ShadowEnabled?: boolean
+  manufacturerResearchV2Call?: ManufacturerResearchV2Call
+  openAiApiKey?: string | null
 }
 
 function resolveResearchProductName(identity: FertilizerEnrichmentIdentity): string {
@@ -369,6 +376,40 @@ function finalizeDiagnostics(input: {
     }),
   }
 }
+
+async function attachManufacturerResearchV2ShadowIfEnabled(input: {
+  result: FertilizerManufacturerResearchResult
+  identity: FertilizerEnrichmentIdentity
+  npkLabel?: string | null
+  packageSizeLabel?: string | null
+  fetchProvider: FertilizerManufacturerResearchFetchProvider
+  runtime?: FertilizerManufacturerResearchRuntimeOptions
+}): Promise<FertilizerManufacturerResearchResult> {
+  const shadow = await maybeAttachManufacturerResearchV2Shadow({
+    enabled: input.runtime?.manufacturerResearchV2ShadowEnabled,
+    identity: input.identity,
+    npkLabel: input.npkLabel,
+    captureContext: { packageSizeLabel: input.packageSizeLabel },
+    fetchProvider: input.fetchProvider,
+    v1AdapterResult: input.result.adapterResult,
+    v1Diagnostics: input.result.diagnostics,
+    openAiApiKey: input.runtime?.openAiApiKey ?? process.env.OPENAI_API_KEY,
+    callResearch: input.runtime?.manufacturerResearchV2Call,
+  })
+
+  if (!shadow) {
+    return input.result
+  }
+
+  return {
+    ...input.result,
+    diagnostics: {
+      ...input.result.diagnostics,
+      manufacturerResearchV2Shadow: shadow,
+    },
+  }
+}
+
 export async function runAutomaticManufacturerResearch(input: {
   identity: FertilizerEnrichmentIdentity
   hintedUrls?: string[]
@@ -499,35 +540,71 @@ export async function runAutomaticManufacturerResearch(input: {
 
   if (!identityComplete) {
     timing.totalResearchMs = now() - researchStartedAtMs
-    return {
-      adapterResult: null,
-      diagnostics: finalizeDiagnostics({
-        diagnosticsBase: buildDiagnosticsBase(0),
-        timing,
-        bestResult: null,
-        fetchedCount: 0,
-        parsedCount: 0,
-        declarationSectionFound: false,
-        declaredPositiveNutrientCount: 0,
-        structuredAttempted: false,
-        structuredAttempt: null,
-        directCandidateFallbackUsed: false,
-        candidateCount: 0,
-        identityComplete,
-        logTiming: false,
-      }),
-    }
+    return attachManufacturerResearchV2ShadowIfEnabled({
+      result: {
+        adapterResult: null,
+        diagnostics: finalizeDiagnostics({
+          diagnosticsBase: buildDiagnosticsBase(0),
+          timing,
+          bestResult: null,
+          fetchedCount: 0,
+          parsedCount: 0,
+          declarationSectionFound: false,
+          declaredPositiveNutrientCount: 0,
+          structuredAttempted: false,
+          structuredAttempt: null,
+          directCandidateFallbackUsed: false,
+          candidateCount: 0,
+          identityComplete,
+          logTiming: false,
+        }),
+      },
+      identity: input.identity,
+      npkLabel: input.npkLabel,
+      packageSizeLabel: input.packageSizeLabel,
+      fetchProvider: input.fetchProvider,
+      runtime: input.runtime,
+    })
   }
 
   if (bestResult) {
     timing.candidateCount = 0
     timing.totalResearchMs = now() - researchStartedAtMs
-    return {
-      adapterResult: bestResult,
+    return attachManufacturerResearchV2ShadowIfEnabled({
+      result: {
+        adapterResult: bestResult,
+        diagnostics: finalizeDiagnostics({
+          diagnosticsBase: buildDiagnosticsBase(0),
+          timing,
+          bestResult,
+          fetchedCount: 0,
+          parsedCount: 0,
+          declarationSectionFound: structuredDeclarationComplete,
+          declaredPositiveNutrientCount: structuredPositiveNutrientCount,
+          structuredAttempted: searchProviderAttempted,
+          structuredAttempt,
+          directCandidateFallbackUsed: false,
+          candidateCount: 0,
+          identityComplete,
+          logTiming,
+        }),
+      },
+      identity: input.identity,
+      npkLabel: input.npkLabel,
+      packageSizeLabel: input.packageSizeLabel,
+      fetchProvider: input.fetchProvider,
+      runtime: input.runtime,
+    })
+  }
+
+  timing.totalResearchMs = now() - researchStartedAtMs
+  return attachManufacturerResearchV2ShadowIfEnabled({
+    result: {
+      adapterResult: null,
       diagnostics: finalizeDiagnostics({
         diagnosticsBase: buildDiagnosticsBase(0),
         timing,
-        bestResult,
+        bestResult: null,
         fetchedCount: 0,
         parsedCount: 0,
         declarationSectionFound: structuredDeclarationComplete,
@@ -537,30 +614,15 @@ export async function runAutomaticManufacturerResearch(input: {
         directCandidateFallbackUsed: false,
         candidateCount: 0,
         identityComplete,
-        logTiming,
+        logTiming: false,
       }),
-    }
-  }
-
-  timing.totalResearchMs = now() - researchStartedAtMs
-  return {
-    adapterResult: null,
-    diagnostics: finalizeDiagnostics({
-      diagnosticsBase: buildDiagnosticsBase(0),
-      timing,
-      bestResult: null,
-      fetchedCount: 0,
-      parsedCount: 0,
-      declarationSectionFound: structuredDeclarationComplete,
-      declaredPositiveNutrientCount: structuredPositiveNutrientCount,
-      structuredAttempted: searchProviderAttempted,
-      structuredAttempt,
-      directCandidateFallbackUsed: false,
-      candidateCount: 0,
-      identityComplete,
-      logTiming: false,
-    }),
-  }
+    },
+    identity: input.identity,
+    npkLabel: input.npkLabel,
+    packageSizeLabel: input.packageSizeLabel,
+    fetchProvider: input.fetchProvider,
+    runtime: input.runtime,
+  })
 }
 
 export async function createFetchProviderFromGlobalFetch(): Promise<FertilizerManufacturerResearchFetchProvider> {

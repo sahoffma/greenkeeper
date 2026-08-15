@@ -17,6 +17,7 @@ export type FertilizerManufacturerResearchFallbackRecommendation =
   | 'none'
 
 import type { FertilizerNutrientMatrixKey } from './fertilizerReadiness'
+import type { ManufacturerResearchV2ShadowDiagnostics } from './fertilizerManufacturerResearchV2'
 import type { FertilizerManufacturerResearchTiming } from './fertilizerManufacturerResearchTiming'
 import type {
   FertilizerManufacturerResearchSearchProviderOutcome,
@@ -179,4 +180,5 @@ export interface FertilizerManufacturerResearchDiagnostics {
   generatedSearchQueries?: string[]
   searchCandidates?: ManufacturerSearchCandidateDiagnostic[]
   finalResearchDecision?: ManufacturerSearchResearchDecisionDiagnostic | null
+  manufacturerResearchV2Shadow?: ManufacturerResearchV2ShadowDiagnostics | null
 }
