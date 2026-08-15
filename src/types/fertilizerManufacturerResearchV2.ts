@@ -88,6 +88,17 @@ export interface ManufacturerResearchV2ShadowComparison {
   declarationSourceMatch: boolean | null
 }
 
+export type ManufacturerResearchV2RejectionReason =
+  | 'declaration_source_missing'
+  | 'declaration_source_invalid_url'
+  | 'declaration_source_unsupported_protocol'
+  | 'declaration_source_embedded_credentials'
+  | 'declaration_source_local_or_private_host'
+  | 'declaration_source_fetch_failed'
+  | 'identity_contradiction'
+  | 'numeric_sanity_failed'
+  | 'evidence_check_failed'
+
 export interface ManufacturerResearchV2ShadowDiagnostics {
   executed: boolean
   durationMs: number | null
@@ -109,6 +120,11 @@ export interface ManufacturerResearchV2ShadowDiagnostics {
   positiveNutrientCount: number | null
   ambiguity: ManufacturerResearchV2Ambiguity | null
   gates: ManufacturerResearchV2GateDiagnostics | null
+  sourceValid: boolean | null
+  identityContradiction: boolean | null
+  numericSanityPassed: boolean | null
+  nutrientMappingFailureReason: string | null
+  rejectionReason: ManufacturerResearchV2RejectionReason | null
   finalShadowDecision: ManufacturerResearchV2ShadowFinalDecision
   comparison: ManufacturerResearchV2ShadowComparison | null
   errorMessage?: string | null

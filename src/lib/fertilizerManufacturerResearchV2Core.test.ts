@@ -8,6 +8,8 @@ import {
   buildManufacturerResearchV2CaptureContextFromEnrichmentInput,
   buildManufacturerResearchV2Prompt,
   compareManufacturerResearchV2WithV1,
+  deriveManufacturerResearchV2NutrientMappingFailureReason,
+  deriveManufacturerResearchV2RejectionReason,
   detectHardIdentityContradiction,
   evaluateManufacturerResearchV2Shadow,
   isManufacturerResearchV2ShadowEnabled,
@@ -297,6 +299,18 @@ describe('manufacturer research v2 gates', () => {
     )
   })
 
+  it('derives nutrient mapping failure reason for unknown nutrient keys', () => {
+    expect(
+      deriveManufacturerResearchV2NutrientMappingFailureReason(
+        buildRasendoktorProfessionalResult({
+          declaration: {
+            nutrients: [{ nutrientKey: 'K2O', value: 30, unit: '%', declarationBasis: 'K2O' }],
+          },
+        }),
+      ),
+    ).toBe('unknown_nutrient_key:K2O')
+  })
+
   it('marks ambiguous status as ambiguous shadow decision', () => {
     const evaluation = evaluateManufacturerResearchV2Shadow({
       captureIdentity: RASENDOKTOR_PROFESSIONAL_IDENTITY,
@@ -452,6 +466,20 @@ describe('manufacturer research v2 fixtures', () => {
 
     expect(evaluation.gates.identityContradiction).toBe(true)
     expect(evaluation.finalShadowDecision).toBe('rejected')
+    expect(
+      deriveManufacturerResearchV2RejectionReason({
+        gates: evaluation.gates,
+        declarationSourceUrl: buildRasendoktorProfessionalResult().declarationSource?.url ?? null,
+        sourceFetchFailed: false,
+        result: buildRasendoktorProfessionalResult({
+          product: {
+            ...buildRasendoktorProfessionalResult().product,
+            productLine: 'Standard',
+          },
+        }),
+        finalShadowDecision: evaluation.finalShadowDecision,
+      }),
+    ).toBe('identity_contradiction')
   })
 
   it('F keeps spelling variants in prompt without TS normalization', () => {
@@ -554,6 +582,51 @@ describe('manufacturer research v2 fixtures', () => {
     })
 
     expect(shadow.gates?.sourceValid).toBe(true)
+  })
+
+  it('K rejects relative declaration source url with source diagnostics', async () => {
+    const shadow = await runManufacturerResearchV2Shadow({
+      identity: RASENDOKTOR_PROFESSIONAL_IDENTITY,
+      npkLabel: '0-0-30',
+      fetchProvider: createMockFetchProvider(),
+      callResearch: async () =>
+        buildRasendoktorProfessionalResult({
+          declarationSource: {
+            url: '/duenger/rasenduenger/kalium-rasenduenger-mit-spurennaehrstoffen/?foo=bar',
+            title: 'Kalium Rasendünger',
+            sourceType: 'manufacturer_web_page',
+          },
+        }),
+      v1Diagnostics: emptyV1Diagnostics(),
+      now: () => 0,
+    })
+
+    expect(shadow.finalShadowDecision).toBe('rejected')
+    expect(shadow.sourceValid).toBe(false)
+    expect(shadow.rejectionReason).toBe('declaration_source_invalid_url')
+    expect(shadow.nutrientMappingFailureReason).toBeNull()
+    expect(shadow.numericSanityPassed).toBe(true)
+  })
+
+  it('L exposes nutrient mapping failure reason for unknown nutrient keys', async () => {
+    const shadow = await runManufacturerResearchV2Shadow({
+      identity: RASENDOKTOR_PROFESSIONAL_IDENTITY,
+      npkLabel: '0-0-30',
+      fetchProvider: createMockFetchProvider('Kaliumoxid (K2O): 30 %'),
+      callResearch: async () =>
+        buildRasendoktorProfessionalResult({
+          declaration: {
+            nutrients: [{ nutrientKey: 'K2O', value: 30, unit: '%', declarationBasis: 'K2O' }],
+          },
+        }),
+      v1Diagnostics: emptyV1Diagnostics(),
+      now: () => 0,
+    })
+
+    expect(shadow.finalShadowDecision).toBe('rejected')
+    expect(shadow.numericSanityPassed).toBe(false)
+    expect(shadow.nutrientMappingFailureReason).toBe('unknown_nutrient_key:K2O')
+    expect(shadow.rejectionReason).toBe('numeric_sanity_failed')
   })
 })
 

@@ -19,6 +19,7 @@ import type {
   ManufacturerResearchV2Ambiguity,
   ManufacturerResearchV2Confidence,
   ManufacturerResearchV2Nutrient,
+  ManufacturerResearchV2RejectionReason,
   ManufacturerResearchV2ShadowFinalDecision,
   ManufacturerResearchV2Status,
 } from '../types/fertilizerManufacturerResearchV2'
@@ -286,6 +287,11 @@ export interface FertilizerEnrichmentStartManufacturerResearchV2ShadowDiagnostic
   aiReturnedNutrients: ManufacturerResearchV2Nutrient[] | null
   declarationComplete: boolean | null
   ambiguity: ManufacturerResearchV2Ambiguity | null
+  sourceValid: boolean | null
+  identityContradiction: boolean | null
+  numericSanityPassed: boolean | null
+  nutrientMappingFailureReason: string | null
+  rejectionReason: ManufacturerResearchV2RejectionReason | null
   finalShadowDecision: ManufacturerResearchV2ShadowFinalDecision | null
 }
 
@@ -1101,6 +1107,27 @@ function readStringOrNullDiagnostic(record: Record<string, unknown> | null, key:
   return typeof value === 'string' ? value : null
 }
 
+function readManufacturerResearchV2RejectionReason(
+  record: Record<string, unknown>,
+): ManufacturerResearchV2RejectionReason | null {
+  const value = record.rejectionReason
+  if (
+    value === 'declaration_source_missing' ||
+    value === 'declaration_source_invalid_url' ||
+    value === 'declaration_source_unsupported_protocol' ||
+    value === 'declaration_source_embedded_credentials' ||
+    value === 'declaration_source_local_or_private_host' ||
+    value === 'declaration_source_fetch_failed' ||
+    value === 'identity_contradiction' ||
+    value === 'numeric_sanity_failed' ||
+    value === 'evidence_check_failed'
+  ) {
+    return value
+  }
+
+  return null
+}
+
 function readManufacturerResearchV2ShadowDiagnosticSummary(
   diagnostics: Record<string, unknown>,
 ): FertilizerEnrichmentStartManufacturerResearchV2ShadowDiagnostic | null {
@@ -1144,7 +1171,6 @@ function readManufacturerResearchV2ShadowDiagnosticSummary(
           unit: readStringDiagnostic(entry, 'unit'),
           declarationBasis: readStringOrNullDiagnostic(entry, 'declarationBasis'),
         }))
-        .filter((entry) => entry.nutrientKey !== 'unknown')
     : null
 
   return {
@@ -1173,6 +1199,13 @@ function readManufacturerResearchV2ShadowDiagnosticSummary(
           questionForUser: readStringOrNullDiagnostic(ambiguity, 'questionForUser'),
         }
       : null,
+    sourceValid: typeof shadow.sourceValid === 'boolean' ? shadow.sourceValid : null,
+    identityContradiction:
+      typeof shadow.identityContradiction === 'boolean' ? shadow.identityContradiction : null,
+    numericSanityPassed:
+      typeof shadow.numericSanityPassed === 'boolean' ? shadow.numericSanityPassed : null,
+    nutrientMappingFailureReason: readStringOrNullDiagnostic(shadow, 'nutrientMappingFailureReason'),
+    rejectionReason: readManufacturerResearchV2RejectionReason(shadow),
     finalShadowDecision,
   }
 }

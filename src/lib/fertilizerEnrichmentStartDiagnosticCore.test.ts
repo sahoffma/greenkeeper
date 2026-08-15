@@ -791,6 +791,12 @@ describe('fertilizerEnrichmentStartDiagnosticCore', () => {
                 unit: '%',
                 declarationBasis: 'K2O',
               },
+              {
+                nutrientKey: 'K2O',
+                value: 30,
+                unit: '%',
+                declarationBasis: 'K2O',
+              },
             ],
             declarationComplete: true,
             ambiguity: {
@@ -798,6 +804,11 @@ describe('fertilizerEnrichmentStartDiagnosticCore', () => {
               reason: null,
               questionForUser: null,
             },
+            sourceValid: false,
+            identityContradiction: false,
+            numericSanityPassed: false,
+            nutrientMappingFailureReason: 'unknown_nutrient_key:K2O',
+            rejectionReason: 'numeric_sanity_failed',
             finalShadowDecision: 'rejected',
           },
         },
@@ -826,6 +837,12 @@ describe('fertilizerEnrichmentStartDiagnosticCore', () => {
           unit: '%',
           declarationBasis: 'K2O',
         },
+        {
+          nutrientKey: 'K2O',
+          value: 30,
+          unit: '%',
+          declarationBasis: 'K2O',
+        },
       ],
       declarationComplete: true,
       ambiguity: {
@@ -833,6 +850,11 @@ describe('fertilizerEnrichmentStartDiagnosticCore', () => {
         reason: null,
         questionForUser: null,
       },
+      sourceValid: false,
+      identityContradiction: false,
+      numericSanityPassed: false,
+      nutrientMappingFailureReason: 'unknown_nutrient_key:K2O',
+      rejectionReason: 'numeric_sanity_failed',
       finalShadowDecision: 'rejected',
     })
   })

@@ -5,6 +5,7 @@ import type { FertilizerManufacturerResearchDiagnostics } from '../types/fertili
 import type {
   ManufacturerResearchV2CaptureContext,
   ManufacturerResearchV2GateDiagnostics,
+  ManufacturerResearchV2RejectionReason,
   ManufacturerResearchV2Result,
   ManufacturerResearchV2ShadowComparison,
   ManufacturerResearchV2ShadowDiagnostics,
@@ -636,6 +637,86 @@ export function evaluateManufacturerResearchV2Shadow(input: {
   return { gates, finalShadowDecision: 'resolved_valid' }
 }
 
+export function deriveManufacturerResearchV2NutrientMappingFailureReason(
+  result: ManufacturerResearchV2Result | null,
+): string | null {
+  if (!result) {
+    return null
+  }
+
+  for (const nutrient of result.declaration.nutrients) {
+    if (!KNOWN_NUTRIENT_KEYS.has(nutrient.nutrientKey)) {
+      return `unknown_nutrient_key:${nutrient.nutrientKey}`
+    }
+
+    if (!Number.isFinite(nutrient.value) || nutrient.value < 0 || nutrient.value > 100) {
+      return `invalid_nutrient_value:${nutrient.nutrientKey}`
+    }
+  }
+
+  return null
+}
+
+function declarationSourceRejectionReason(
+  declarationSourceUrl: string | null,
+  sourceFetchFailed: boolean,
+): ManufacturerResearchV2RejectionReason {
+  const url = declarationSourceUrl?.trim()
+  if (!url) {
+    return 'declaration_source_missing'
+  }
+
+  const validated = validateFertilizerManufacturerDocumentSource(url)
+  if (validated.status !== 'valid') {
+    switch (validated.reason) {
+      case 'invalid_url':
+        return 'declaration_source_invalid_url'
+      case 'unsupported_protocol':
+        return 'declaration_source_unsupported_protocol'
+      case 'embedded_credentials':
+        return 'declaration_source_embedded_credentials'
+      case 'local_or_private_host':
+        return 'declaration_source_local_or_private_host'
+    }
+  }
+
+  if (sourceFetchFailed) {
+    return 'declaration_source_fetch_failed'
+  }
+
+  return 'declaration_source_invalid_url'
+}
+
+export function deriveManufacturerResearchV2RejectionReason(input: {
+  gates: ManufacturerResearchV2GateDiagnostics
+  declarationSourceUrl: string | null
+  sourceFetchFailed: boolean
+  result: ManufacturerResearchV2Result | null
+  finalShadowDecision: ManufacturerResearchV2ShadowFinalDecision
+}): ManufacturerResearchV2RejectionReason | null {
+  if (input.finalShadowDecision !== 'rejected') {
+    return null
+  }
+
+  if (!input.gates.sourceValid) {
+    return declarationSourceRejectionReason(input.declarationSourceUrl, input.sourceFetchFailed)
+  }
+
+  if (input.gates.identityContradiction) {
+    return 'identity_contradiction'
+  }
+
+  if (!input.gates.numericSanityPassed) {
+    return 'numeric_sanity_failed'
+  }
+
+  if (!input.gates.evidenceCheckPassed) {
+    return 'evidence_check_failed'
+  }
+
+  return null
+}
+
 function readV1NutrientMap(
   adapterResult: FertilizerSourceAdapterResult | null | undefined,
 ): Partial<Record<FertilizerNutrientMatrixKey, number>> {
@@ -821,6 +902,17 @@ export async function runManufacturerResearchV2Shadow(input: {
     const positiveNutrientCount =
       rawResult?.declaration.nutrients.filter((nutrient) => nutrient.value > 0).length ?? null
 
+    const nutrientMappingFailureReason = deriveManufacturerResearchV2NutrientMappingFailureReason(
+      rawResult,
+    )
+    const rejectionReason = deriveManufacturerResearchV2RejectionReason({
+      gates: evaluation.gates,
+      declarationSourceUrl: rawResult?.declarationSource?.url ?? null,
+      sourceFetchFailed: sourceValidation.sourceFetchFailed,
+      result: rawResult,
+      finalShadowDecision: evaluation.finalShadowDecision,
+    })
+
     return {
       executed: true,
       durationMs: now() - startedAt,
@@ -844,6 +936,11 @@ export async function runManufacturerResearchV2Shadow(input: {
       positiveNutrientCount,
       ambiguity: rawResult?.ambiguity ?? null,
       gates: evaluation.gates,
+      sourceValid: evaluation.gates.sourceValid,
+      identityContradiction: evaluation.gates.identityContradiction,
+      numericSanityPassed: evaluation.gates.numericSanityPassed,
+      nutrientMappingFailureReason,
+      rejectionReason,
       finalShadowDecision: evaluation.finalShadowDecision,
       comparison:
         rawResult != null
@@ -871,6 +968,11 @@ export async function runManufacturerResearchV2Shadow(input: {
       positiveNutrientCount: null,
       ambiguity: null,
       gates: null,
+      sourceValid: null,
+      identityContradiction: null,
+      numericSanityPassed: null,
+      nutrientMappingFailureReason: null,
+      rejectionReason: null,
       finalShadowDecision: 'error',
       comparison: null,
       errorMessage: error instanceof Error ? error.message : 'manufacturer_research_v2_shadow_error',
@@ -915,6 +1017,11 @@ export async function maybeAttachManufacturerResearchV2Shadow(input: {
       positiveNutrientCount: null,
       ambiguity: null,
       gates: null,
+      sourceValid: null,
+      identityContradiction: null,
+      numericSanityPassed: null,
+      nutrientMappingFailureReason: null,
+      rejectionReason: null,
       finalShadowDecision: 'not_executed',
       comparison: null,
       errorMessage: 'openai_not_configured',
