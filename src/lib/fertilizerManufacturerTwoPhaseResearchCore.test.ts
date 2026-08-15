@@ -181,6 +181,24 @@ describe('two-phase manufacturer research cores', () => {
     expect('nutrientMatrix' in (parsed ?? {})).toBe(false)
   })
 
+  it('accepts canonical source when tracking query params are stripped', () => {
+    const extraction = extractManufacturerDeclarationFromCanonicalSource({
+      sourceText: PROFESSIONAL_BODY,
+      sourceUrl: `${PROFESSIONAL_URL}?awc=123&utm_source=openai`,
+      sourceTitle: 'Professional Stress Manager',
+      identity: IDENTITY,
+      npkLabel: '0-0-30',
+    })
+
+    expect(extraction).not.toBeNull()
+    expect(
+      phaseBExtractionUsesOnlyCanonicalSource({
+        record: extraction!.record,
+        canonicalUrl: `${PROFESSIONAL_URL}?awc=123&utm_source=openai`,
+      }),
+    ).toBe(true)
+  })
+
   it('hard rejects standard fetched body with npk mismatch during scoring', () => {
     const scored = scoreManufacturerSearchCandidates({
       candidates: [

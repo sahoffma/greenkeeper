@@ -7,6 +7,7 @@ import type {
   StructuredDeclarationCompletenessValidation,
   StructuredResearchIdentityValidationSummary,
   StructuredResearchNutrientProvenanceValidationSummary,
+  ManufacturerStructuredResearchPhaseBDiagnostics,
 } from '../types/fertilizerManufacturerResearchDiagnostics'
 import type { StructuredResearchIdentityValidation } from './fertilizerManufacturerStructuredResearchIdentityCore'
 import type { StructuredResearchNutrientProvenanceValidation } from './fertilizerManufacturerStructuredResearchNutrientProvenanceCore'
@@ -46,7 +47,7 @@ function readAdapterExtractedNutrient(
   return adapterResult.extraction?.extractedNutrients?.find((entry) => entry.key === nutrientKey) ?? null
 }
 
-function countAdapterMatrixEntries(adapterResult: FertilizerSourceAdapterResult | null | undefined): {
+export function countAdapterMatrixEntries(adapterResult: FertilizerSourceAdapterResult | null | undefined): {
   adapterMatrixEntryCount: number
   adapterPositiveEntryCount: number
 } {
@@ -247,6 +248,7 @@ export function buildManufacturerNutrientChainDiagnostics(input: {
   declarationCompletenessValidation?: StructuredDeclarationCompletenessValidation | null
   identityValidation?: StructuredResearchIdentityValidation | null
   nutrientProvenanceValidation?: StructuredResearchNutrientProvenanceValidation | null
+  phaseB?: ManufacturerStructuredResearchPhaseBDiagnostics | null
 }): FertilizerManufacturerNutrientChainDiagnostics {
   const structuredCounts = countStructuredMatrixEntries(input.structuredRecord)
   const adapterCounts = countAdapterMatrixEntries(input.adapterResult)
@@ -265,5 +267,6 @@ export function buildManufacturerNutrientChainDiagnostics(input: {
       input.nutrientProvenanceValidation,
     ),
     nutrientPresence: buildNutrientPresenceSnapshots(input),
+    phaseB: input.phaseB ?? null,
   }
 }

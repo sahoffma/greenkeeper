@@ -28,6 +28,19 @@ function emptyNutrientMatrix(): ManufacturerStructuredResearchRecord['nutrientMa
   return Object.fromEntries(FERTILIZER_NUTRIENT_MATRIX_KEYS.map((key) => [key, null])) as ManufacturerStructuredResearchRecord['nutrientMatrix']
 }
 
+const NPK_MATRIX_KEY_SET = new Set<FertilizerNutrientMatrixKey>(['nitrogen', 'phosphate', 'potash'])
+
+function hasSecondaryOrTraceNutrientValues(
+  nutrientMatrix: ManufacturerStructuredResearchRecord['nutrientMatrix'],
+): boolean {
+  return FERTILIZER_NUTRIENT_MATRIX_KEYS.some((key) => {
+    if (NPK_MATRIX_KEY_SET.has(key as FertilizerNutrientMatrixKey)) {
+      return false
+    }
+
+    return typeof nutrientMatrix[key as FertilizerNutrientMatrixKey] === 'number'
+  })
+}
 function emptyNutrientDeclarationBases(): ManufacturerStructuredResearchRecord['nutrientDeclarationBases'] {
   return Object.fromEntries(
     FERTILIZER_NUTRIENT_MATRIX_KEYS.map((key) => [key, null]),
@@ -102,7 +115,11 @@ export function extractManufacturerDeclarationFromCanonicalSource(
     nutrientSourceIndices: Object.fromEntries(
       FERTILIZER_NUTRIENT_MATRIX_KEYS.map((key) => [key, 0]),
     ) as Partial<Record<FertilizerNutrientMatrixKey, number | null>>,
-    declarationComplete: parsed.declarationSectionFullyCaptured && extractedPositiveNutrientCount > 0,
+    declarationComplete:
+      parsed.declarationSectionLocated &&
+      npk != null &&
+      hasSecondaryOrTraceNutrientValues(nutrientMatrix) &&
+      extractedPositiveNutrientCount > 0,
     identityMatch: parsed.productScopeConfirmed,
     confidence: parsed.productScopeConfirmed ? 0.9 : 0.5,
     sources: [primarySource],
@@ -124,5 +141,16 @@ export function phaseBExtractionUsesOnlyCanonicalSource(input: {
     return false
   }
 
-  return input.record.sources[0]?.url === input.canonicalUrl
+  const sourceUrl = input.record.sources[0]?.url
+  if (!sourceUrl) {
+    return false
+  }
+
+  const normalizedCanonical = validateFertilizerManufacturerDocumentSource(input.canonicalUrl)
+  const canonicalComparable =
+    normalizedCanonical.status === 'valid'
+      ? normalizedCanonical.normalizedUrl
+      : input.canonicalUrl
+
+  return sourceUrl === canonicalComparable
 }

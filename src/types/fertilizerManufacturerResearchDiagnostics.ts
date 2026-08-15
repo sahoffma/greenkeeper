@@ -127,6 +127,20 @@ export interface FertilizerManufacturerNutrientChainDiagnostics {
   structuredIdentityValidation: StructuredResearchIdentityValidationSummary | null
   structuredNutrientProvenanceValidation: StructuredResearchNutrientProvenanceValidationSummary | null
   nutrientPresence: FertilizerManufacturerNutrientPresenceDiagnostic[]
+  phaseB?: ManufacturerStructuredResearchPhaseBDiagnostics | null
+}
+
+export interface ManufacturerStructuredResearchPhaseBDiagnostics {
+  canonicalBodyFetched: boolean
+  canonicalBodyFetchOutcome: string
+  extractedNutrientCount: number
+  extractedPositiveNutrientCount: number
+  canonicalDeclarationSourceId: string | null
+  nutrientSourceBindingCount: number
+  adapterMatrixEntryCount: number
+  adapterPositiveEntryCount: number
+  phaseBAdapterAccepted: boolean
+  phaseBAdapterRejectedReason: string | null
 }
 
 export interface FertilizerManufacturerResearchDiagnostics {

@@ -361,6 +361,7 @@ function finalizeDiagnostics(input: {
         input.structuredAttempt?.declarationCompletenessValidation ?? null,
       identityValidation: input.structuredAttempt?.identityValidation ?? null,
       nutrientProvenanceValidation: input.structuredAttempt?.nutrientProvenanceValidation ?? null,
+      phaseB: input.structuredAttempt?.phaseBDiagnostics ?? null,
     }),
   }
 }
@@ -448,7 +449,9 @@ export async function runAutomaticManufacturerResearch(input: {
 
     if (
       structuredAttempt.adapterResult?.status === 'success' &&
-      structuredAttempt.structuredDeclarationComplete
+      structuredAttempt.nutrientProvenanceValidation?.accepted === true &&
+      structuredAttempt.structuredDeclarationComplete &&
+      structuredAttempt.structuredPositiveNutrientCount > 0
     ) {
       researchSourceStrategy = 'structured_web_research'
       bestResult = structuredAttempt.adapterResult

@@ -82,7 +82,7 @@ describe('fertilizerProductDetailPageCore', () => {
     )
 
     expect(rows.some((row) => row.label === 'Eisen' && row.value === '3 % Fe')).toBe(true)
-    expect(rows.some((row) => row.label === 'Schwefel' && row.value === '10.2 % S')).toBe(true)
+    expect(rows.some((row) => row.label === 'Schwefel' && row.value === '10,2 % S')).toBe(true)
   })
 
   it('does not invent zero values when nutrientMatrix is missing from rpc row', () => {

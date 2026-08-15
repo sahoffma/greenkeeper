@@ -187,7 +187,7 @@ export function validateStructuredResearchIdentityMatch(input: {
     rejectionReason,
   })
 
-  if (!modelClaimedIdentityMatch) {
+  if (!modelClaimedIdentityMatch && !sourceEvidence.sourceBoundIdentityAccepted) {
     return reject('model_identity_mismatch')
   }
 

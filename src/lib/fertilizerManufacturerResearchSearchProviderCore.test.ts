@@ -45,8 +45,8 @@ function createCanonicalFetchProvider(officialUrl: string) {
         return {
           ok: true as const,
           finalUrl: officialUrl,
-          contentType: 'text/plain',
-          text: fullDeclarationText(),
+          contentType: 'text/html',
+          text: `<html><body>${fullDeclarationText()}</body></html>`,
           retrievedAt: '2026-07-29T10:00:00.000Z',
           statusCode: 200,
         }

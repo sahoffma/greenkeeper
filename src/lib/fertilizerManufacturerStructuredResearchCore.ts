@@ -54,7 +54,9 @@ import {
 import type {
   ManufacturerSearchCandidateDiagnostic,
   ManufacturerSearchResearchDecisionDiagnostic,
+  ManufacturerStructuredResearchPhaseBDiagnostics,
 } from '../types/fertilizerManufacturerResearchDiagnostics'
+import { countAdapterMatrixEntries } from './fertilizerManufacturerNutrientChainDiagnosticsCore'
 
 export const MANUFACTURER_RESEARCH_STRUCTURED_BUDGET_MS = 16_000
 
@@ -230,6 +232,7 @@ export interface ManufacturerStructuredResearchAttemptResult {
   searchCandidateDiagnostics: ManufacturerSearchCandidateDiagnostic[]
   finalResearchDecision: ManufacturerSearchResearchDecisionDiagnostic | null
   citationVerifiedUrls: string[]
+  phaseBDiagnostics: ManufacturerStructuredResearchPhaseBDiagnostics | null
 }
 
 export function buildManufacturerStructuredResearchPrompt(input: {
@@ -438,7 +441,7 @@ export function validateStructuredDeclarationCompleteness(input: {
     }
   }
 
-  if (!modelClaimedComplete) {
+  if (!modelClaimedComplete && !declarationSectionEvidencePresent) {
     return {
       modelClaimedComplete,
       declarationSectionEvidencePresent,
@@ -806,6 +809,60 @@ function buildSearchCandidateDiagnostics(
   })
 }
 
+function buildPrePhaseBResearchDecision(input: {
+  selection: ManufacturerSearchCandidateSelection
+  phaseAResolution: ManufacturerProductResolutionRecord
+  identity: FertilizerEnrichmentIdentity
+}): ManufacturerSearchResearchDecision {
+  return buildManufacturerSearchResearchDecision({
+    selection: input.selection,
+    nutrientBindings: buildManufacturerSearchNutrientBindings({
+      record: {
+        nutrientMatrix: {},
+        sources: input.phaseAResolution.sources.map((source) => ({ url: source.url })),
+      },
+      selection: input.selection,
+    }),
+    candidateAmbiguityOverride: input.identity.hasIdentityAmbiguity ? false : undefined,
+  })
+}
+
+function buildPhaseBDiagnostics(input: {
+  canonicalBodyFetched: boolean
+  canonicalBodyFetchOutcome: string
+  record: ManufacturerStructuredResearchRecord
+  extractedPositiveNutrientCount: number
+  canonicalCandidateId: string | null
+  nutrientBindings: ReturnType<typeof buildManufacturerSearchNutrientBindings>
+  adapterResult: FertilizerSourceAdapterResult | null
+  declarationCompletenessAccepted: boolean
+}): ManufacturerStructuredResearchPhaseBDiagnostics {
+  const adapterCounts = countAdapterMatrixEntries(input.adapterResult)
+  const extractedNutrientCount = FERTILIZER_NUTRIENT_MATRIX_KEYS.filter(
+    (key) => typeof input.record.nutrientMatrix[key] === 'number',
+  ).length
+
+  return {
+    canonicalBodyFetched: input.canonicalBodyFetched,
+    canonicalBodyFetchOutcome: input.canonicalBodyFetchOutcome,
+    extractedNutrientCount,
+    extractedPositiveNutrientCount: input.extractedPositiveNutrientCount,
+    canonicalDeclarationSourceId: input.canonicalCandidateId,
+    nutrientSourceBindingCount: input.nutrientBindings.filter((binding) => binding.accepted).length,
+    adapterMatrixEntryCount: adapterCounts.adapterMatrixEntryCount,
+    adapterPositiveEntryCount: adapterCounts.adapterPositiveEntryCount,
+    phaseBAdapterAccepted:
+      input.adapterResult?.status === 'success' && input.declarationCompletenessAccepted,
+    phaseBAdapterRejectedReason:
+      input.adapterResult?.status === 'success' && input.declarationCompletenessAccepted
+        ? null
+        : input.adapterResult == null
+          ? 'adapter_result_missing'
+          : input.adapterResult.status !== 'success'
+            ? `adapter_status_${input.adapterResult.status}`
+            : 'declaration_incomplete',
+  }
+}
 function buildFinalResearchDecisionDiagnostic(input: {
   selection: ManufacturerSearchCandidateSelection
   researchDecision: ManufacturerSearchResearchDecision
@@ -962,6 +1019,7 @@ export async function runManufacturerStructuredResearchAttempt(input: {
     searchCandidateDiagnostics: [],
     finalResearchDecision: null,
     citationVerifiedUrls: [],
+    phaseBDiagnostics: null,
   })
 
   if (!input.structuredResearchProvider) {
@@ -1010,17 +1068,10 @@ export async function runManufacturerStructuredResearchAttempt(input: {
       (candidate) => candidate.officialDomainMatch,
     ).length
 
-    const nutrientBindings = buildManufacturerSearchNutrientBindings({
-      record: {
-        nutrientMatrix: {},
-        sources: phaseAResolution.sources.map((source) => ({ url: source.url })),
-      },
+    let researchDecision = buildPrePhaseBResearchDecision({
       selection: candidateSelection,
-    })
-    const researchDecision = buildManufacturerSearchResearchDecision({
-      selection: candidateSelection,
-      nutrientBindings,
-      candidateAmbiguityOverride: input.identity.hasIdentityAmbiguity ? false : undefined,
+      phaseAResolution,
+      identity: input.identity,
     })
 
     const canonicalCandidate = candidateSelection.canonicalCandidate
@@ -1047,10 +1098,18 @@ export async function runManufacturerStructuredResearchAttempt(input: {
       (candidate) => candidate.candidateId === canonicalCandidate.candidateId,
     )
     let canonicalSourceText = enrichedCanonical?.fetchedBodyText ?? null
+    let canonicalBodyFetched = Boolean(canonicalSourceText?.trim())
+    let canonicalBodyFetchOutcome = canonicalBodyFetched
+      ? enrichedCanonical?.fetchOutcome ?? 'enriched_cache'
+      : 'not_fetched'
     if (!canonicalSourceText?.trim()) {
       const fetchResult = await input.fetchProvider.fetchSource(canonicalCandidate.url, {
         timeoutMs: input.timeoutMs,
       })
+      canonicalBodyFetched = fetchResult.ok
+      canonicalBodyFetchOutcome = fetchResult.ok
+        ? 'fetched'
+        : fetchResult.errorCode ?? 'fetch_failed'
       canonicalSourceText = fetchResult.ok ? fetchResult.text ?? null : null
     }
 
@@ -1149,7 +1208,26 @@ export async function runManufacturerStructuredResearchAttempt(input: {
       nutrientProvenanceValidation,
       selection: candidateSelection,
     })
+    const phaseBNutrientBindings = buildManufacturerSearchNutrientBindings({
+      record,
+      selection: candidateSelection,
+    })
+    researchDecision = buildManufacturerSearchResearchDecision({
+      selection: candidateSelection,
+      nutrientBindings: phaseBNutrientBindings,
+      candidateAmbiguityOverride: input.identity.hasIdentityAmbiguity ? false : undefined,
+    })
     const structuredPositiveNutrientCount = structuredMatrixCounts.structuredPositiveEntryCount
+    const phaseBDiagnostics = buildPhaseBDiagnostics({
+      canonicalBodyFetched,
+      canonicalBodyFetchOutcome,
+      record,
+      extractedPositiveNutrientCount: structuredPositiveNutrientCount,
+      canonicalCandidateId: canonicalCandidate.candidateId,
+      nutrientBindings: phaseBNutrientBindings,
+      adapterResult,
+      declarationCompletenessAccepted: structuredDeclarationComplete,
+    })
     const searchCandidateDiagnostics = buildSearchCandidateDiagnostics(
       candidateSelection,
       enrichedCandidates,
@@ -1180,6 +1258,7 @@ export async function runManufacturerStructuredResearchAttempt(input: {
       searchCandidateDiagnostics,
       finalResearchDecision,
       citationVerifiedUrls: candidateSelection.citationVerifiedUrls,
+      phaseBDiagnostics,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'manufacturer_research_structured_error'
