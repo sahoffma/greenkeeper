@@ -12,8 +12,10 @@ import {
   deriveManufacturerResearchV2RejectionReason,
   detectHardIdentityContradiction,
   evaluateManufacturerResearchV2Shadow,
+  isManufacturerResearchV2TrustedResolvedResult,
   isManufacturerResearchV2ShadowEnabled,
   isNutrientValuePresentInSourceText,
+  mapManufacturerResearchV2NutrientKey,
   MANUFACTURER_RESEARCH_V2_MODEL,
   MANUFACTURER_RESEARCH_V2_SYSTEM_PROMPT,
   maybeAttachManufacturerResearchV2Shadow,
@@ -297,6 +299,134 @@ describe('manufacturer research v2 gates', () => {
     expect(validateManufacturerResearchV2NumericSanity(buildRasendoktorProfessionalResult())).toBe(
       true,
     )
+  })
+
+  it('maps total_nitrogen to nitrogen for numeric sanity', () => {
+    expect(mapManufacturerResearchV2NutrientKey('total_nitrogen')).toBe('nitrogen')
+    expect(
+      validateManufacturerResearchV2NumericSanity(
+        buildRasendoktorProfessionalResult({
+          declaration: {
+            nutrients: [
+              { nutrientKey: 'total_nitrogen', value: 0, unit: '%', declarationBasis: 'N' },
+              { nutrientKey: 'potash', value: 30, unit: '%', declarationBasis: 'K2O' },
+            ],
+          },
+        }),
+      ),
+    ).toBe(true)
+    expect(
+      deriveManufacturerResearchV2NutrientMappingFailureReason(
+        buildRasendoktorProfessionalResult({
+          declaration: {
+            nutrients: [
+              { nutrientKey: 'total_nitrogen', value: 0, unit: '%', declarationBasis: 'N' },
+            ],
+          },
+        }),
+      ),
+    ).toBeNull()
+  })
+
+  it('does not reject trusted resolved results when declaration source fetch fails', () => {
+    const result = buildRasendoktorProfessionalResult()
+    const evaluation = evaluateManufacturerResearchV2Shadow({
+      captureIdentity: RASENDOKTOR_PROFESSIONAL_IDENTITY,
+      captureNpkLabel: '0-0-30',
+      result,
+      schemaValid: true,
+      sourceValid: false,
+      sourceFetchFailed: true,
+      evidenceCheckPassed: false,
+    })
+
+    expect(isManufacturerResearchV2TrustedResolvedResult(result)).toBe(true)
+    expect(evaluation.gates.sourceValid).toBe(false)
+    expect(evaluation.gates.evidenceCheckPassed).toBe(false)
+    expect(evaluation.finalShadowDecision).toBe('resolved_valid')
+    expect(
+      deriveManufacturerResearchV2RejectionReason({
+        gates: evaluation.gates,
+        declarationSourceUrl: result.declarationSource?.url ?? null,
+        sourceFetchFailed: true,
+        result,
+        finalShadowDecision: evaluation.finalShadowDecision,
+      }),
+    ).toBeNull()
+  })
+
+  it('still rejects invalid declaration source URLs', () => {
+    const evaluation = evaluateManufacturerResearchV2Shadow({
+      captureIdentity: RASENDOKTOR_PROFESSIONAL_IDENTITY,
+      captureNpkLabel: '0-0-30',
+      result: buildRasendoktorProfessionalResult({
+        declarationSource: {
+          url: '/relative/source',
+          title: 'Relative source',
+          sourceType: 'manufacturer_web_page',
+        },
+      }),
+      schemaValid: true,
+      sourceValid: false,
+      sourceFetchFailed: false,
+      evidenceCheckPassed: false,
+    })
+
+    expect(evaluation.finalShadowDecision).toBe('rejected')
+    expect(
+      deriveManufacturerResearchV2RejectionReason({
+        gates: evaluation.gates,
+        declarationSourceUrl: '/relative/source',
+        sourceFetchFailed: false,
+        result: buildRasendoktorProfessionalResult({
+          declarationSource: {
+            url: '/relative/source',
+            title: 'Relative source',
+            sourceType: 'manufacturer_web_page',
+          },
+        }),
+        finalShadowDecision: evaluation.finalShadowDecision,
+      }),
+    ).toBe('declaration_source_invalid_url')
+  })
+
+  it('still rejects identity contradiction', () => {
+    const evaluation = evaluateManufacturerResearchV2Shadow({
+      captureIdentity: RASENDOKTOR_PROFESSIONAL_IDENTITY,
+      captureNpkLabel: '0-0-30',
+      result: buildRasendoktorProfessionalResult({
+        product: {
+          ...buildRasendoktorProfessionalResult().product,
+          productLine: 'Standard',
+        },
+      }),
+      schemaValid: true,
+      sourceValid: true,
+      sourceFetchFailed: false,
+      evidenceCheckPassed: true,
+    })
+
+    expect(evaluation.finalShadowDecision).toBe('rejected')
+    expect(evaluation.gates.identityContradiction).toBe(true)
+  })
+
+  it('still rejects unknown nutrient labels after alias mapping', () => {
+    const evaluation = evaluateManufacturerResearchV2Shadow({
+      captureIdentity: RASENDOKTOR_PROFESSIONAL_IDENTITY,
+      captureNpkLabel: '0-0-30',
+      result: buildRasendoktorProfessionalResult({
+        declaration: {
+          nutrients: [{ nutrientKey: 'K2O', value: 30, unit: '%', declarationBasis: 'K2O' }],
+        },
+      }),
+      schemaValid: true,
+      sourceValid: true,
+      sourceFetchFailed: false,
+      evidenceCheckPassed: true,
+    })
+
+    expect(evaluation.finalShadowDecision).toBe('rejected')
+    expect(evaluation.gates.numericSanityPassed).toBe(false)
   })
 
   it('derives nutrient mapping failure reason for unknown nutrient keys', () => {
@@ -627,6 +757,40 @@ describe('manufacturer research v2 fixtures', () => {
     expect(shadow.numericSanityPassed).toBe(false)
     expect(shadow.nutrientMappingFailureReason).toBe('unknown_nutrient_key:K2O')
     expect(shadow.rejectionReason).toBe('numeric_sanity_failed')
+  })
+
+  it('M keeps trusted resolved results when fetch fails and maps total_nitrogen', async () => {
+    const shadow = await runManufacturerResearchV2Shadow({
+      identity: RASENDOKTOR_PROFESSIONAL_IDENTITY,
+      npkLabel: '0-0-30',
+      fetchProvider: {
+        fetchSource: vi.fn(async () => ({
+          ok: false as const,
+          errorCode: 'network_error' as const,
+          retryable: true,
+        })),
+      },
+      callResearch: async () =>
+        buildRasendoktorProfessionalResult({
+          declaration: {
+            nutrients: [
+              { nutrientKey: 'total_nitrogen', value: 0, unit: '%', declarationBasis: 'N' },
+              { nutrientKey: 'potash', value: 30, unit: '%', declarationBasis: 'K2O' },
+            ],
+          },
+        }),
+      v1Diagnostics: emptyV1Diagnostics(),
+      now: () => 0,
+    })
+
+    expect(shadow.finalShadowDecision).toBe('resolved_valid')
+    expect(shadow.sourceValid).toBe(false)
+    expect(shadow.gates?.evidenceCheckPassed).toBe(false)
+    expect(shadow.rejectionReason).toBeNull()
+    expect(shadow.aiReturnedNutrients).toEqual([
+      { nutrientKey: 'nitrogen', value: 0, unit: '%', declarationBasis: 'N' },
+      { nutrientKey: 'potash', value: 30, unit: '%', declarationBasis: 'K2O' },
+    ])
   })
 })
 

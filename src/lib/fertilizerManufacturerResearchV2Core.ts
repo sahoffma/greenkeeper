@@ -173,6 +173,84 @@ export const manufacturerResearchV2JsonSchema = {
 
 const KNOWN_NUTRIENT_KEYS = new Set<string>(FERTILIZER_NUTRIENT_MATRIX_KEYS)
 
+const MANUFACTURER_RESEARCH_V2_NUTRIENT_KEY_ALIASES: Readonly<
+  Record<string, FertilizerNutrientMatrixKey>
+> = {
+  total_nitrogen: 'nitrogen',
+}
+
+export function mapManufacturerResearchV2NutrientKey(nutrientKey: string): string {
+  const normalizedKey = nutrientKey.trim().toLowerCase()
+  return MANUFACTURER_RESEARCH_V2_NUTRIENT_KEY_ALIASES[normalizedKey] ?? nutrientKey
+}
+
+function isKnownManufacturerResearchV2NutrientKey(nutrientKey: string): boolean {
+  return KNOWN_NUTRIENT_KEYS.has(mapManufacturerResearchV2NutrientKey(nutrientKey))
+}
+
+export function normalizeManufacturerResearchV2NutrientKeys(
+  result: ManufacturerResearchV2Result,
+): ManufacturerResearchV2Result {
+  return {
+    ...result,
+    declaration: {
+      nutrients: result.declaration.nutrients.map((nutrient) => ({
+        ...nutrient,
+        nutrientKey: mapManufacturerResearchV2NutrientKey(nutrient.nutrientKey),
+      })),
+    },
+  }
+}
+
+export function isManufacturerResearchV2DeclarationSourceUrlInvalid(
+  declarationSourceUrl: string | null | undefined,
+): boolean {
+  const url = declarationSourceUrl?.trim()
+  if (!url) {
+    return true
+  }
+
+  return validateFertilizerManufacturerDocumentSource(url).status !== 'valid'
+}
+
+export function isManufacturerResearchV2TrustedResolvedResult(
+  result: ManufacturerResearchV2Result,
+): boolean {
+  return (
+    result.status === 'resolved' &&
+    result.confidence === 'high' &&
+    result.declarationComplete === true
+  )
+}
+
+function isManufacturerResearchV2SourceGateRejectionRequired(input: {
+  result: ManufacturerResearchV2Result
+  sourceValid: boolean
+  sourceFetchFailed: boolean
+}): boolean {
+  if (isManufacturerResearchV2DeclarationSourceUrlInvalid(input.result.declarationSource?.url)) {
+    return true
+  }
+
+  if (input.sourceFetchFailed && isManufacturerResearchV2TrustedResolvedResult(input.result)) {
+    return false
+  }
+
+  return !input.sourceValid
+}
+
+function isManufacturerResearchV2EvidenceGateRejectionRequired(input: {
+  result: ManufacturerResearchV2Result
+  evidenceCheckPassed: boolean
+  sourceFetchFailed: boolean
+}): boolean {
+  if (input.sourceFetchFailed && isManufacturerResearchV2TrustedResolvedResult(input.result)) {
+    return false
+  }
+
+  return !input.evidenceCheckPassed
+}
+
 export function isManufacturerResearchV2ShadowEnabled(
   env: Record<string, string | undefined> = process.env,
   override?: boolean,
@@ -514,7 +592,7 @@ export function validateManufacturerResearchV2NumericSanity(
       return false
     }
 
-    if (!KNOWN_NUTRIENT_KEYS.has(nutrient.nutrientKey)) {
+    if (!isKnownManufacturerResearchV2NutrientKey(nutrient.nutrientKey)) {
       return false
     }
   }
@@ -630,7 +708,20 @@ export function evaluateManufacturerResearchV2Shadow(input: {
     return { gates, finalShadowDecision: 'not_found' }
   }
 
-  if (!input.sourceValid || identityContradiction || !numericSanityPassed || !input.evidenceCheckPassed) {
+  if (
+    isManufacturerResearchV2SourceGateRejectionRequired({
+      result: input.result,
+      sourceValid: input.sourceValid,
+      sourceFetchFailed: input.sourceFetchFailed,
+    }) ||
+    identityContradiction ||
+    !numericSanityPassed ||
+    isManufacturerResearchV2EvidenceGateRejectionRequired({
+      result: input.result,
+      evidenceCheckPassed: input.evidenceCheckPassed,
+      sourceFetchFailed: input.sourceFetchFailed,
+    })
+  ) {
     return { gates, finalShadowDecision: 'rejected' }
   }
 
@@ -645,12 +736,13 @@ export function deriveManufacturerResearchV2NutrientMappingFailureReason(
   }
 
   for (const nutrient of result.declaration.nutrients) {
-    if (!KNOWN_NUTRIENT_KEYS.has(nutrient.nutrientKey)) {
+    const mappedNutrientKey = mapManufacturerResearchV2NutrientKey(nutrient.nutrientKey)
+    if (!KNOWN_NUTRIENT_KEYS.has(mappedNutrientKey)) {
       return `unknown_nutrient_key:${nutrient.nutrientKey}`
     }
 
     if (!Number.isFinite(nutrient.value) || nutrient.value < 0 || nutrient.value > 100) {
-      return `invalid_nutrient_value:${nutrient.nutrientKey}`
+      return `invalid_nutrient_value:${mappedNutrientKey}`
     }
   }
 
@@ -698,7 +790,14 @@ export function deriveManufacturerResearchV2RejectionReason(input: {
     return null
   }
 
-  if (!input.gates.sourceValid) {
+  if (
+    input.result != null &&
+    isManufacturerResearchV2SourceGateRejectionRequired({
+      result: input.result,
+      sourceValid: input.gates.sourceValid,
+      sourceFetchFailed: input.sourceFetchFailed,
+    })
+  ) {
     return declarationSourceRejectionReason(input.declarationSourceUrl, input.sourceFetchFailed)
   }
 
@@ -710,7 +809,14 @@ export function deriveManufacturerResearchV2RejectionReason(input: {
     return 'numeric_sanity_failed'
   }
 
-  if (!input.gates.evidenceCheckPassed) {
+  if (
+    input.result != null &&
+    isManufacturerResearchV2EvidenceGateRejectionRequired({
+      result: input.result,
+      evidenceCheckPassed: input.gates.evidenceCheckPassed,
+      sourceFetchFailed: input.sourceFetchFailed,
+    })
+  ) {
     return 'evidence_check_failed'
   }
 
@@ -863,12 +969,17 @@ export async function runManufacturerResearchV2Shadow(input: {
   const startedAt = now()
 
   try {
-    const rawResult = await input.callResearch({
+    const rawResultFromCall = await input.callResearch({
       identity: input.identity,
       npkLabel: input.npkLabel,
       captureContext: input.captureContext,
       timeoutMs: input.timeoutMs,
     })
+
+    const rawResult =
+      rawResultFromCall != null
+        ? normalizeManufacturerResearchV2NutrientKeys(rawResultFromCall)
+        : null
 
     const schemaValid = rawResult != null
     const sourceValidation =
