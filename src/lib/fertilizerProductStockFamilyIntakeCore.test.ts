@@ -62,4 +62,32 @@ describe('fertilizerProductStockFamilyIntakeCore', () => {
   it('builds the same family key from stock row identity fields', () => {
     expect(buildProductFamilyKeyFromStockRow(stockRow())).toBe(FAMILY_KEY)
   })
+
+  it('prefers persisted productFamilyKey when list rows omit product line and variant', () => {
+    expect(
+      buildProductFamilyKeyFromStockRow(
+        stockRow({
+          productLine: null,
+          variant: null,
+          productFamilyKey: FAMILY_KEY,
+        }),
+      ),
+    ).toBe(FAMILY_KEY)
+
+    const resolution = resolveSavedProductProfileIdForFamilyStockIntake({
+      productFamilyKey: FAMILY_KEY,
+      baseUnit: 'kg',
+      newSavedProductProfileId: 'profile-new-version',
+      activeStockRows: [
+        stockRow({
+          productLine: null,
+          variant: null,
+          productFamilyKey: FAMILY_KEY,
+        }),
+      ],
+    })
+
+    expect(resolution.matchedExistingStock).toBe(true)
+    expect(resolution.savedProductProfileId).toBe('profile-existing')
+  })
 })

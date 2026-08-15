@@ -40,6 +40,7 @@ export interface ActiveProductStockReadRow {
   officialName: string | null
   productLine?: string | null
   variant?: string | null
+  productFamilyKey?: string | null
   productForm: FertilizerProductStockForm | null
   npkDeclaration?: string | null
   nitrogen?: number | null
@@ -223,6 +224,7 @@ export function parseActiveProductStockReadRow(value: unknown): ActiveProductSto
     officialName: parseOptionalString(record.officialName),
     productLine: parseOptionalString(record.productLine),
     variant: parseOptionalString(record.variant),
+    productFamilyKey: parseOptionalString(record.productFamilyKey),
     productForm: parseProductForm(record.productForm),
     npkDeclaration: parseOptionalString(record.npkDeclaration),
     nitrogen: parseOptionalDecimal(record.nitrogen),

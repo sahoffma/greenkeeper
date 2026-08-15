@@ -17,9 +17,13 @@ export interface ResolveSavedProductProfileIdForFamilyStockIntakeResult {
 export function buildProductFamilyKeyFromStockRow(
   row: Pick<
     ActiveProductStockReadRow,
-    'manufacturer' | 'productLine' | 'officialName' | 'variant'
+    'manufacturer' | 'productLine' | 'officialName' | 'variant' | 'productFamilyKey'
   >,
 ): string | null {
+  if (row.productFamilyKey?.trim()) {
+    return row.productFamilyKey.trim()
+  }
+
   return buildFertilizerProductFamilyKey({
     manufacturer: row.manufacturer ?? '',
     productLine: row.productLine ?? null,
