@@ -29,9 +29,11 @@ export const MANUFACTURER_RESEARCH_V2_SYSTEM_PROMPT = [
   'Never mix nutrient declarations from different variants.',
   'Research the complete manufacturer nutrient declaration for the resolved variant.',
   'Return every declared nutrient in declaration.nutrients, including N, P, K and all secondary and trace nutrients.',
+  'Use only the schema-allowed nutrientKey values; put manufacturer wording such as N, K2O, Fe, or Mn in declarationBasis.',
   'Use product.npk for the N/P2O5/K2O triplet and also include those nutrients in declaration.nutrients when declared.',
   'Use one primary declaration source whenever possible.',
-  'Set declarationComplete to true only when the primary source was fully evaluated for the complete declaration.',
+  'When you provide declarationSource, use an absolute https URL to the manufacturer source you used.',
+  'Set declarationComplete to true only when the complete manufacturer declaration was fully evaluated.',
   'Set declarationComplete to false when the declaration may be incomplete or not fully evaluated.',
   'Do not invent undeclared nutrients.',
   'If the product is unambiguous, return status resolved.',
@@ -40,6 +42,8 @@ export const MANUFACTURER_RESEARCH_V2_SYSTEM_PROMPT = [
 ].join(' ')
 
 export const MANUFACTURER_RESEARCH_V2_SHADOW_ENV = 'MANUFACTURER_RESEARCH_V2_SHADOW'
+
+export const MANUFACTURER_RESEARCH_V2_DECLARATION_SOURCE_URL_PATTERN = '^https://'
 
 export const manufacturerResearchV2JsonSchema = {
   type: 'object',
@@ -76,7 +80,7 @@ export const manufacturerResearchV2JsonSchema = {
           items: {
             type: 'object',
             properties: {
-              nutrientKey: { type: 'string' },
+              nutrientKey: { type: 'string', enum: [...FERTILIZER_NUTRIENT_MATRIX_KEYS] },
               value: { type: 'number' },
               unit: { type: 'string' },
               declarationBasis: { type: ['string', 'null'] },
@@ -95,7 +99,7 @@ export const manufacturerResearchV2JsonSchema = {
         {
           type: 'object',
           properties: {
-            url: { type: 'string' },
+            url: { type: 'string', pattern: MANUFACTURER_RESEARCH_V2_DECLARATION_SOURCE_URL_PATTERN },
             title: { type: ['string', 'null'] },
             sourceType: {
               type: 'string',
@@ -173,33 +177,22 @@ export const manufacturerResearchV2JsonSchema = {
 
 const KNOWN_NUTRIENT_KEYS = new Set<string>(FERTILIZER_NUTRIENT_MATRIX_KEYS)
 
-const MANUFACTURER_RESEARCH_V2_NUTRIENT_KEY_ALIASES: Readonly<
-  Record<string, FertilizerNutrientMatrixKey>
-> = {
-  total_nitrogen: 'nitrogen',
+export function readManufacturerResearchV2SchemaNutrientKeyEnum(): readonly string[] {
+  return manufacturerResearchV2JsonSchema.properties.declaration.properties.nutrients.items.properties
+    .nutrientKey.enum
 }
 
-export function mapManufacturerResearchV2NutrientKey(nutrientKey: string): string {
-  const normalizedKey = nutrientKey.trim().toLowerCase()
-  return MANUFACTURER_RESEARCH_V2_NUTRIENT_KEY_ALIASES[normalizedKey] ?? nutrientKey
+export function readManufacturerResearchV2SchemaDeclarationSourceUrlPattern(): string {
+  const objectBranch = manufacturerResearchV2JsonSchema.properties.declarationSource.anyOf[1]
+  return objectBranch.properties.url.pattern
 }
 
-function isKnownManufacturerResearchV2NutrientKey(nutrientKey: string): boolean {
-  return KNOWN_NUTRIENT_KEYS.has(mapManufacturerResearchV2NutrientKey(nutrientKey))
+export function isManufacturerResearchV2SchemaNutrientKey(key: string): boolean {
+  return readManufacturerResearchV2SchemaNutrientKeyEnum().includes(key)
 }
 
-export function normalizeManufacturerResearchV2NutrientKeys(
-  result: ManufacturerResearchV2Result,
-): ManufacturerResearchV2Result {
-  return {
-    ...result,
-    declaration: {
-      nutrients: result.declaration.nutrients.map((nutrient) => ({
-        ...nutrient,
-        nutrientKey: mapManufacturerResearchV2NutrientKey(nutrient.nutrientKey),
-      })),
-    },
-  }
+export function matchesManufacturerResearchV2SchemaDeclarationSourceUrl(url: string): boolean {
+  return new RegExp(readManufacturerResearchV2SchemaDeclarationSourceUrlPattern()).test(url)
 }
 
 export function isManufacturerResearchV2DeclarationSourceUrlInvalid(
@@ -398,11 +391,13 @@ export function buildManufacturerResearchV2Prompt(input: {
     'Prefer official manufacturer sources.',
     'Distinguish similarly named products, product lines, and NPK variants.',
     'Never mix nutrient values from different variants.',
-    'Research and return the complete manufacturer nutrient declaration.',
-    'Return every declared nutrient, including N, P, K and all secondary and trace nutrients, in declaration.nutrients.',
+    'Research and return the complete manufacturer nutrient declaration for the resolved variant.',
+    'Return every declared nutrient, including all declared N/P/K, secondary, and trace nutrients, in declaration.nutrients.',
+    'Use only the schema-allowed nutrientKey values; keep manufacturer wording in declarationBasis.',
     'If the captured identity is already specific enough, do not ask unnecessary questions.',
     'If multiple variants remain genuinely plausible, return status "ambiguous" with questionForUser.',
-    'Set declarationComplete to true only when the primary declaration source was fully evaluated.',
+    'Set declarationComplete to true only when the complete manufacturer declaration was fully evaluated.',
+    'When you provide declarationSource, use an absolute https URL to the manufacturer source you used.',
     'Use one primary declaration source whenever possible.',
     'Do not invent undeclared nutrients.',
   )
@@ -592,7 +587,7 @@ export function validateManufacturerResearchV2NumericSanity(
       return false
     }
 
-    if (!isKnownManufacturerResearchV2NutrientKey(nutrient.nutrientKey)) {
+    if (!KNOWN_NUTRIENT_KEYS.has(nutrient.nutrientKey)) {
       return false
     }
   }
@@ -736,13 +731,12 @@ export function deriveManufacturerResearchV2NutrientMappingFailureReason(
   }
 
   for (const nutrient of result.declaration.nutrients) {
-    const mappedNutrientKey = mapManufacturerResearchV2NutrientKey(nutrient.nutrientKey)
-    if (!KNOWN_NUTRIENT_KEYS.has(mappedNutrientKey)) {
+    if (!KNOWN_NUTRIENT_KEYS.has(nutrient.nutrientKey)) {
       return `unknown_nutrient_key:${nutrient.nutrientKey}`
     }
 
     if (!Number.isFinite(nutrient.value) || nutrient.value < 0 || nutrient.value > 100) {
-      return `invalid_nutrient_value:${mappedNutrientKey}`
+      return `invalid_nutrient_value:${nutrient.nutrientKey}`
     }
   }
 
@@ -969,17 +963,12 @@ export async function runManufacturerResearchV2Shadow(input: {
   const startedAt = now()
 
   try {
-    const rawResultFromCall = await input.callResearch({
+    const rawResult = await input.callResearch({
       identity: input.identity,
       npkLabel: input.npkLabel,
       captureContext: input.captureContext,
       timeoutMs: input.timeoutMs,
     })
-
-    const rawResult =
-      rawResultFromCall != null
-        ? normalizeManufacturerResearchV2NutrientKeys(rawResultFromCall)
-        : null
 
     const schemaValid = rawResult != null
     const sourceValidation =

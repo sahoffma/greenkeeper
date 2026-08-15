@@ -4,6 +4,7 @@ import type { FertilizerManufacturerResearchDiagnostics } from '../types/fertili
 import type { ManufacturerResearchV2Result } from '../types/fertilizerManufacturerResearchV2'
 import { runAutomaticManufacturerResearch } from './fertilizerManufacturerResearchCore'
 import { buildStructuredResearchProviderResultFromRecord } from './fertilizerManufacturerStructuredResearchCore'
+import { FERTILIZER_NUTRIENT_MATRIX_KEYS } from '../types/fertilizerReadiness'
 import {
   buildManufacturerResearchV2CaptureContextFromEnrichmentInput,
   buildManufacturerResearchV2Prompt,
@@ -12,14 +13,19 @@ import {
   deriveManufacturerResearchV2RejectionReason,
   detectHardIdentityContradiction,
   evaluateManufacturerResearchV2Shadow,
+  isManufacturerResearchV2SchemaNutrientKey,
   isManufacturerResearchV2TrustedResolvedResult,
   isManufacturerResearchV2ShadowEnabled,
   isNutrientValuePresentInSourceText,
-  mapManufacturerResearchV2NutrientKey,
+  MANUFACTURER_RESEARCH_V2_DECLARATION_SOURCE_URL_PATTERN,
   MANUFACTURER_RESEARCH_V2_MODEL,
   MANUFACTURER_RESEARCH_V2_SYSTEM_PROMPT,
+  manufacturerResearchV2JsonSchema,
+  matchesManufacturerResearchV2SchemaDeclarationSourceUrl,
   maybeAttachManufacturerResearchV2Shadow,
   parseManufacturerResearchV2Result,
+  readManufacturerResearchV2SchemaDeclarationSourceUrlPattern,
+  readManufacturerResearchV2SchemaNutrientKeyEnum,
   runManufacturerResearchV2Shadow,
   validateManufacturerResearchV2Evidence,
   validateManufacturerResearchV2NumericSanity,
@@ -187,6 +193,49 @@ function emptyV1Diagnostics(): FertilizerManufacturerResearchDiagnostics {
   }
 }
 
+describe('manufacturer research v2 strict schema contract', () => {
+  it('allows all 16 canonical nutrient keys in the schema enum', () => {
+    expect(readManufacturerResearchV2SchemaNutrientKeyEnum()).toEqual([
+      ...FERTILIZER_NUTRIENT_MATRIX_KEYS,
+    ])
+    for (const key of FERTILIZER_NUTRIENT_MATRIX_KEYS) {
+      expect(isManufacturerResearchV2SchemaNutrientKey(key)).toBe(true)
+    }
+  })
+
+  it('does not allow non-canonical nutrient keys in the schema enum', () => {
+    expect(isManufacturerResearchV2SchemaNutrientKey('total_nitrogen')).toBe(false)
+    expect(isManufacturerResearchV2SchemaNutrientKey('K2O')).toBe(false)
+    expect(isManufacturerResearchV2SchemaNutrientKey('n')).toBe(false)
+  })
+
+  it('keeps declarationBasis unrestricted in the schema', () => {
+    const declarationBasis =
+      manufacturerResearchV2JsonSchema.properties.declaration.properties.nutrients.items.properties
+        .declarationBasis
+
+    expect(declarationBasis).toEqual({ type: ['string', 'null'] })
+  })
+
+  it('allows absolute https declaration source URLs in the schema pattern', () => {
+    expect(readManufacturerResearchV2SchemaDeclarationSourceUrlPattern()).toBe(
+      MANUFACTURER_RESEARCH_V2_DECLARATION_SOURCE_URL_PATTERN,
+    )
+    expect(
+      matchesManufacturerResearchV2SchemaDeclarationSourceUrl(
+        'https://www.rasendoktor.de/professional/stress-manager-0-0-30',
+      ),
+    ).toBe(true)
+  })
+
+  it('does not allow relative declaration source URLs in the schema pattern', () => {
+    expect(matchesManufacturerResearchV2SchemaDeclarationSourceUrl('/duenger/example')).toBe(false)
+    expect(matchesManufacturerResearchV2SchemaDeclarationSourceUrl('http://example.com')).toBe(
+      false,
+    )
+  })
+})
+
 describe('manufacturer research v2 shadow flag', () => {
   it('reads MANUFACTURER_RESEARCH_V2_SHADOW env flag', () => {
     expect(isManufacturerResearchV2ShadowEnabled({ MANUFACTURER_RESEARCH_V2_SHADOW: 'true' })).toBe(
@@ -238,7 +287,7 @@ describe('manufacturer research v2 prompt', () => {
 
     expect(MANUFACTURER_RESEARCH_V2_SYSTEM_PROMPT).toContain('complete manufacturer nutrient declaration')
     expect(prompt).toContain('complete manufacturer nutrient declaration')
-    expect(prompt).toContain('secondary and trace nutrients')
+    expect(prompt).toContain('all declared N/P/K, secondary, and trace nutrients')
     expect(prompt).toContain('declarationComplete')
     expect(prompt).toContain('Field semantics')
     expect(prompt).toContain('Front-label / recognition text from capture')
@@ -299,33 +348,6 @@ describe('manufacturer research v2 gates', () => {
     expect(validateManufacturerResearchV2NumericSanity(buildRasendoktorProfessionalResult())).toBe(
       true,
     )
-  })
-
-  it('maps total_nitrogen to nitrogen for numeric sanity', () => {
-    expect(mapManufacturerResearchV2NutrientKey('total_nitrogen')).toBe('nitrogen')
-    expect(
-      validateManufacturerResearchV2NumericSanity(
-        buildRasendoktorProfessionalResult({
-          declaration: {
-            nutrients: [
-              { nutrientKey: 'total_nitrogen', value: 0, unit: '%', declarationBasis: 'N' },
-              { nutrientKey: 'potash', value: 30, unit: '%', declarationBasis: 'K2O' },
-            ],
-          },
-        }),
-      ),
-    ).toBe(true)
-    expect(
-      deriveManufacturerResearchV2NutrientMappingFailureReason(
-        buildRasendoktorProfessionalResult({
-          declaration: {
-            nutrients: [
-              { nutrientKey: 'total_nitrogen', value: 0, unit: '%', declarationBasis: 'N' },
-            ],
-          },
-        }),
-      ),
-    ).toBeNull()
   })
 
   it('does not reject trusted resolved results when declaration source fetch fails', () => {
@@ -410,7 +432,7 @@ describe('manufacturer research v2 gates', () => {
     expect(evaluation.gates.identityContradiction).toBe(true)
   })
 
-  it('still rejects unknown nutrient labels after alias mapping', () => {
+  it('still rejects unknown nutrient labels outside the schema enum', () => {
     const evaluation = evaluateManufacturerResearchV2Shadow({
       captureIdentity: RASENDOKTOR_PROFESSIONAL_IDENTITY,
       captureNpkLabel: '0-0-30',
@@ -759,7 +781,7 @@ describe('manufacturer research v2 fixtures', () => {
     expect(shadow.rejectionReason).toBe('numeric_sanity_failed')
   })
 
-  it('M keeps trusted resolved results when fetch fails and maps total_nitrogen', async () => {
+  it('M keeps trusted resolved results when fetch fails with canonical nutrient keys', async () => {
     const shadow = await runManufacturerResearchV2Shadow({
       identity: RASENDOKTOR_PROFESSIONAL_IDENTITY,
       npkLabel: '0-0-30',
@@ -774,7 +796,7 @@ describe('manufacturer research v2 fixtures', () => {
         buildRasendoktorProfessionalResult({
           declaration: {
             nutrients: [
-              { nutrientKey: 'total_nitrogen', value: 0, unit: '%', declarationBasis: 'N' },
+              { nutrientKey: 'nitrogen', value: 0, unit: '%', declarationBasis: 'N' },
               { nutrientKey: 'potash', value: 30, unit: '%', declarationBasis: 'K2O' },
             ],
           },
