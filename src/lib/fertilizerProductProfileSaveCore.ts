@@ -11,6 +11,7 @@ import {
   FERTILIZER_NUTRIENT_MATRIX_KEYS,
   type FertilizerNutrientMatrix,
 } from '../types/fertilizerReadiness'
+import { sanitizeNutrientDeclarationBasis } from './fertilizerNutrientDeclarationBasisCore'
 import { computeFertilizerCompositionFingerprint } from './fertilizerCompositionFingerprintCore'
 import type { DeriveSessionAccessHash } from './fertilizerEnrichmentSessionAccessHashCore'
 import {
@@ -129,7 +130,11 @@ export function mapEnrichmentNutrientMatrixToSaved(
     saved[key] = {
       value: entry.value,
       unit: '%',
-      declarationBasis: entry.declarationBasis ?? 'N',
+      declarationBasis: sanitizeNutrientDeclarationBasis({
+        key,
+        declarationBasis: entry.declarationBasis,
+        value: entry.value,
+      }),
     }
   }
 

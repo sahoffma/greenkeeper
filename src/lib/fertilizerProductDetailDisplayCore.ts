@@ -1,6 +1,7 @@
 import { buildNpkLabel } from './nutrientDisplay'
 import { formatNpkDeclarationDisplay } from './fertilizerProductDisplay'
 import { formatFertilizerProductFormLabel } from './fertilizerApplicationFlowCore'
+import { sanitizeNutrientDeclarationBasis } from './fertilizerNutrientDeclarationBasisCore'
 import type { FertilizerNutrientMatrix, FertilizerNutrientMatrixKey } from '../types/fertilizerReadiness'
 import type { ActiveProductStockReadRow } from './fertilizerProductStockReadCore'
 
@@ -33,9 +34,15 @@ function formatNutrientMatrixValue(
     return null
   }
 
-  const basis = entry.declarationBasis?.trim()
-  const suffix = basis ? ` ${basis}` : ''
-  return `${entry.value} ${entry.unit}${suffix}`.trim()
+  const basis = sanitizeNutrientDeclarationBasis({
+    key,
+    declarationBasis: entry.declarationBasis,
+    value: entry.value,
+  })
+  const formattedValue = Number.isInteger(entry.value)
+    ? String(entry.value)
+    : String(entry.value).replace('.', ',')
+  return `${formattedValue} ${entry.unit} ${basis}`.trim()
 }
 
 export function buildSavedProductNpkDisplay(input: {
