@@ -512,27 +512,12 @@ function buildTechnicalFailureResult(
 
 function buildNoViableSourceResult(
   base: FertilizerEnrichmentOrchestrationResultBase,
-  attemptedResults: FertilizerSourceAdapterResult[],
+  _attemptedResults: FertilizerSourceAdapterResult[],
 ): FertilizerEnrichmentOrchestrationResult {
-  const attemptSummaries = attemptedResults.map((result) => ({
-    adapterType: result.adapterType,
-    sourceId: result.sourceId,
-    status: result.status,
-    unavailabilityReason:
-      result.status === 'no_match'
-        ? ('no_match' as const)
-        : result.status === 'invalid_source'
-          ? ('invalid_source' as const)
-          : result.status === 'failed' || result.status === 'unavailable'
-            ? ('adapter_failed' as const)
-            : ('not_applicable' as const),
-  }))
-
   return {
     ...base,
     status: 'failed',
     failureReason: 'no_viable_source',
-    attemptedAdapters: attemptSummaries,
     recommendedNextAction: 'provide_product_document',
   } as FertilizerEnrichmentOrchestrationResult
 }
@@ -857,7 +842,7 @@ export async function orchestrateFertilizerEnrichment(
       return buildTimedOutResult(resultBase, timeoutState, null, adapterResults)
     }
 
-    return buildNoViableSourceResult(resultBase, adapterResults)
+    return buildNoViableSourceResult(attachResearchDiagnostics(resultBase, input), adapterResults)
   }
 
   const rawDeclarationInput = buildRawFertilizerDeclarationInput(input, adapterResults, {

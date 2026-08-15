@@ -29,6 +29,19 @@ export class FertilizerCaptureEnrichmentInputError extends Error {
   }
 }
 
+function resolveCaptureEnrichmentOfficialName(input: {
+  productName: string | null | undefined
+  variant: string | null | undefined
+}): string | null {
+  const productName = input.productName?.trim()
+  if (productName) {
+    return productName
+  }
+
+  const variant = input.variant?.trim()
+  return variant || null
+}
+
 function requireIdentityFingerprint(fingerprint: string | null): string {
   if (!fingerprint?.trim()) {
     throw new FertilizerCaptureEnrichmentInputError(
@@ -54,7 +67,10 @@ function identityFromRecognition(draft: FertilizerCaptureDraft): FertilizerEnric
       manufacturer: recognition.manufacturer.normalizedValue,
       brand: recognition.brand.normalizedValue,
     }),
-    officialName: recognition.productName.normalizedValue,
+    officialName: resolveCaptureEnrichmentOfficialName({
+      productName: recognition.productName.normalizedValue,
+      variant: recognition.variant.normalizedValue,
+    }),
     productLine: recognition.productLine.normalizedValue,
     variant: recognition.variant.normalizedValue,
     identityFingerprint: fingerprint,
@@ -77,7 +93,10 @@ function identityFromCandidate(draft: FertilizerCaptureDraft): FertilizerEnrichm
         candidate.manufacturer?.value != null ? String(candidate.manufacturer.value) : null,
       brand: candidate.brand?.value != null ? String(candidate.brand.value) : null,
     }),
-    officialName: candidate.productName?.value != null ? String(candidate.productName.value) : null,
+    officialName: resolveCaptureEnrichmentOfficialName({
+      productName: candidate.productName?.value != null ? String(candidate.productName.value) : null,
+      variant: candidate.variant?.value != null ? String(candidate.variant.value) : null,
+    }),
     productLine: candidate.productLine?.value != null ? String(candidate.productLine.value) : null,
     variant: candidate.variant?.value != null ? String(candidate.variant.value) : null,
     identityFingerprint: fingerprint,

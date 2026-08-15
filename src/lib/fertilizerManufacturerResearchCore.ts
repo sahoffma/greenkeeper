@@ -95,13 +95,17 @@ export interface FertilizerManufacturerResearchRuntimeOptions {
   logTiming?: boolean
 }
 
+function resolveResearchProductName(identity: FertilizerEnrichmentIdentity): string {
+  return identity.officialName?.trim() || identity.variant?.trim() || ''
+}
+
 export function isProductIdentityCompleteForResearch(
   identity: FertilizerEnrichmentIdentity,
 ): boolean {
   return (
     !identity.hasIdentityAmbiguity &&
     Boolean(identity.manufacturer?.trim()) &&
-    Boolean(identity.officialName?.trim()) &&
+    Boolean(resolveResearchProductName(identity)) &&
     Boolean(identity.identityFingerprint?.trim())
   )
 }

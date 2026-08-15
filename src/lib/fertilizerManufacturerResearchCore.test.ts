@@ -309,4 +309,20 @@ describe('fertilizerManufacturerResearchCore', () => {
       MANUFACTURER_RESEARCH_TOTAL_BUDGET_MS + 100,
     )
   })
+
+  it('allows manufacturer research when officialName is absent but variant is present', async () => {
+    const result = await runAutomaticManufacturerResearch({
+      identity: {
+        ...IDENTITY,
+        officialName: null,
+        variant: '0-0-30',
+      },
+      structuredResearchProvider: createSuccessfulStructuredProvider(),
+      fetchProvider: createDeclarationFetchProvider(),
+      runtime: { logTiming: false, maxParallelFetches: 1 },
+    })
+
+    expect(result.diagnostics.productIdentityComplete).toBe(true)
+    expect(result.diagnostics.searchProviderAttempted).toBe(true)
+  })
 })
