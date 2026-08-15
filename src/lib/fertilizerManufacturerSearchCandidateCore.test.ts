@@ -11,6 +11,7 @@ import {
   type ManufacturerSearchCandidateSelection,
 } from './fertilizerManufacturerSearchCandidateCore'
 import type { ManufacturerStructuredResearchRecord } from './fertilizerManufacturerStructuredResearchCore'
+import { validateStructuredResearchNutrientProvenance } from './fertilizerManufacturerStructuredResearchNutrientProvenanceCore'
 
 const PROFESSIONAL_IDENTITY: FertilizerEnrichmentIdentity = {
   manufacturer: 'Rasendoktor GmbH',
@@ -293,7 +294,7 @@ describe('fertilizerManufacturerSearchCandidateCore', () => {
     expect(selection.canonicalCandidate).toBeNull()
   })
 
-  it('F rejects sulfur 16.4 bound to rejected standard candidate', () => {
+  it('F rejects sulfur 16.4 when canonical source text only contains 10.2', () => {
     const selection = buildTestSearchSelection({
       identity: PROFESSIONAL_IDENTITY,
       npkLabel: '0-0-30',
@@ -323,25 +324,23 @@ describe('fertilizerManufacturerSearchCandidateCore', () => {
           category: 'official_manufacturer',
           sourceIdentity: null,
         },
-        {
-          url: 'https://www.rasendoktor.de/duenger/stressmanager-standard',
-          title: 'Stressmanager Standard',
-          category: 'official_manufacturer',
-          sourceIdentity: null,
-        },
       ],
-      nutrientSourceIndices: {
-        sulfur: 1,
-      },
     })
 
-    const bindings = buildManufacturerSearchNutrientBindings({ record, selection })
-    const sulfurBinding = bindings.find((binding) => binding.nutrientKey === 'sulfur')
-    const decision = buildManufacturerSearchResearchDecision({ selection, nutrientBindings: bindings })
+    const validation = validateStructuredResearchNutrientProvenance({
+      record,
+      identity: PROFESSIONAL_IDENTITY,
+      npkLabel: '0-0-30',
+      primarySource: record.sources[0]!,
+      primarySourceIndex: 0,
+      recordProductLineMatchesExpected: true,
+      recordNpkCompatible: true,
+      selection,
+      canonicalSourceText:
+        'Professional Stress-Manager NPK 0-0-30 Zusammensetzung: 30 % Kaliumoxid (K2O), 10,2 % Schwefel (S)',
+    })
 
-    expect(sulfurBinding?.accepted).toBe(false)
-    expect(decision.accepted).toBe(false)
-    expect(decision.reason).toBe('nutrient_not_bound_to_canonical_candidate')
+    expect(validation.acceptedNutrientKeys).not.toContain('sulfur')
   })
 
   it('G accepts nutrient bindings from professional canonical candidate', () => {

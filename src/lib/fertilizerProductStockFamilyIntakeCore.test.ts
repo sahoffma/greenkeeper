@@ -5,7 +5,7 @@ import {
 } from './fertilizerProductStockFamilyIntakeCore'
 import type { ActiveProductStockReadRow } from './fertilizerProductStockReadCore'
 
-const FAMILY_KEY = 'rasendoktor|professional|stress-manager|0-0-30'
+const FAMILY_KEY = 'rasendoktor|professional|stress manager|0-0-30'
 
 function stockRow(overrides: Partial<ActiveProductStockReadRow> = {}): ActiveProductStockReadRow {
   return {
@@ -25,7 +25,7 @@ function stockRow(overrides: Partial<ActiveProductStockReadRow> = {}): ActivePro
 }
 
 describe('fertilizerProductStockFamilyIntakeCore', () => {
-  it('aggregates intake onto existing canonical product stock for the same family', () => {
+  it('reuses existing container but selects the new saved profile', () => {
     const resolution = resolveSavedProductProfileIdForFamilyStockIntake({
       productFamilyKey: FAMILY_KEY,
       baseUnit: 'kg',
@@ -34,7 +34,9 @@ describe('fertilizerProductStockFamilyIntakeCore', () => {
     })
 
     expect(resolution.matchedExistingStock).toBe(true)
-    expect(resolution.savedProductProfileId).toBe('profile-existing')
+    expect(resolution.reusedContainer).toBe(true)
+    expect(resolution.savedProductProfileId).toBe('profile-new-version')
+    expect(resolution.previousSavedProductProfileId).toBe('profile-existing')
     expect(resolution.matchedInventoryItemId).toBe('item-existing')
   })
 
@@ -59,35 +61,23 @@ describe('fertilizerProductStockFamilyIntakeCore', () => {
     expect(resolution.savedProductProfileId).toBe('profile-new-version')
   })
 
-  it('builds the same family key from stock row identity fields', () => {
-    expect(buildProductFamilyKeyFromStockRow(stockRow())).toBe(FAMILY_KEY)
-  })
-
-  it('prefers persisted productFamilyKey when list rows omit product line and variant', () => {
+  it('matches stress manager and stress-manager family keys', () => {
     expect(
       buildProductFamilyKeyFromStockRow(
         stockRow({
-          productLine: null,
-          variant: null,
-          productFamilyKey: FAMILY_KEY,
+          productFamilyKey: 'rasendoktor|professional|stress-manager',
         }),
       ),
-    ).toBe(FAMILY_KEY)
+    ).toBe('rasendoktor|professional|stress manager')
 
     const resolution = resolveSavedProductProfileIdForFamilyStockIntake({
-      productFamilyKey: FAMILY_KEY,
+      productFamilyKey: 'rasendoktor|professional|stress-manager|0-0-30',
       baseUnit: 'kg',
       newSavedProductProfileId: 'profile-new-version',
-      activeStockRows: [
-        stockRow({
-          productLine: null,
-          variant: null,
-          productFamilyKey: FAMILY_KEY,
-        }),
-      ],
+      activeStockRows: [stockRow({ productFamilyKey: 'rasendoktor|professional|stress manager|0-0-30' })],
     })
 
     expect(resolution.matchedExistingStock).toBe(true)
-    expect(resolution.savedProductProfileId).toBe('profile-existing')
+    expect(resolution.savedProductProfileId).toBe('profile-new-version')
   })
 })

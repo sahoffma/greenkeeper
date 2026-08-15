@@ -28,17 +28,19 @@ vi.mock('./fertilizerProductStockIntake', () => ({
 
 vi.mock('./fertilizerInventory', () => ({
   fetchActiveProductStockRows: vi.fn(),
+  relinkProductStockContainerProfile: vi.fn(),
 }))
 
 import { startFertilizerEnrichmentFromCapture } from './fertilizerEnrichmentClient'
 import { saveFertilizerProductProfileFromCapture } from './fertilizerProductProfileSaveClient'
 import { recordFertilizerProductStockIntake } from './fertilizerProductStockIntake'
-import { fetchActiveProductStockRows } from './fertilizerInventory'
+import { fetchActiveProductStockRows, relinkProductStockContainerProfile } from './fertilizerInventory'
 
 const mockStartEnrichment = vi.mocked(startFertilizerEnrichmentFromCapture)
 const mockSaveProfile = vi.mocked(saveFertilizerProductProfileFromCapture)
 const mockRecordIntake = vi.mocked(recordFertilizerProductStockIntake)
 const mockFetchActiveStockRows = vi.mocked(fetchActiveProductStockRows)
+const mockRelinkContainerProfile = vi.mocked(relinkProductStockContainerProfile)
 
 function mockRecognitionResult(): ProductRecognizeResult {
   return {
@@ -327,7 +329,7 @@ describe('fertilizerCaptureInventorySaveCore', () => {
       idempotencyKey: 'capture-key:intake',
       inventoryItemId: 'item-existing',
       movementId: 'movement-2',
-      savedProductProfileId: 'profile-existing',
+      savedProductProfileId: 'profile-new-version',
       baseUnit: 'kg',
       quantityDelta: 25,
       reason: 'purchase',
@@ -335,18 +337,24 @@ describe('fertilizerCaptureInventorySaveCore', () => {
       itemCreated: false,
       idempotencyReplay: false,
     })
+    mockRelinkContainerProfile.mockResolvedValue(undefined)
 
-    await saveFertilizerCaptureToInventoryCore({
+    const result = await saveFertilizerCaptureToInventoryCore({
       draft: readyDraft(),
       userId: 'user-1',
       creationReason: 'purchase',
     })
 
+    expect(mockRelinkContainerProfile).toHaveBeenCalledWith({
+      containerId: 'item-existing',
+      savedProductProfileId: 'profile-new-version',
+    })
     expect(mockRecordIntake).toHaveBeenCalledWith(
       expect.objectContaining({
-        savedProductProfileId: 'profile-existing',
+        savedProductProfileId: 'profile-new-version',
         quantity: 25,
       }),
     )
+    expect(result.savedProductProfileId).toBe('profile-new-version')
   })
 })

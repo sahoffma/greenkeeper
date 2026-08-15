@@ -12,6 +12,7 @@ import {
   selectPrimaryStructuredResearchSource,
   syncStructuredNpkIntoNutrientMatrix,
   validateStructuredDeclarationCompleteness,
+  buildStructuredResearchProviderResultFromRecord,
   type FertilizerManufacturerStructuredResearchProvider,
   type ManufacturerStructuredResearchRecord,
 } from './fertilizerManufacturerStructuredResearchCore'
@@ -21,8 +22,6 @@ import { evaluateRawFertilizerDeclaration } from './fertilizerNormalizationReadi
 import { mapEnrichmentNutrientMatrixToSaved } from './fertilizerProductProfileSaveCore'
 import type { FertilizerEnrichmentOrchestrationInput } from '../types/fertilizerEnrichmentOrchestration'
 import {
-  buildManufacturerSearchNutrientBindings,
-  buildManufacturerSearchResearchDecision,
   extractTrustedWebSearchCandidatesFromResponseOutput,
   selectCanonicalManufacturerSearchCandidate,
   type ManufacturerSearchCandidateSelection,
@@ -228,37 +227,37 @@ function buildMockProviderResult(input: {
   npkLabel?: string
   queries?: string[]
 }): ManufacturerStructuredResearchProviderResult {
-  const responseOutput = buildMockResponseOutputForSources({
-    identity: input.identity,
-    npkLabel: input.npkLabel,
-    sources: input.record.sources.map((source) => ({
-      url: source.url,
-      title: source.title,
-    })),
-  })
-  const candidateSelection = selectCanonicalManufacturerSearchCandidate({
-    candidates: extractTrustedWebSearchCandidatesFromResponseOutput({
-      output: responseOutput,
-      manufacturerDomain: 'example-manufacturer.de',
-    }),
-    identity: input.identity,
-    npkLabel: input.npkLabel,
-  })
-  const nutrientBindings = buildManufacturerSearchNutrientBindings({
+  return buildStructuredResearchProviderResultFromRecord({
     record: input.record,
-    selection: candidateSelection,
+    identity: input.identity,
+    npkLabel: input.npkLabel,
+    queries: input.queries,
+    manufacturerDomain: 'example-manufacturer.de',
   })
+}
+
+function createCanonicalFetchProvider(input?: {
+  declarationText?: string
+  sourceUrl?: string
+}) {
+  const declarationText = input?.declarationText ?? fullDeclarationText()
+  const sourceUrl = input?.sourceUrl ?? OFFICIAL_URL
 
   return {
-    record: input.record,
-    webSearchToolCallObserved: true,
-    responseOutput,
-    generatedSearchQueries: input.queries ?? [],
-    candidateSelection,
-    researchDecision: buildManufacturerSearchResearchDecision({
-      selection: candidateSelection,
-      nutrientBindings,
-    }),
+    fetchSource: async (url: string) => {
+      if (url === sourceUrl || url.includes('example-manufacturer')) {
+        return {
+          ok: true as const,
+          finalUrl: sourceUrl,
+          contentType: 'text/plain',
+          text: declarationText,
+          retrievedAt: '2026-07-29T10:00:00.000Z',
+          statusCode: 200,
+        }
+      }
+
+      return { ok: false as const, errorCode: 'source_not_found' as const, retryable: false }
+    },
   }
 }
 
@@ -374,9 +373,7 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
           npkLabel: '10-5-20',
         })
       }),
-      fetchProvider: {
-        fetchSource: async () => ({ ok: false, errorCode: 'source_not_found', retryable: false }),
-      },
+      fetchProvider: createCanonicalFetchProvider(),
       runtime: {
         now: () => currentTime,
         totalBudgetMs: MANUFACTURER_RESEARCH_TOTAL_BUDGET_MS,
@@ -392,7 +389,7 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
     expect(result.adapterResult?.status).toBe('success')
   })
 
-  it('falls back to direct URL candidates after structured research timeout', async () => {
+  it('returns no adapter after structured research timeout without slug-guess fallback', async () => {
     let fetchCount = 0
 
     const result = await runAutomaticManufacturerResearch({
@@ -418,8 +415,8 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
     })
 
     expect(result.diagnostics.searchProviderOutcome).toBe('timeout')
-    expect(result.diagnostics.directCandidateFallbackUsed).toBe(true)
-    expect(result.diagnostics.researchSourceStrategy).toBe('structured_then_direct_fallback')
+    expect(result.diagnostics.directCandidateFallbackUsed).toBe(false)
+    expect(result.adapterResult).toBeNull()
     expect(fetchCount).toBe(0)
   })
 
@@ -427,9 +424,7 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
       structuredResearchProvider: createStructuredProvider(async () => null),
-      fetchProvider: {
-        fetchSource: async () => ({ ok: false, errorCode: 'source_not_found', retryable: false }),
-      },
+      fetchProvider: createCanonicalFetchProvider(),
       runtime: { logTiming: false },
     })
 
@@ -448,9 +443,7 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
           npkLabel: '10-5-20',
         }),
       ),
-      fetchProvider: {
-        fetchSource: async () => ({ ok: false, errorCode: 'source_not_found', retryable: false }),
-      },
+      fetchProvider: createCanonicalFetchProvider(),
       runtime: { logTiming: false },
     })
 
@@ -474,9 +467,7 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
           npkLabel: '10-5-20',
         })
       }),
-      fetchProvider: {
-        fetchSource: async () => ({ ok: false, errorCode: 'source_not_found', retryable: false }),
-      },
+      fetchProvider: createCanonicalFetchProvider(),
       runtime: { logTiming: false },
     })
 
@@ -502,30 +493,22 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
     expect(parsed?.sources[0]?.category).toBe('official_manufacturer')
   })
 
-  it('uses direct fetch fallback when structured research is incomplete', async () => {
+  it('extracts declaration from canonical source fetch during phase B', async () => {
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
       structuredResearchProvider: createStructuredProvider(async () =>
         buildMockProviderResult({
-          record: buildStructuredRecord({ declarationComplete: false }),
+          record: buildStructuredRecord(),
           identity: IDENTITY,
           npkLabel: '10-5-20',
         }),
       ),
-      fetchProvider: {
-        fetchSource: async () => ({
-          ok: true,
-          finalUrl: 'https://www.example-manufacturer.de/universal-feed',
-          contentType: 'text/plain',
-          text: fullDeclarationText(),
-          retrievedAt: '2026-07-29T10:00:00.000Z',
-          statusCode: 200,
-        }),
-      },
+      fetchProvider: createCanonicalFetchProvider(),
       runtime: { logTiming: false, maxParallelFetches: 1 },
     })
 
-    expect(result.diagnostics.directCandidateFallbackUsed).toBe(true)
+    expect(result.diagnostics.directCandidateFallbackUsed).toBe(false)
+    expect(result.diagnostics.researchSourceStrategy).toBe('structured_web_research')
     expect(result.adapterResult?.status).toBe('success')
   })
 

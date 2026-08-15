@@ -254,7 +254,12 @@ function upsertCandidate(
 
   if (patch.trustedEvidenceKind) {
     candidate.trustedEvidenceKinds.add(patch.trustedEvidenceKind)
-    candidate.citationVerified = true
+    if (
+      patch.trustedEvidenceKind === 'url_citation' ||
+      patch.trustedEvidenceKind === 'url_citation_excerpt'
+    ) {
+      candidate.citationVerified = true
+    }
   }
 
   map.set(normalizedUrl, candidate)
@@ -429,10 +434,7 @@ export function scoreManufacturerSearchCandidates(input: {
     let hardRejected = false
     let rejectionReason: string | null = null
 
-    if (!candidate.citationVerified) {
-      hardRejected = true
-      rejectionReason = 'not_citation_verified'
-    } else if (manufacturerEvidence === 'mismatch') {
+    if (manufacturerEvidence === 'mismatch') {
       hardRejected = true
       rejectionReason = 'manufacturer_mismatch'
     } else if (productNameEvidence === 'mismatch') {
@@ -584,7 +586,7 @@ export function buildManufacturerSearchNutrientBindings(input: {
   const compatibleCandidateIds = new Set(
     input.selection.candidates
       .filter((candidate) => {
-        if (candidate.hardRejected || !candidate.citationVerified) {
+        if (candidate.hardRejected) {
           return false
         }
 
@@ -605,23 +607,13 @@ export function buildManufacturerSearchNutrientBindings(input: {
   return (Object.keys(input.record.nutrientMatrix) as FertilizerNutrientMatrixKey[])
     .filter((key) => typeof input.record.nutrientMatrix[key] === 'number')
     .map((nutrientKey) => {
-      const sourceIndex = input.record.nutrientSourceIndices?.[nutrientKey]
-      const sourceUrl =
-        typeof sourceIndex === 'number' && sourceIndex >= 0
-          ? input.record.sources[sourceIndex]?.url
-          : input.record.sources[0]?.url
-      const boundCandidateId = sourceUrl
-        ? resolveModelSourceUrlForCandidate({ url: sourceUrl, candidates: input.selection.candidates })
-        : canonicalId
-
       const accepted =
         canonicalId != null &&
-        boundCandidateId != null &&
-        compatibleCandidateIds.has(boundCandidateId)
+        compatibleCandidateIds.has(canonicalId)
 
       return {
         nutrientKey,
-        candidateId: boundCandidateId,
+        candidateId: canonicalId,
         accepted,
       }
     })
@@ -665,7 +657,6 @@ export function buildManufacturerSearchResearchDecision(input: {
           (candidate) =>
             candidate.candidateId === binding.candidateId &&
             !candidate.hardRejected &&
-            candidate.citationVerified &&
             `${candidate.productLineEvidence}|${candidate.npkEvidence}` ===
               `${input.selection.canonicalCandidate!.productLineEvidence}|${input.selection.canonicalCandidate!.npkEvidence}`,
         )),

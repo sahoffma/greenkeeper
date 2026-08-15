@@ -236,6 +236,48 @@ function frontPhotoRecognitionWithoutCompositionOcr(): ProductRecognizeResult {
   }
 }
 
+function npkOnlyDeclarationHtml(): string {
+  return `<html><body>
+    <h1>Stress Manager</h1>
+    <p>Manufacturer: Rasendoktor</p>
+    <p>Product: Stress-Manager</p>
+    <p>Form: Granular</p>
+    <p>NPK 0-0-30</p>
+    <p>Declaration basis (N / P2O5 / K2O)</p>
+    <p>Nitrogen (N): 0%</p>
+    <p>Phosphate (P2O5): 0%</p>
+    <p>Potash (K2O): 30%</p>
+    <p>Declaration section complete</p>
+  </body></html>`
+}
+
+function mockFetchForNpkOnlySources() {
+  return vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input)
+
+    if (url.includes('rasendoktor.de') && url.includes('stress-manager') && !url.endsWith('.pdf')) {
+      return {
+        status: 200,
+        ok: true,
+        url: OFFICIAL_PRODUCT_URL,
+        headers: {
+          get: (name: string) =>
+            name.toLowerCase() === 'content-type' ? 'text/html; charset=utf-8' : null,
+        },
+        arrayBuffer: async () => new TextEncoder().encode(npkOnlyDeclarationHtml()).buffer,
+      } as unknown as Response
+    }
+
+    return {
+      status: 404,
+      ok: false,
+      url,
+      headers: { get: () => null },
+      arrayBuffer: async () => new ArrayBuffer(0),
+    } as unknown as Response
+  })
+}
+
 describe('fertilizerManufacturerResearchIntegration', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -304,6 +346,8 @@ describe('fertilizerManufacturerResearchIntegration', () => {
   })
 
   it('parses official PDF datasheets during automatic research', async () => {
+    vi.stubGlobal('fetch', mockFetchForOfficialSources())
+
     const input = buildFertilizerEnrichmentOrchestrationInputFromTextIdentity(
       {
         manufacturer: 'Rasendoktor',
@@ -382,8 +426,8 @@ describe('fertilizerManufacturerResearchIntegration', () => {
     expect(result.rawDeclarationInput?.nutrientMatrix.iron?.status).not.toBe('not_declared')
   })
 
-  it('rejects NPK-only structured research even when the model claims declarationComplete', async () => {
-    vi.stubGlobal('fetch', mockFetchForOfficialSources())
+  it('rejects NPK-only canonical source declarations during phase B extraction', async () => {
+    vi.stubGlobal('fetch', mockFetchForNpkOnlySources())
 
     const input = buildFertilizerEnrichmentOrchestrationInputFromTextIdentity(
       {
@@ -407,16 +451,13 @@ describe('fertilizerManufacturerResearchIntegration', () => {
       createNormalizationRunId: () => 'norm-npk-only-structured',
     })
 
-    expect(
-      result.manufacturerResearchDiagnostics?.nutrientChainDiagnostics?.declarationCompletenessValidation
-        ?.rejectionReason,
-    ).toBe('npk_only')
-    expect(result.status).toBe('intake_ready')
-    expect(result.rawDeclarationInput?.nutrientMatrix.iron?.value).toBe(3)
-    expect(result.rawDeclarationInput?.nutrientMatrix.sulfur?.value).toBe(10.2)
+    expect(result.status).not.toBe('intake_ready')
+    expect(result.rawDeclarationInput?.nutrientMatrix.sulfur?.value).toBeUndefined()
   })
 
   it('reaches intake_ready and profile-save mapping through structured research', async () => {
+    vi.stubGlobal('fetch', mockFetchForOfficialSources())
+
     const input = buildFertilizerEnrichmentOrchestrationInputFromTextIdentity(
       {
         manufacturer: 'Rasendoktor',

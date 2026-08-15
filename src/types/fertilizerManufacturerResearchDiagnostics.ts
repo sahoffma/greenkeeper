@@ -63,6 +63,9 @@ export interface ManufacturerSearchCandidateDiagnostic {
   identityScore: number
   hardRejected: boolean
   rejectionReason: string | null
+  evidenceOrigin?: string | null
+  fetchAttempted?: boolean
+  fetchOutcome?: string | null
 }
 
 export interface ManufacturerSearchResearchDecisionDiagnostic {

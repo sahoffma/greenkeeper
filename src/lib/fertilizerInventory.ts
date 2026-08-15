@@ -43,6 +43,20 @@ function mapInventoryError(error: unknown, fallback: string): Error {
   return new Error(fallback)
 }
 
+export async function relinkProductStockContainerProfile(input: {
+  containerId: string
+  savedProductProfileId: string
+}): Promise<void> {
+  const { error } = await supabase
+    .from('fertilizer_containers')
+    .update({ saved_product_profile_id: input.savedProductProfileId })
+    .eq('id', input.containerId)
+
+  if (error) {
+    throw mapInventoryError(error, 'Der Bestand konnte nicht aktualisiert werden.')
+  }
+}
+
 export async function fetchFertilizerProductStockStatus(input: {
   catalogProductId?: string | null
   identityFingerprint?: string | null

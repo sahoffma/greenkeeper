@@ -16,7 +16,7 @@ import {
   recordFertilizerProductStockIntake,
   FertilizerProductStockPersistenceError,
 } from './fertilizerProductStockIntake'
-import { fetchActiveProductStockRows } from './fertilizerInventory'
+import { fetchActiveProductStockRows, relinkProductStockContainerProfile } from './fertilizerInventory'
 import { resolveSavedProductProfileIdForFamilyStockIntake } from './fertilizerProductStockFamilyIntakeCore'
 import { buildFertilizerProductFamilyKey } from './fertilizerProductVersionProjectionCore'
 import { buildRecognitionProductLabel } from './fertilizerRecognitionCore'
@@ -180,6 +180,17 @@ export async function saveFertilizerCaptureToInventoryCore(
       newSavedProductProfileId: profileSave.profile.id,
       activeStockRows,
     })
+
+    if (
+      familyIntakeResolution.matchedExistingStock &&
+      familyIntakeResolution.matchedInventoryItemId &&
+      familyIntakeResolution.previousSavedProductProfileId
+    ) {
+      await relinkProductStockContainerProfile({
+        containerId: familyIntakeResolution.matchedInventoryItemId,
+        savedProductProfileId: familyIntakeResolution.savedProductProfileId,
+      })
+    }
 
     const intakeResult = await recordFertilizerProductStockIntake({
       userId: input.userId,

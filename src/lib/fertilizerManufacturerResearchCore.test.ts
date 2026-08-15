@@ -7,6 +7,7 @@ import {
   runAutomaticManufacturerResearch,
 } from './fertilizerManufacturerResearchCore'
 import { buildOfficialSourceUrlCandidates } from './fertilizerManufacturerResearchQueryCore'
+import { buildStructuredResearchProviderResultFromRecord } from './fertilizerManufacturerStructuredResearchCore'
 import {
   limitOfficialResearchCandidates,
   MANUFACTURER_RESEARCH_MAX_OFFICIAL_CANDIDATES,
@@ -45,6 +46,61 @@ const failingStructuredProvider = {
   runStructuredWebResearch: async () => null,
 }
 
+function createSuccessfulStructuredProvider(sourceUrl: string = OFFICIAL_URL) {
+  return {
+    runStructuredWebResearch: async () =>
+      buildStructuredResearchProviderResultFromRecord({
+        record: {
+          manufacturer: 'Example Manufacturer GmbH',
+          productLine: 'Professional',
+          productName: 'Stress-Manager',
+          productForm: 'granular',
+          npk: { nitrogen: 0, phosphate: 0, potash: 30 },
+          nutrientMatrix: {},
+          nutrientDeclarationBases: {},
+          declarationComplete: false,
+          identityMatch: true,
+          confidence: 0.95,
+          sources: [
+            {
+              url: sourceUrl,
+              title: 'Professional Stress-Manager 0-0-30',
+              category: 'official_manufacturer',
+              sourceIdentity: {
+                manufacturer: 'Example Manufacturer GmbH',
+                productLine: 'Professional',
+                productName: 'Stress-Manager',
+                npkLabel: '0-0-30',
+              },
+            },
+          ],
+        },
+        identity: IDENTITY,
+        npkLabel: '0-0-30',
+        manufacturerDomain: 'example-manufacturer.de',
+      }),
+  }
+}
+
+function createDeclarationFetchProvider(sourceUrl: string = OFFICIAL_URL) {
+  return {
+    fetchSource: async (url: string) => {
+      if (url === sourceUrl) {
+        return {
+          ok: true as const,
+          finalUrl: sourceUrl,
+          contentType: 'text/plain',
+          text: fullDeclarationText(),
+          retrievedAt: '2026-07-29T10:00:00.000Z',
+          statusCode: 200,
+        }
+      }
+
+      return { ok: false as const, errorCode: 'source_not_found' as const, retryable: false }
+    },
+  }
+}
+
 describe('fertilizerManufacturerResearchCore', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -80,26 +136,13 @@ describe('fertilizerManufacturerResearchCore', () => {
   it('parses a matching official HTML source into an adapter result', async () => {
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
-      hintedUrls: [OFFICIAL_URL],
-      structuredResearchProvider: failingStructuredProvider,
-      fetchProvider: {
-        fetchSource: async () => ({
-          ok: true,
-          finalUrl: OFFICIAL_URL,
-          contentType: 'text/plain',
-          text: fullDeclarationText(),
-          retrievedAt: '2026-07-29T10:00:00.000Z',
-          statusCode: 200,
-        }),
-      },
+      structuredResearchProvider: createSuccessfulStructuredProvider(),
+      fetchProvider: createDeclarationFetchProvider(),
       runtime: { logTiming: false, maxParallelFetches: 1 },
     })
 
     expect(result.adapterResult?.status).toMatch(/success|partial/)
     expect(result.diagnostics.declaredPositiveNutrientCount).toBeGreaterThan(0)
-    expect(result.diagnostics.manufacturerResearchTiming?.stoppedAfterSuccessfulOfficialSource).toBe(
-      result.adapterResult?.status === 'success',
-    )
   })
 
   it('limits generated official candidates without a search provider', () => {
@@ -125,61 +168,18 @@ describe('fertilizerManufacturerResearchCore', () => {
     expect(capped.length).toBe(MANUFACTURER_RESEARCH_MAX_OFFICIAL_CANDIDATES)
   })
 
-  it('continues with the next candidate after a slow fetch times out', async () => {
-    let currentTime = 0
-    const fetchCalls: number[] = []
-
-    const result = await runAutomaticManufacturerResearch({
-      identity: IDENTITY,
-      hintedUrls: ['https://example.de/slow', OFFICIAL_URL],
-      structuredResearchProvider: failingStructuredProvider,
-      fetchProvider: {
-        fetchSource: async (url, options) => {
-          fetchCalls.push(currentTime)
-          if (url.includes('/slow')) {
-            await new Promise((resolve) => setTimeout(resolve, (options?.timeoutMs ?? 0) + 10))
-            currentTime += (options?.timeoutMs ?? 0) + 10
-            return { ok: false, errorCode: 'timeout', retryable: true }
-          }
-
-          currentTime += 50
-          return {
-            ok: true,
-            finalUrl: url,
-            contentType: 'text/plain',
-            text: fullDeclarationText(),
-            retrievedAt: '2026-07-29T10:00:00.000Z',
-            statusCode: 200,
-          }
-        },
-      },
-      runtime: {
-        now: () => currentTime,
-        perFetchTimeoutMs: 100,
-        totalBudgetMs: 5000,
-        maxParallelFetches: 1,
-        logTiming: false,
-      },
-    })
-
-    expect(fetchCalls.length).toBeGreaterThanOrEqual(2)
-    expect(result.adapterResult?.status).toMatch(/success|partial/)
-    expect(result.diagnostics.manufacturerResearchTiming?.fetchTimeoutCount).toBeGreaterThanOrEqual(1)
-  })
-
-  it('stops further fetches after a successful official declaration is found', async () => {
+  it('does not slug-guess additional URLs after canonical fetch succeeds', async () => {
     let fetchCount = 0
 
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
-      hintedUrls: [OFFICIAL_URL, 'https://example.de/second', 'https://example.de/third'],
-      structuredResearchProvider: failingStructuredProvider,
+      structuredResearchProvider: createSuccessfulStructuredProvider(),
       fetchProvider: {
-        fetchSource: async () => {
+        fetchSource: async (url) => {
           fetchCount += 1
           return {
             ok: true,
-            finalUrl: OFFICIAL_URL,
+            finalUrl: url,
             contentType: 'text/plain',
             text: fullDeclarationText(),
             retrievedAt: '2026-07-29T10:00:00.000Z',
@@ -191,8 +191,8 @@ describe('fertilizerManufacturerResearchCore', () => {
     })
 
     expect(result.adapterResult?.status).toBe('success')
-    expect(result.diagnostics.manufacturerResearchTiming?.stoppedAfterSuccessfulOfficialSource).toBe(true)
-    expect(fetchCount).toBe(1)
+    expect(fetchCount).toBeGreaterThan(0)
+    expect(fetchCount).toBeLessThanOrEqual(2)
   })
 
   it('does not exceed the overall research budget in a worst-case timeout scenario', async () => {
@@ -221,21 +221,20 @@ describe('fertilizerManufacturerResearchCore', () => {
     expect(result.adapterResult).toBeNull()
   })
 
-  it('maps invalid URL candidates to invalid_url without throwing', async () => {
+  it('returns null adapter without throwing when structured research finds no canonical source', async () => {
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
-      hintedUrls: ['not-a-valid-url'],
       structuredResearchProvider: failingStructuredProvider,
       fetchProvider: {
         fetchSource: async () => {
-          throw new Error('fetch should not be called for invalid url')
+          throw new Error('fetch should not be called without canonical candidate')
         },
       },
       runtime: { logTiming: false },
     })
 
     expect(result.adapterResult).toBeNull()
-    expect(result.diagnostics.manufacturerResearchTiming?.fetchAttempts[0]?.outcome).toBe('invalid_url')
+    expect(result.diagnostics.researchFailureStage).toBe('structured_research_no_source')
   })
 
   it('bounds PDF fetch duration through per-fetch timeout options', async () => {
@@ -262,7 +261,7 @@ describe('fertilizerManufacturerResearchCore', () => {
     vi.useRealTimers()
   })
 
-  it('runs a controlled path when no search provider is configured', async () => {
+  it('returns no adapter when no structured provider is configured', async () => {
     let fetchCount = 0
 
     const result = await runAutomaticManufacturerResearch({
@@ -278,28 +277,15 @@ describe('fertilizerManufacturerResearchCore', () => {
 
     expect(result.diagnostics.manufacturerSearchAttempted).toBe(true)
     expect(result.diagnostics.manufacturerResearchTiming?.searchProviderMs).toBe(0)
-    expect(result.diagnostics.officialSourceCandidateCount).toBeLessThanOrEqual(
-      MANUFACTURER_RESEARCH_MAX_OFFICIAL_CANDIDATES,
-    )
-    expect(fetchCount).toBeGreaterThan(0)
+    expect(fetchCount).toBe(0)
     expect(result.adapterResult).toBeNull()
   })
 
   it('returns intake-ready success diagnostics when a full declaration is found', async () => {
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
-      hintedUrls: [OFFICIAL_URL],
-      structuredResearchProvider: failingStructuredProvider,
-      fetchProvider: {
-        fetchSource: async () => ({
-          ok: true,
-          finalUrl: OFFICIAL_URL,
-          contentType: 'text/plain',
-          text: fullDeclarationText(),
-          retrievedAt: '2026-07-29T10:00:00.000Z',
-          statusCode: 200,
-        }),
-      },
+      structuredResearchProvider: createSuccessfulStructuredProvider(),
+      fetchProvider: createDeclarationFetchProvider(),
       runtime: { logTiming: false, maxParallelFetches: 1 },
     })
 
@@ -307,10 +293,9 @@ describe('fertilizerManufacturerResearchCore', () => {
     expect(result.diagnostics.researchFailureStage).toBe('none')
   })
 
-  it('returns controlled fetch_failed diagnostics instead of throwing when no source matches', async () => {
+  it('returns controlled structured_research_no_source diagnostics when canonical verification fails', async () => {
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
-      hintedUrls: [OFFICIAL_URL],
       structuredResearchProvider: failingStructuredProvider,
       fetchProvider: {
         fetchSource: async () => ({ ok: false, errorCode: 'source_not_found', retryable: false }),
@@ -319,7 +304,7 @@ describe('fertilizerManufacturerResearchCore', () => {
     })
 
     expect(result.adapterResult).toBeNull()
-    expect(result.diagnostics.researchFailureStage).toBe('fetch_failed')
+    expect(result.diagnostics.researchFailureStage).toBe('structured_research_no_source')
     expect(result.diagnostics.manufacturerResearchTiming?.totalResearchMs).toBeLessThan(
       MANUFACTURER_RESEARCH_TOTAL_BUDGET_MS + 100,
     )

@@ -12,6 +12,7 @@ import {
   type ManufacturerSearchNutrientBinding,
   resolveModelSourceUrlForCandidate,
 } from './fertilizerManufacturerSearchCandidateCore'
+import { filterAcceptedNutrientKeysBySourceEvidence } from './fertilizerManufacturerSearchCandidateEvidenceCore'
 import { resolveExpectedStructuredResearchNpk } from './fertilizerManufacturerStructuredResearchIdentityCore'
 
 const NPK_MATRIX_KEYS = new Set<FertilizerNutrientMatrixKey>(['nitrogen', 'phosphate', 'potash'])
@@ -102,6 +103,7 @@ export function validateStructuredResearchNutrientProvenance(input: {
   recordProductLineMatchesExpected: boolean
   recordNpkCompatible: boolean
   selection: ManufacturerSearchCandidateSelection
+  canonicalSourceText?: string | null
 }): StructuredResearchNutrientProvenanceValidation {
   const sulfurValue = input.record.nutrientMatrix.sulfur
   const sulfurPresentInStructuredResult = typeof sulfurValue === 'number'
@@ -194,6 +196,22 @@ export function validateStructuredResearchNutrientProvenance(input: {
     acceptedNutrientKeys.push(key)
   }
 
+  const valueVerifiedNutrientKeys =
+    input.canonicalSourceText?.trim()
+      ? filterAcceptedNutrientKeysBySourceEvidence({
+          nutrientMatrix: input.record.nutrientMatrix,
+          sourceText: input.canonicalSourceText,
+          acceptedNutrientKeys,
+        })
+      : acceptedNutrientKeys
+
+  if (valueVerifiedNutrientKeys.length !== acceptedNutrientKeys.length) {
+    return reject('nutrient_source_missing', {
+      nutrientSourceMismatchCount:
+        acceptedNutrientKeys.length - valueVerifiedNutrientKeys.length,
+    })
+  }
+
   const sulfurBinding = nutrientSourceBindings.find((binding) => binding.nutrientKey === 'sulfur')
   const sulfurDiagnostics = {
     sulfurSourcePresent: sulfurBinding?.candidateId != null,
@@ -214,7 +232,7 @@ export function validateStructuredResearchNutrientProvenance(input: {
     nutrientSourceMismatchCount: 0,
     accepted: true,
     rejectionReason: 'none',
-    acceptedNutrientKeys,
+    acceptedNutrientKeys: valueVerifiedNutrientKeys,
   }
 }
 

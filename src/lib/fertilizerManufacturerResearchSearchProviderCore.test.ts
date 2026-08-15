@@ -25,6 +25,38 @@ const IDENTITY = {
   hasIdentityAmbiguity: false,
 } as const
 
+function fullDeclarationText(): string {
+  return `Manufacturer: Example Manufacturer
+Product: Universal Feed
+Form: Granular
+NPK 10-5-20
+Declaration basis (N / P2O5 / K2O)
+Nitrogen (N): 10%
+Phosphate (P2O5): 5%
+Potash (K2O): 20%
+Zusammensetzung: 10 % Stickstoff (N), 10,2 % Schwefel (S), 3,0 % Eisen (Fe)
+Declaration section complete`
+}
+
+function createCanonicalFetchProvider(officialUrl: string) {
+  return {
+    fetchSource: async (url: string) => {
+      if (url === officialUrl) {
+        return {
+          ok: true as const,
+          finalUrl: officialUrl,
+          contentType: 'text/plain',
+          text: fullDeclarationText(),
+          retrievedAt: '2026-07-29T10:00:00.000Z',
+          statusCode: 200,
+        }
+      }
+
+      return { ok: false as const, errorCode: 'source_not_found' as const, retryable: false }
+    },
+  }
+}
+
 function buildStructuredRecord(officialUrl: string) {
   return {
     manufacturer: 'Example Manufacturer GmbH',
@@ -159,6 +191,9 @@ describe('fertilizerManufacturerResearchSearchProviderCore', () => {
 
     const result = await runManufacturerStructuredResearchAttempt({
       structuredResearchProvider: provider,
+      fetchProvider: {
+        fetchSource: async () => ({ ok: false, errorCode: 'source_not_found', retryable: false }),
+      },
       identity: IDENTITY,
       queries: ['Example Manufacturer Universal Feed'],
       manufacturerDomain: 'example-manufacturer.de',
@@ -172,6 +207,9 @@ describe('fertilizerManufacturerResearchSearchProviderCore', () => {
     const result = await runManufacturerStructuredResearchAttempt({
       structuredResearchProvider: {
         runStructuredWebResearch: async () => null,
+      },
+      fetchProvider: {
+        fetchSource: async () => ({ ok: false, errorCode: 'source_not_found', retryable: false }),
       },
       identity: IDENTITY,
       queries: ['Example Manufacturer Universal Feed'],
@@ -197,9 +235,7 @@ describe('runAutomaticManufacturerResearch structured integration', () => {
             manufacturerDomain: 'example-manufacturer.de',
           }),
       },
-      fetchProvider: {
-        fetchSource: async () => ({ ok: false, errorCode: 'source_not_found', retryable: false }),
-      },
+      fetchProvider: createCanonicalFetchProvider(officialUrl),
       runtime: { logTiming: false },
     })
 
@@ -225,9 +261,7 @@ describe('runAutomaticManufacturerResearch structured integration', () => {
             manufacturerDomain: 'example-manufacturer.de',
           }),
       },
-      fetchProvider: {
-        fetchSource: async () => ({ ok: false, errorCode: 'source_not_found', retryable: false }),
-      },
+      fetchProvider: createCanonicalFetchProvider(pdfUrl),
       runtime: { logTiming: false },
     })
 
@@ -235,7 +269,7 @@ describe('runAutomaticManufacturerResearch structured integration', () => {
     expect(result.diagnostics.officialDeclarationFound).toBe(true)
   })
 
-  it('falls back to direct candidates when structured research returns no results', async () => {
+  it('returns no adapter when structured research returns no canonical source', async () => {
     let fetchCount = 0
 
     const result = await runAutomaticManufacturerResearch({
@@ -253,7 +287,8 @@ describe('runAutomaticManufacturerResearch structured integration', () => {
     })
 
     expect(result.diagnostics.searchProviderOutcome).toBe('no_results')
-    expect(result.diagnostics.researchSourceStrategy).toBe('structured_then_direct_fallback')
+    expect(result.diagnostics.researchSourceStrategy).toBe('direct_candidates_only')
+    expect(result.diagnostics.directCandidateFallbackUsed).toBe(false)
     expect(fetchCount).toBe(0)
     expect(result.adapterResult).toBeNull()
   })
@@ -272,9 +307,7 @@ describe('runAutomaticManufacturerResearch structured integration', () => {
             manufacturerDomain: 'example-manufacturer.de',
           }),
       },
-      fetchProvider: {
-        fetchSource: async () => ({ ok: false, errorCode: 'source_not_found', retryable: false }),
-      },
+      fetchProvider: createCanonicalFetchProvider(discoveredUrl),
       runtime: { logTiming: false },
     })
 
@@ -283,18 +316,17 @@ describe('runAutomaticManufacturerResearch structured integration', () => {
     expect(result.adapterResult?.status).toBe('success')
   })
 
-  it('keeps direct-only strategy without configured structured provider', async () => {
+  it('does not slug-guess sources without configured structured provider', async () => {
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
-      fetchProvider: {
-        fetchSource: async () => ({ ok: false, errorCode: 'source_not_found', retryable: false }),
-      },
+      fetchProvider: createCanonicalFetchProvider('https://example-manufacturer.de/universal-feed'),
       runtime: { logTiming: false },
     })
 
     expect(result.diagnostics.searchProviderConfigured).toBe(false)
     expect(result.diagnostics.searchProviderOutcome).toBe('not_configured')
     expect(result.diagnostics.researchSourceStrategy).toBe('direct_candidates_only')
+    expect(result.adapterResult).toBeNull()
   })
 
   it('returns controlled needs_input diagnostics when no source is found', async () => {
