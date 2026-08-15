@@ -14,7 +14,29 @@ import { FERTILIZER_NUTRIENT_MATRIX_KEYS } from '../types/fertilizerReadiness'
 import type { FertilizerNutrientMatrixKey } from '../types/fertilizerReadiness'
 import { validateFertilizerManufacturerDocumentSource } from './fertilizerManufacturerDocumentSourceValidatorCore'
 import type { FertilizerManufacturerResearchFetchProvider } from './fertilizerManufacturerResearchCore'
-import { PRODUCT_RECOGNIZE_IMAGE_MODEL } from './productRecognizeImageCore'
+import { CAPTURE_RECOGNITION_PACKAGING_REFERENCE_ID } from './fertilizerCaptureRecognitionPackagingCore'
+import type { FertilizerEnrichmentOrchestrationInput } from '../types/fertilizerEnrichmentOrchestration'
+
+/** Strongest OpenAI model already referenced in this repository for high-fidelity extraction. */
+export const MANUFACTURER_RESEARCH_V2_MODEL = 'gpt-4o'
+
+export const MANUFACTURER_RESEARCH_V2_SYSTEM_PROMPT = [
+  'You are researching a commercial fertilizer product.',
+  'Use web search independently to identify the exact product variant.',
+  'Prefer official manufacturer websites and official manufacturer documents.',
+  'Distinguish similarly named products, product lines, and NPK variants.',
+  'Never mix nutrient declarations from different variants.',
+  'Research the complete manufacturer nutrient declaration for the resolved variant.',
+  'Return every declared nutrient in declaration.nutrients, including N, P, K and all secondary and trace nutrients.',
+  'Use product.npk for the N/P2O5/K2O triplet and also include those nutrients in declaration.nutrients when declared.',
+  'Use one primary declaration source whenever possible.',
+  'Set declarationComplete to true only when the primary source was fully evaluated for the complete declaration.',
+  'Set declarationComplete to false when the declaration may be incomplete or not fully evaluated.',
+  'Do not invent undeclared nutrients.',
+  'If the product is unambiguous, return status resolved.',
+  'If multiple variants remain genuinely plausible, return status ambiguous with a short questionForUser.',
+  'Return structured data only.',
+].join(' ')
 
 export const MANUFACTURER_RESEARCH_V2_SHADOW_ENV = 'MANUFACTURER_RESEARCH_V2_SHADOW'
 
@@ -130,12 +152,14 @@ export const manufacturerResearchV2JsonSchema = {
       additionalProperties: false,
     },
     confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+    declarationComplete: { type: 'boolean' },
     shortReasoningSummary: { type: ['string', 'null'] },
   },
   required: [
     'status',
     'product',
     'declaration',
+    'declarationComplete',
     'declarationSource',
     'supportingSources',
     'alternatives',
@@ -228,42 +252,78 @@ export function isNutrientValuePresentInSourceText(sourceText: string, value: nu
   return buildValueEvidencePatterns(value).some((pattern) => normalized.includes(pattern.toLowerCase()))
 }
 
+export function buildManufacturerResearchV2CaptureContextFromEnrichmentInput(input: {
+  orchestrationInput: Pick<
+    FertilizerEnrichmentOrchestrationInput,
+    'identity' | 'captureInlineSourceTexts'
+  >
+  npkLabel?: string | null
+  packageSizeLabel?: string | null
+}): ManufacturerResearchV2CaptureContext {
+  return {
+    manufacturer: input.orchestrationInput.identity.manufacturer,
+    productLine: input.orchestrationInput.identity.productLine ?? null,
+    productName: input.orchestrationInput.identity.officialName,
+    variant: input.orchestrationInput.identity.variant,
+    npkLabel: input.npkLabel ?? null,
+    packageSizeLabel: input.packageSizeLabel ?? null,
+    labelText:
+      input.orchestrationInput.captureInlineSourceTexts?.[
+        CAPTURE_RECOGNITION_PACKAGING_REFERENCE_ID
+      ] ?? null,
+    recognitionConfidence: input.orchestrationInput.identity.identityConfidence ?? null,
+  }
+}
+
 export function buildManufacturerResearchV2Prompt(input: {
   identity: FertilizerEnrichmentIdentity
   npkLabel?: string | null
   captureContext?: ManufacturerResearchV2CaptureContext | null
 }): string {
+  const capture = input.captureContext
+  const manufacturer = capture?.manufacturer ?? input.identity.manufacturer ?? 'unknown'
+  const productLine = capture?.productLine ?? input.identity.productLine ?? 'unknown'
+  const productName = capture?.productName ?? input.identity.officialName ?? 'unknown'
+  const variant = capture?.variant ?? input.identity.variant ?? 'unknown'
+  const npk = capture?.npkLabel ?? input.npkLabel ?? input.identity.variant ?? 'unknown'
+  const recognitionConfidence =
+    capture?.recognitionConfidence ?? input.identity.identityConfidence ?? 'unknown'
+
   const lines = [
     'Captured product identity (strong evidence):',
-    `- manufacturer: ${input.identity.manufacturer ?? 'unknown'}`,
-    `- productLine: ${input.identity.productLine ?? 'unknown'}`,
-    `- productName: ${input.identity.officialName ?? 'unknown'}`,
-    `- variant: ${input.identity.variant ?? 'unknown'}`,
-    `- npk: ${input.npkLabel ?? input.identity.variant ?? 'unknown'}`,
-    `- identityConfidence: ${input.identity.identityConfidence ?? 'unknown'}`,
+    `- manufacturer: ${manufacturer}`,
+    `- productLine: ${productLine}`,
+    `- productName: ${productName}`,
+    `- variant: ${variant}`,
+    `- npk: ${npk}`,
+    `- identityConfidence: ${recognitionConfidence}`,
     `- hasIdentityAmbiguity: ${input.identity.hasIdentityAmbiguity ? 'true' : 'false'}`,
+    '',
+    'Field semantics:',
+    '- productLine: manufacturer product line or tier, not a marketing product category.',
+    '- productName: official product name from the packaging.',
+    '- variant: specific NPK or official variant designation, not a generic product type.',
   ]
 
-  if (input.captureContext?.packageSizeLabel) {
-    lines.push(`- packageSize: ${input.captureContext.packageSizeLabel}`)
+  if (capture?.packageSizeLabel) {
+    lines.push(`- packageSize: ${capture.packageSizeLabel}`)
   }
 
-  if (input.captureContext?.recognitionConfidence != null) {
-    lines.push(`- recognitionConfidence: ${input.captureContext.recognitionConfidence}`)
-  }
-
-  if (input.captureContext?.labelText?.trim()) {
-    lines.push('', 'Optional front-label text:', input.captureContext.labelText.trim())
+  if (capture?.labelText?.trim()) {
+    lines.push('', 'Front-label / recognition text from capture:', capture.labelText.trim())
   }
 
   lines.push(
     '',
-    'Search the web and identify the exact commercial fertilizer variant.',
-    'Prefer official manufacturer websites or official manufacturer documents.',
-    'Explicitly distinguish similarly named variants and do not mix their nutrient declarations.',
+    'Identify the exact commercial fertilizer variant using web search.',
+    'Prefer official manufacturer sources.',
+    'Distinguish similarly named products, product lines, and NPK variants.',
+    'Never mix nutrient values from different variants.',
+    'Research and return the complete manufacturer nutrient declaration.',
+    'Return every declared nutrient, including N, P, K and all secondary and trace nutrients, in declaration.nutrients.',
     'If the captured identity is already specific enough, do not ask unnecessary questions.',
-    'If multiple variants remain genuinely plausible, return status "ambiguous".',
-    'Return the complete manufacturer-declared nutrient composition for the resolved product.',
+    'If multiple variants remain genuinely plausible, return status "ambiguous" with questionForUser.',
+    'Set declarationComplete to true only when the primary declaration source was fully evaluated.',
     'Use one primary declaration source whenever possible.',
     'Do not invent undeclared nutrients.',
   )
@@ -346,6 +406,10 @@ export function parseManufacturerResearchV2Result(
     return null
   }
 
+  if (typeof record.declarationComplete !== 'boolean') {
+    return null
+  }
+
   const form =
     productObj.form === 'granular' || productObj.form === 'liquid' || productObj.form === 'unknown'
       ? productObj.form
@@ -425,6 +489,7 @@ export function parseManufacturerResearchV2Result(
       },
     },
     declaration: { nutrients },
+    declarationComplete: record.declarationComplete === true,
     declarationSource,
     supportingSources,
     alternatives,
@@ -665,7 +730,7 @@ export function createOpenAiManufacturerResearchV2Call(
   openai: OpenAI,
   options: { model?: string } = {},
 ): ManufacturerResearchV2Call {
-  const model = options.model ?? PRODUCT_RECOGNIZE_IMAGE_MODEL
+  const model = options.model ?? MANUFACTURER_RESEARCH_V2_MODEL
 
   return async (input) => {
     const response = await openai.responses.create({
@@ -675,8 +740,7 @@ export function createOpenAiManufacturerResearchV2Call(
       input: [
         {
           role: 'system',
-          content:
-            'You are researching a commercial fertilizer product. Identify the exact product variant and return the manufacturer-declared nutrient composition. Use web search. Prefer official manufacturer sources. Do not mix nutrient values from different variants. Return structured data only.',
+          content: MANUFACTURER_RESEARCH_V2_SYSTEM_PROMPT,
         },
         {
           role: 'user',
@@ -708,6 +772,7 @@ export async function runManufacturerResearchV2Shadow(input: {
   captureContext?: ManufacturerResearchV2CaptureContext | null
   fetchProvider: FertilizerManufacturerResearchFetchProvider
   callResearch: ManufacturerResearchV2Call
+  modelUsed?: string | null
   v1AdapterResult?: FertilizerSourceAdapterResult | null
   v1Diagnostics: FertilizerManufacturerResearchDiagnostics
   timeoutMs?: number
@@ -759,6 +824,7 @@ export async function runManufacturerResearchV2Shadow(input: {
     return {
       executed: true,
       durationMs: now() - startedAt,
+      modelUsed: input.modelUsed ?? MANUFACTURER_RESEARCH_V2_MODEL,
       status: rawResult?.status ?? 'error',
       identifiedProduct: rawResult
         ? {
@@ -769,7 +835,10 @@ export async function runManufacturerResearchV2Shadow(input: {
             npkLabel: npkLabelFromTriplet(rawResult.product.npk),
           }
         : null,
+      confidence: rawResult?.confidence ?? null,
       declarationSourceUrl: rawResult?.declarationSource?.url ?? null,
+      aiReturnedNutrients: rawResult?.declaration.nutrients ?? null,
+      declarationComplete: rawResult?.declarationComplete ?? null,
       supportingSourceCount: rawResult?.supportingSources.length ?? null,
       nutrientCount: rawResult?.declaration.nutrients.length ?? null,
       positiveNutrientCount,
@@ -790,9 +859,13 @@ export async function runManufacturerResearchV2Shadow(input: {
     return {
       executed: true,
       durationMs: now() - startedAt,
+      modelUsed: input.modelUsed ?? MANUFACTURER_RESEARCH_V2_MODEL,
       status: 'error',
       identifiedProduct: null,
+      confidence: null,
       declarationSourceUrl: null,
+      aiReturnedNutrients: null,
+      declarationComplete: null,
       supportingSourceCount: null,
       nutrientCount: null,
       positiveNutrientCount: null,
@@ -830,9 +903,13 @@ export async function maybeAttachManufacturerResearchV2Shadow(input: {
     return {
       executed: false,
       durationMs: null,
+      modelUsed: null,
       status: null,
       identifiedProduct: null,
+      confidence: null,
       declarationSourceUrl: null,
+      aiReturnedNutrients: null,
+      declarationComplete: null,
       supportingSourceCount: null,
       nutrientCount: null,
       positiveNutrientCount: null,
@@ -850,6 +927,7 @@ export async function maybeAttachManufacturerResearchV2Shadow(input: {
     captureContext: input.captureContext,
     fetchProvider: input.fetchProvider,
     callResearch,
+    modelUsed: MANUFACTURER_RESEARCH_V2_MODEL,
     v1AdapterResult: input.v1AdapterResult,
     v1Diagnostics: input.v1Diagnostics,
     timeoutMs: input.timeoutMs,

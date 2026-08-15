@@ -56,6 +56,7 @@ export interface ManufacturerResearchV2Result {
   declaration: {
     nutrients: ManufacturerResearchV2Nutrient[]
   }
+  declarationComplete: boolean
   declarationSource: ManufacturerResearchV2DeclarationSource | null
   supportingSources: Array<{ url: string; title: string | null }>
   alternatives: ManufacturerResearchV2Alternative[]
@@ -90,6 +91,7 @@ export interface ManufacturerResearchV2ShadowComparison {
 export interface ManufacturerResearchV2ShadowDiagnostics {
   executed: boolean
   durationMs: number | null
+  modelUsed: string | null
   status: ManufacturerResearchV2Status | 'error' | null
   identifiedProduct: {
     manufacturer: string | null
@@ -98,7 +100,10 @@ export interface ManufacturerResearchV2ShadowDiagnostics {
     variant: string | null
     npkLabel: string | null
   } | null
+  confidence: ManufacturerResearchV2Confidence | null
   declarationSourceUrl: string | null
+  aiReturnedNutrients: ManufacturerResearchV2Nutrient[] | null
+  declarationComplete: boolean | null
   supportingSourceCount: number | null
   nutrientCount: number | null
   positiveNutrientCount: number | null
@@ -110,7 +115,12 @@ export interface ManufacturerResearchV2ShadowDiagnostics {
 }
 
 export interface ManufacturerResearchV2CaptureContext {
+  manufacturer?: string | null
+  productLine?: string | null
+  productName?: string | null
+  variant?: string | null
+  npkLabel?: string | null
+  packageSizeLabel?: string | null
   labelText?: string | null
   recognitionConfidence?: number | null
-  packageSizeLabel?: string | null
 }

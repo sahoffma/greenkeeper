@@ -37,6 +37,7 @@ import {
   maybeAttachManufacturerResearchV2Shadow,
   type ManufacturerResearchV2Call,
 } from './fertilizerManufacturerResearchV2Core'
+import type { ManufacturerResearchV2CaptureContext } from '../types/fertilizerManufacturerResearchV2'
 
 export {
   MANUFACTURER_RESEARCH_DIRECT_FALLBACK_MAX_CANDIDATES,
@@ -382,6 +383,7 @@ async function attachManufacturerResearchV2ShadowIfEnabled(input: {
   identity: FertilizerEnrichmentIdentity
   npkLabel?: string | null
   packageSizeLabel?: string | null
+  captureContext?: ManufacturerResearchV2CaptureContext | null
   fetchProvider: FertilizerManufacturerResearchFetchProvider
   runtime?: FertilizerManufacturerResearchRuntimeOptions
 }): Promise<FertilizerManufacturerResearchResult> {
@@ -389,7 +391,17 @@ async function attachManufacturerResearchV2ShadowIfEnabled(input: {
     enabled: input.runtime?.manufacturerResearchV2ShadowEnabled,
     identity: input.identity,
     npkLabel: input.npkLabel,
-    captureContext: { packageSizeLabel: input.packageSizeLabel },
+    captureContext:
+      input.captureContext ??
+      ({
+        packageSizeLabel: input.packageSizeLabel,
+        manufacturer: input.identity.manufacturer,
+        productLine: input.identity.productLine ?? null,
+        productName: input.identity.officialName,
+        variant: input.identity.variant,
+        npkLabel: input.npkLabel ?? null,
+        recognitionConfidence: input.identity.identityConfidence ?? null,
+      } satisfies ManufacturerResearchV2CaptureContext),
     fetchProvider: input.fetchProvider,
     v1AdapterResult: input.result.adapterResult,
     v1Diagnostics: input.result.diagnostics,
@@ -415,6 +427,7 @@ export async function runAutomaticManufacturerResearch(input: {
   hintedUrls?: string[]
   npkLabel?: string | null
   packageSizeLabel?: string | null
+  captureContext?: ManufacturerResearchV2CaptureContext | null
   structuredResearchProvider?: FertilizerManufacturerStructuredResearchProvider | null
   /** @deprecated Use structuredResearchProvider instead. */
   searchProvider?: FertilizerManufacturerResearchSearchProvider | null
@@ -562,6 +575,7 @@ export async function runAutomaticManufacturerResearch(input: {
       identity: input.identity,
       npkLabel: input.npkLabel,
       packageSizeLabel: input.packageSizeLabel,
+      captureContext: input.captureContext,
       fetchProvider: input.fetchProvider,
       runtime: input.runtime,
     })
@@ -592,6 +606,7 @@ export async function runAutomaticManufacturerResearch(input: {
       identity: input.identity,
       npkLabel: input.npkLabel,
       packageSizeLabel: input.packageSizeLabel,
+      captureContext: input.captureContext,
       fetchProvider: input.fetchProvider,
       runtime: input.runtime,
     })
@@ -620,6 +635,7 @@ export async function runAutomaticManufacturerResearch(input: {
     identity: input.identity,
     npkLabel: input.npkLabel,
     packageSizeLabel: input.packageSizeLabel,
+    captureContext: input.captureContext,
     fetchProvider: input.fetchProvider,
     runtime: input.runtime,
   })

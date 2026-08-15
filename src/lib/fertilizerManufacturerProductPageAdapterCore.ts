@@ -12,6 +12,7 @@ import {
   runAutomaticManufacturerResearch,
   type FertilizerManufacturerStructuredResearchProvider,
 } from './fertilizerManufacturerResearchCore'
+import { buildManufacturerResearchV2CaptureContextFromEnrichmentInput } from './fertilizerManufacturerResearchV2Core'
 
 export const FERTILIZER_MANUFACTURER_PRODUCT_PAGE_ADAPTER_TYPE =
   'manufacturer_product_page' as const
@@ -111,6 +112,11 @@ export async function runFertilizerManufacturerProductPageAdapter(
       hintedUrls: collectHintedUrls(context.input),
       npkLabel: resolveNpkLabel(context.input),
       packageSizeLabel: resolvePackageSizeLabel(context.input),
+      captureContext: buildManufacturerResearchV2CaptureContextFromEnrichmentInput({
+        orchestrationInput: context.input,
+        npkLabel: resolveNpkLabel(context.input),
+        packageSizeLabel: resolvePackageSizeLabel(context.input),
+      }),
       structuredResearchProvider: dependencies.structuredResearchProvider ?? null,
       fetchProvider: {
         fetchSource: (url, options) =>

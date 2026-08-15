@@ -5,12 +5,15 @@ import type { ManufacturerResearchV2Result } from '../types/fertilizerManufactur
 import { runAutomaticManufacturerResearch } from './fertilizerManufacturerResearchCore'
 import { buildStructuredResearchProviderResultFromRecord } from './fertilizerManufacturerStructuredResearchCore'
 import {
+  buildManufacturerResearchV2CaptureContextFromEnrichmentInput,
   buildManufacturerResearchV2Prompt,
   compareManufacturerResearchV2WithV1,
   detectHardIdentityContradiction,
   evaluateManufacturerResearchV2Shadow,
   isManufacturerResearchV2ShadowEnabled,
   isNutrientValuePresentInSourceText,
+  MANUFACTURER_RESEARCH_V2_MODEL,
+  MANUFACTURER_RESEARCH_V2_SYSTEM_PROMPT,
   maybeAttachManufacturerResearchV2Shadow,
   parseManufacturerResearchV2Result,
   runManufacturerResearchV2Shadow,
@@ -83,6 +86,7 @@ function buildRasendoktorProfessionalResult(
     ],
     ambiguity: { unresolved: false, reason: null, questionForUser: null },
     confidence: 'high',
+    declarationComplete: true,
     shortReasoningSummary: 'Resolved Professional variant from official source.',
     ...overrides,
   }
@@ -188,6 +192,55 @@ describe('manufacturer research v2 shadow flag', () => {
       false,
     )
   })
+
+  it('uses gpt-4o for manufacturer research v2', () => {
+    expect(MANUFACTURER_RESEARCH_V2_MODEL).toBe('gpt-4o')
+  })
+})
+
+describe('manufacturer research v2 capture context', () => {
+  it('builds full capture context from enrichment input', () => {
+    const context = buildManufacturerResearchV2CaptureContextFromEnrichmentInput({
+      orchestrationInput: {
+        identity: RASENDOKTOR_PROFESSIONAL_IDENTITY,
+        captureInlineSourceTexts: {
+          captureRecognitionLabel: 'Rasendoktor Professional Stress-Manager NPK 0-0-30',
+        },
+      },
+      npkLabel: '0-0-30',
+      packageSizeLabel: '5 kg',
+    })
+
+    expect(context.manufacturer).toBe('Rasendoktor')
+    expect(context.productLine).toBe('Professional')
+    expect(context.productName).toBe('Stress-Manager')
+    expect(context.npkLabel).toBe('0-0-30')
+    expect(context.packageSizeLabel).toBe('5 kg')
+    expect(context.labelText).toContain('Stress-Manager')
+    expect(context.recognitionConfidence).toBe(0.95)
+  })
+})
+
+describe('manufacturer research v2 prompt', () => {
+  it('requires complete declaration and field semantics', () => {
+    const prompt = buildManufacturerResearchV2Prompt({
+      identity: RASENDOKTOR_PROFESSIONAL_IDENTITY,
+      npkLabel: '0-0-30',
+      captureContext: {
+        packageSizeLabel: '5 kg',
+        labelText: 'Front label text',
+      },
+    })
+
+    expect(MANUFACTURER_RESEARCH_V2_SYSTEM_PROMPT).toContain('complete manufacturer nutrient declaration')
+    expect(prompt).toContain('complete manufacturer nutrient declaration')
+    expect(prompt).toContain('secondary and trace nutrients')
+    expect(prompt).toContain('declarationComplete')
+    expect(prompt).toContain('Field semantics')
+    expect(prompt).toContain('Front-label / recognition text from capture')
+    expect(prompt).toContain('Front label text')
+    expect(prompt).not.toContain('Rasendoktor Professional Stress-Manager 0-0-30')
+  })
 })
 
 describe('manufacturer research v2 gates', () => {
@@ -280,6 +333,10 @@ describe('manufacturer research v2 fixtures', () => {
     expect(shadow.finalShadowDecision).toBe('resolved_valid')
     expect(shadow.identifiedProduct?.productLine).toBe('Professional')
     expect(shadow.positiveNutrientCount).toBe(6)
+    expect(shadow.modelUsed).toBe(MANUFACTURER_RESEARCH_V2_MODEL)
+    expect(shadow.confidence).toBe('high')
+    expect(shadow.declarationComplete).toBe(true)
+    expect(shadow.aiReturnedNutrients?.length).toBe(6)
     expect(shadow.gates?.schemaValid).toBe(true)
     expect(shadow.gates?.sourceValid).toBe(true)
     expect(shadow.gates?.identityContradiction).toBe(false)
@@ -522,6 +579,10 @@ describe('manufacturer research v2 shadow integration', () => {
 
     expect(withShadow.adapterResult).toEqual(withoutShadow.adapterResult)
     expect(withShadow.diagnostics.manufacturerResearchV2Shadow?.executed).toBe(true)
+    expect(withShadow.diagnostics.manufacturerResearchV2Shadow?.modelUsed).toBe(
+      MANUFACTURER_RESEARCH_V2_MODEL,
+    )
+    expect(withShadow.diagnostics.manufacturerResearchV2Shadow?.aiReturnedNutrients?.length).toBe(6)
     expect(withShadow.diagnostics.manufacturerResearchV2Shadow?.finalShadowDecision).toBe(
       'resolved_valid',
     )
