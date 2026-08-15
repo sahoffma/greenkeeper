@@ -273,4 +273,31 @@ describe('fertilizerManufacturerStructuredResearchSourceIdentityCore', () => {
       sourceTextEvidencesNpk(sourceText, { nitrogen: 0, phosphate: 0, potash: 30 }),
     ).toBe(true)
   })
+
+  it('rejects live case when model echoes professional identity on standard stressmanager source', () => {
+    const liveStandardSource: ManufacturerStructuredResearchSourceRecord = {
+      url: 'https://www.rasendoktor.de/duenger/rasenduenger/kalium-spezial-rasenduenger-stressmanager/',
+      title: 'Kalium Spezial-Rasendünger "Stressmanager"',
+      category: 'official_document',
+      sourceIdentity: {
+        manufacturer: 'Rasendoktor',
+        productLine: 'Professional',
+        productName: 'Stress Manager',
+        npkLabel: '0-0-30',
+      },
+    }
+
+    const validation = validateStructuredResearchIdentityMatch({
+      record: buildEchoRecord({ sources: [liveStandardSource] }),
+      identity: IDENTITY,
+      npkLabel: '0-0-30',
+      primarySource: liveStandardSource,
+    })
+
+    expect(validation.identityMatchAccepted).toBe(false)
+    expect(validation.declarationSourceIdentityMismatch).toBe(true)
+    expect(validation.canonicalDeclarationSourceProductLineVerified).toBe(false)
+    expect(validation.canonicalDeclarationSourceNpkVerified).toBe(false)
+    expect(validation.sourceBoundIdentityAccepted).toBe(false)
+  })
 })

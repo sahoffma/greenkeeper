@@ -253,4 +253,53 @@ describe('fertilizerManufacturerStructuredResearchNutrientProvenanceCore', () =>
       })
     }
   })
+
+  it('rejects live standard stressmanager source when model fakes professional 0-0-30 identity', () => {
+    const liveStandardSource: ManufacturerStructuredResearchSourceRecord = {
+      url: 'https://www.rasendoktor.de/duenger/rasenduenger/kalium-spezial-rasenduenger-stressmanager/',
+      title: 'Kalium Spezial-Rasendünger "Stressmanager"',
+      category: 'official_document',
+      sourceIdentity: {
+        manufacturer: 'Rasendoktor',
+        productLine: 'Professional',
+        productName: 'Stress Manager',
+        npkLabel: '0-0-30',
+      },
+    }
+
+    const base = buildRecord()
+    const record = buildRecord({
+      nutrientMatrix: {
+        ...base.nutrientMatrix,
+        sulfur: 16.4,
+      },
+      sources: [liveStandardSource],
+      nutrientSourceIndices: {
+        ...base.nutrientSourceIndices,
+        sulfur: 0,
+      },
+    })
+
+    const validation = validateStructuredResearchNutrientProvenance({
+      record,
+      identity: IDENTITY,
+      npkLabel: '0-0-30',
+      primarySource: liveStandardSource,
+      primarySourceIndex: 0,
+      recordProductLineMatchesExpected: true,
+      recordNpkCompatible: true,
+    })
+
+    expect(validation.accepted).toBe(false)
+    expect(validation.sulfurSourceIdentityVerified).toBe(false)
+
+    const adapterResult = mapStructuredResearchToAdapterResult({
+      record,
+      identity: IDENTITY,
+      retrievedAt: '2026-08-15T09:58:00.000Z',
+      npkLabel: '0-0-30',
+    })
+
+    expect(adapterResult).toBeNull()
+  })
 })

@@ -61,6 +61,13 @@ export function buildStructuredResearchSourceIdentityText(
   return normalizeComparable(parts.join(' '))
 }
 
+/** Tool-derived evidence only: URL and page title from web_search citations. */
+export function buildTrustedStructuredResearchSourceEvidenceText(
+  source: Pick<ManufacturerStructuredResearchSourceRecord, 'url' | 'title'>,
+): string {
+  return normalizeComparable([source.url, source.title].join(' '))
+}
+
 export function sourceTextEvidencesProductLine(
   sourceText: string,
   expectedProductLine: string | null | undefined,
@@ -126,20 +133,15 @@ export function evaluateStructuredResearchSourceIdentityEvidence(input: {
     }
   }
 
-  const sourceText = buildStructuredResearchSourceIdentityText(primarySource)
-  const rawSourceIdentityText = [
-    primarySource.url,
-    primarySource.title,
-    primarySource.sourceIdentity?.npkLabel ?? '',
-  ].join(' ')
+  const trustedSourceText = buildTrustedStructuredResearchSourceEvidenceText(primarySource)
   const declaredSourceIdentity = primarySource.sourceIdentity
 
   const canonicalDeclarationSourceProductLineVerified = sourceTextEvidencesProductLine(
-    sourceText,
+    trustedSourceText,
     input.identity.productLine,
   )
   const canonicalDeclarationSourceNpkVerified = sourceTextEvidencesNpk(
-    rawSourceIdentityText,
+    trustedSourceText,
     expectedNpk,
   )
 
@@ -153,8 +155,27 @@ export function evaluateStructuredResearchSourceIdentityEvidence(input: {
     declaredSourceIdentity?.npkLabel != null &&
     !npkTripletsCompatible(expectedNpk, parseNpkTripletFromText(declaredSourceIdentity.npkLabel))
 
+  const declaredProductLineUnsupportedByTrustedEvidence =
+    declaredSourceIdentity?.productLine != null &&
+    !sourceTextEvidencesProductLine(trustedSourceText, declaredSourceIdentity.productLine)
+
+  const declaredNpkFromIdentity = parseNpkTripletFromText(declaredSourceIdentity?.npkLabel)
+  const declaredNpkUnsupportedByTrustedEvidence =
+    declaredNpkFromIdentity != null &&
+    !sourceTextEvidencesNpk(trustedSourceText, declaredNpkFromIdentity)
+
+  const trustedNpkTriplet = parseNpkTripletFromText(trustedSourceText)
+  const trustedNpkContradictsExpected =
+    expectedNpk != null &&
+    trustedNpkTriplet != null &&
+    !npkTripletsCompatible(expectedNpk, trustedNpkTriplet)
+
   const declarationSourceIdentityMismatch =
-    declaredProductLineMismatch || declaredNpkMismatch
+    declaredProductLineMismatch ||
+    declaredNpkMismatch ||
+    declaredProductLineUnsupportedByTrustedEvidence ||
+    declaredNpkUnsupportedByTrustedEvidence ||
+    trustedNpkContradictsExpected
 
   const structuredIdentityEchoSuspected =
     input.recordProductLineMatchesExpected &&
