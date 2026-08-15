@@ -38,9 +38,38 @@ export function buildProductFamilyKeyFromStockRow(
   })
 }
 
+function findActiveStockContainerForSavedProfile(input: {
+  baseUnit: 'kg' | 'ml'
+  savedProductProfileId: string
+  activeStockRows: ActiveProductStockReadRow[]
+}): ActiveProductStockReadRow | null {
+  return (
+    input.activeStockRows.find(
+      (row) =>
+        row.baseUnit === input.baseUnit && row.savedProductProfileId === input.savedProductProfileId,
+    ) ?? null
+  )
+}
+
 export function resolveSavedProductProfileIdForFamilyStockIntake(
   input: ResolveSavedProductProfileIdForFamilyStockIntakeInput,
 ): ResolveSavedProductProfileIdForFamilyStockIntakeResult {
+  const containerForNewProfile = findActiveStockContainerForSavedProfile({
+    baseUnit: input.baseUnit,
+    savedProductProfileId: input.newSavedProductProfileId,
+    activeStockRows: input.activeStockRows,
+  })
+
+  if (containerForNewProfile) {
+    return {
+      savedProductProfileId: input.newSavedProductProfileId,
+      matchedExistingStock: true,
+      matchedInventoryItemId: containerForNewProfile.inventoryItemId,
+      previousSavedProductProfileId: null,
+      reusedContainer: true,
+    }
+  }
+
   const normalizedInputFamilyKey = normalizeProductFamilyKey(input.productFamilyKey)
   if (!normalizedInputFamilyKey) {
     return {

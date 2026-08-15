@@ -25,6 +25,30 @@ function stockRow(overrides: Partial<ActiveProductStockReadRow> = {}): ActivePro
 }
 
 describe('fertilizerProductStockFamilyIntakeCore', () => {
+  it('prefers an existing container for the new profile without relink when both old and new family containers exist', () => {
+    const resolution = resolveSavedProductProfileIdForFamilyStockIntake({
+      productFamilyKey: FAMILY_KEY,
+      baseUnit: 'kg',
+      newSavedProductProfileId: 'profile-new-version',
+      activeStockRows: [
+        stockRow({
+          inventoryItemId: 'item-old',
+          savedProductProfileId: 'profile-existing',
+        }),
+        stockRow({
+          inventoryItemId: 'item-new',
+          savedProductProfileId: 'profile-new-version',
+        }),
+      ],
+    })
+
+    expect(resolution.matchedExistingStock).toBe(true)
+    expect(resolution.reusedContainer).toBe(true)
+    expect(resolution.savedProductProfileId).toBe('profile-new-version')
+    expect(resolution.matchedInventoryItemId).toBe('item-new')
+    expect(resolution.previousSavedProductProfileId).toBeNull()
+  })
+
   it('reuses existing container but selects the new saved profile', () => {
     const resolution = resolveSavedProductProfileIdForFamilyStockIntake({
       productFamilyKey: FAMILY_KEY,

@@ -93,6 +93,7 @@ describe('fertilizerCaptureInventorySaveCore', () => {
     mockSaveProfile.mockReset()
     mockRecordIntake.mockReset()
     mockFetchActiveStockRows.mockReset()
+    mockRelinkContainerProfile.mockReset()
     mockFetchActiveStockRows.mockResolvedValue([])
   })
 
@@ -349,6 +350,82 @@ describe('fertilizerCaptureInventorySaveCore', () => {
       containerId: 'item-existing',
       savedProductProfileId: 'profile-new-version',
     })
+    expect(mockRecordIntake).toHaveBeenCalledWith(
+      expect.objectContaining({
+        savedProductProfileId: 'profile-new-version',
+        quantity: 25,
+      }),
+    )
+    expect(result.savedProductProfileId).toBe('profile-new-version')
+  })
+
+  it('skips relink when an active container for the new profile already exists', async () => {
+    mockStartEnrichment.mockResolvedValue({
+      jobId: 'job-1',
+      result: {
+        status: 'intake_ready',
+        pipelineResult: { readinessResult: { status: 'ready' } },
+      },
+    } as never)
+    mockSaveProfile.mockResolvedValue({
+      profile: {
+        id: 'profile-new-version',
+        manufacturer: 'Rasendoktor',
+        productLine: 'Professional',
+        officialName: 'Frühjahr',
+        variant: '14-28-10',
+        productForm: 'granular',
+      },
+    } as never)
+    mockFetchActiveStockRows.mockResolvedValue([
+      {
+        inventoryItemId: 'item-old',
+        savedProductProfileId: 'profile-existing',
+        baseUnit: 'kg',
+        balance: 5,
+        manufacturer: 'Rasendoktor',
+        officialName: 'Frühjahr',
+        productLine: 'Professional',
+        variant: '14-28-10',
+        productForm: 'granular',
+        movementCount: 1,
+        lastMovementAt: '2026-01-01T00:00:00.000Z',
+      },
+      {
+        inventoryItemId: 'item-new',
+        savedProductProfileId: 'profile-new-version',
+        baseUnit: 'kg',
+        balance: 10,
+        manufacturer: 'Rasendoktor',
+        officialName: 'Frühjahr',
+        productLine: 'Professional',
+        variant: '14-28-10',
+        productForm: 'granular',
+        movementCount: 2,
+        lastMovementAt: '2026-01-02T00:00:00.000Z',
+      },
+    ])
+    mockRecordIntake.mockResolvedValue({
+      operationId: 'op-1',
+      idempotencyKey: 'capture-key:intake',
+      inventoryItemId: 'item-new',
+      movementId: 'movement-3',
+      savedProductProfileId: 'profile-new-version',
+      baseUnit: 'kg',
+      quantityDelta: 25,
+      reason: 'purchase',
+      movementAt: '2026-01-03T00:00:00.000Z',
+      itemCreated: false,
+      idempotencyReplay: false,
+    })
+
+    const result = await saveFertilizerCaptureToInventoryCore({
+      draft: readyDraft(),
+      userId: 'user-1',
+      creationReason: 'purchase',
+    })
+
+    expect(mockRelinkContainerProfile).not.toHaveBeenCalled()
     expect(mockRecordIntake).toHaveBeenCalledWith(
       expect.objectContaining({
         savedProductProfileId: 'profile-new-version',
