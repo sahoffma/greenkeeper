@@ -9,6 +9,7 @@ import type {
   ManufacturerStructuredResearchRecord,
   ManufacturerStructuredResearchSourceRecord,
 } from './fertilizerManufacturerStructuredResearchCore'
+import { buildManufacturerSearchSelectionFromEvidence } from './fertilizerManufacturerSearchCandidateCore'
 
 const IDENTITY: FertilizerEnrichmentIdentity = {
   manufacturer: 'Rasendoktor GmbH',
@@ -136,11 +137,23 @@ describe('fertilizerManufacturerStructuredResearchIdentityCore', () => {
   })
 
   it('accepts professional stress-manager with matching npk and verified source', () => {
+    const source = verifiedProfessionalSource()
     const validation = validateStructuredResearchIdentityMatch({
       record: buildRecord(),
       identity: IDENTITY,
       npkLabel: '0-0-30',
-      primarySource: verifiedProfessionalSource(),
+      primarySource: source,
+      selection: buildManufacturerSearchSelectionFromEvidence({
+        identity: IDENTITY,
+        npkLabel: '0-0-30',
+        candidates: [
+          {
+            url: source.url,
+            title: source.title,
+            trustedEvidenceText: 'rasendoktor professional stress manager npk 0 0 30',
+          },
+        ],
+      }),
     })
 
     expect(validation.identityMatchAccepted).toBe(true)

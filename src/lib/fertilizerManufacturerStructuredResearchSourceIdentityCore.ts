@@ -114,6 +114,7 @@ export function evaluateStructuredResearchSourceIdentityEvidence(input: {
   identity: FertilizerEnrichmentIdentity
   npkLabel?: string | null
   primarySource?: ManufacturerStructuredResearchSourceRecord | null
+  trustedEvidenceText?: string | null
   recordProductLineMatchesExpected: boolean
   recordNpkCompatible: boolean
 }): StructuredResearchSourceIdentityEvidence {
@@ -133,7 +134,9 @@ export function evaluateStructuredResearchSourceIdentityEvidence(input: {
     }
   }
 
-  const trustedSourceText = buildTrustedStructuredResearchSourceEvidenceText(primarySource)
+  const trustedSourceText =
+    input.trustedEvidenceText?.trim() ||
+    buildTrustedStructuredResearchSourceEvidenceText(primarySource)
   const declaredSourceIdentity = primarySource.sourceIdentity
 
   const canonicalDeclarationSourceProductLineVerified = sourceTextEvidencesProductLine(

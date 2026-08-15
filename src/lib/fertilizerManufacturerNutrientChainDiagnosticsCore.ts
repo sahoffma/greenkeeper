@@ -235,6 +235,7 @@ export function summarizeStructuredResearchNutrientProvenanceValidation(
       validation.sulfurSourceMatchesCanonicalDeclarationSource,
     nutrientSourceMismatchCount: validation.nutrientSourceMismatchCount,
     mixedVariantNutrientSourceDetected: validation.mixedVariantNutrientSourceDetected,
+    canonicalCandidateId: validation.canonicalCandidateId ?? null,
   }
 }
 

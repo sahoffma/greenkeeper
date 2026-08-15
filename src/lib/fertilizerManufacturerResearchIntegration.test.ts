@@ -9,6 +9,7 @@ import { recognitionFromImageAnalysis } from './productRecognizeIdentityCore'
 import { buildFertilizerEnrichmentOrchestrationInputFromTextIdentity } from './fertilizerTextIdentityEnrichmentInputCore'
 import { mapEnrichmentNutrientMatrixToSaved } from './fertilizerProductProfileSaveCore'
 import type { FertilizerManufacturerStructuredResearchProvider } from './fertilizerManufacturerStructuredResearchCore'
+import { buildStructuredResearchProviderResultFromRecord } from './fertilizerManufacturerStructuredResearchCore'
 
 const FIXED_NOW = '2026-07-29T10:00:00.000Z'
 const OFFICIAL_PRODUCT_URL = 'https://www.rasendoktor.de/professional/stress-manager-0-0-30'
@@ -28,68 +29,80 @@ function createOfficialStructuredResearchProvider(options?: {
 
       const sourceUrl = options?.sourceUrl ?? OFFICIAL_PRODUCT_URL
       const includeMicronutrients = options?.includeMicronutrients ?? true
-      return {
-        record: {
-          manufacturer: 'Rasendoktor',
-          productLine: 'Professional',
-          productName: 'Stress-Manager',
-          productForm: 'granular',
-          npk: { nitrogen: 0, phosphate: 0, potash: 30 },
-          nutrientMatrix: {
-            nitrogen: 0,
-            phosphate: 0,
-            potash: 30,
-            nitrateNitrogen: null,
-            ammoniumNitrogen: null,
-            ureaNitrogen: null,
-            organicNitrogen: null,
-            magnesium: null,
-            calcium: null,
-            sulfur: includeMicronutrients ? 10.2 : null,
-            iron: includeMicronutrients ? 3 : null,
-            manganese: includeMicronutrients ? 0.1 : null,
-            copper: includeMicronutrients ? 0.1 : null,
-            zinc: includeMicronutrients ? 0.1 : null,
-            boron: null,
-            molybdenum: null,
-          },
-          nutrientDeclarationBases: {
-            nitrogen: 'N',
-            phosphate: 'P2O5',
-            potash: 'K2O',
-            nitrateNitrogen: null,
-            ammoniumNitrogen: null,
-            ureaNitrogen: null,
-            organicNitrogen: null,
-            magnesium: null,
-            calcium: null,
-            sulfur: includeMicronutrients ? 'S' : null,
-            iron: includeMicronutrients ? 'Fe' : null,
-            manganese: includeMicronutrients ? 'Mn' : null,
-            copper: includeMicronutrients ? 'Cu' : null,
-            zinc: includeMicronutrients ? 'Zn' : null,
-            boron: null,
-            molybdenum: null,
-          },
-          declarationComplete: options?.declarationComplete ?? true,
-          identityMatch: true,
-          confidence: 0.95,
-          sources: [
-            {
-              url: sourceUrl,
-              title: 'Professional Stress-Manager 0-0-30',
-              category: sourceUrl.endsWith('.pdf') ? 'official_document' : 'official_manufacturer',
-              sourceIdentity: {
-                manufacturer: 'Rasendoktor',
-                productLine: 'Professional',
-                productName: 'Stress-Manager',
-                npkLabel: '0-0-30',
-              },
-            },
-          ],
+      const record = {
+        manufacturer: 'Rasendoktor',
+        productLine: 'Professional',
+        productName: 'Stress-Manager',
+        productForm: 'granular' as const,
+        npk: { nitrogen: 0, phosphate: 0, potash: 30 },
+        nutrientMatrix: {
+          nitrogen: 0,
+          phosphate: 0,
+          potash: 30,
+          nitrateNitrogen: null,
+          ammoniumNitrogen: null,
+          ureaNitrogen: null,
+          organicNitrogen: null,
+          magnesium: null,
+          calcium: null,
+          sulfur: includeMicronutrients ? 10.2 : null,
+          iron: includeMicronutrients ? 3 : null,
+          manganese: includeMicronutrients ? 0.1 : null,
+          copper: includeMicronutrients ? 0.1 : null,
+          zinc: includeMicronutrients ? 0.1 : null,
+          boron: null,
+          molybdenum: null,
         },
-        webSearchToolCallObserved: true,
+        nutrientDeclarationBases: {
+          nitrogen: 'N',
+          phosphate: 'P2O5',
+          potash: 'K2O',
+          nitrateNitrogen: null,
+          ammoniumNitrogen: null,
+          ureaNitrogen: null,
+          organicNitrogen: null,
+          magnesium: null,
+          calcium: null,
+          sulfur: includeMicronutrients ? 'S' : null,
+          iron: includeMicronutrients ? 'Fe' : null,
+          manganese: includeMicronutrients ? 'Mn' : null,
+          copper: includeMicronutrients ? 'Cu' : null,
+          zinc: includeMicronutrients ? 'Zn' : null,
+          boron: null,
+          molybdenum: null,
+        },
+        declarationComplete: options?.declarationComplete ?? true,
+        identityMatch: true,
+        confidence: 0.95,
+        sources: [
+          {
+            url: sourceUrl,
+            title: 'Professional Stress-Manager 0-0-30',
+            category: sourceUrl.endsWith('.pdf') ? ('official_document' as const) : ('official_manufacturer' as const),
+            sourceIdentity: {
+              manufacturer: 'Rasendoktor',
+              productLine: 'Professional',
+              productName: 'Stress-Manager',
+              npkLabel: '0-0-30',
+            },
+          },
+        ],
       }
+
+      return buildStructuredResearchProviderResultFromRecord({
+        record,
+        identity: {
+          manufacturer: 'Rasendoktor GmbH',
+          officialName: 'Stress-Manager',
+          productLine: 'Professional',
+          variant: '0-0-30',
+          identityFingerprint: 'fp-integration',
+          identityConfidence: 1,
+          hasIdentityAmbiguity: false,
+        },
+        npkLabel: '0-0-30',
+        manufacturerDomain: 'rasendoktor.de',
+      })
     },
   }
 }

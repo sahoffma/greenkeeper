@@ -20,6 +20,14 @@ import { buildRawFertilizerDeclarationInput } from './fertilizerSourceAdapterMer
 import { evaluateRawFertilizerDeclaration } from './fertilizerNormalizationReadinessPipelineCore'
 import { mapEnrichmentNutrientMatrixToSaved } from './fertilizerProductProfileSaveCore'
 import type { FertilizerEnrichmentOrchestrationInput } from '../types/fertilizerEnrichmentOrchestration'
+import {
+  buildManufacturerSearchNutrientBindings,
+  buildManufacturerSearchResearchDecision,
+  extractTrustedWebSearchCandidatesFromResponseOutput,
+  selectCanonicalManufacturerSearchCandidate,
+  type ManufacturerSearchCandidateSelection,
+} from './fertilizerManufacturerSearchCandidateCore'
+import type { ManufacturerStructuredResearchProviderResult } from './fertilizerManufacturerStructuredResearchCore'
 
 const IDENTITY: FertilizerEnrichmentIdentity = {
   manufacturer: 'Example Manufacturer GmbH',
@@ -144,6 +152,116 @@ function createStructuredProvider(
   return { runStructuredWebResearch: handler }
 }
 
+function buildMockResponseOutputForSources(input: {
+  identity: FertilizerEnrichmentIdentity
+  npkLabel?: string
+  sources: Array<{ url: string; title: string; evidenceText?: string }>
+}) {
+  const excerpts = input.sources.map(
+    (source) =>
+      source.evidenceText ??
+      [
+        input.identity.productLine,
+        input.identity.officialName,
+        input.npkLabel ?? input.identity.variant,
+        source.title,
+      ]
+        .filter(Boolean)
+        .join(' '),
+  )
+  const text = excerpts.join(' ')
+  let cursor = 0
+  const annotations = input.sources.map((source, index) => {
+    const excerpt = excerpts[index] ?? source.title
+    const startIndex = cursor
+    const endIndex = startIndex + excerpt.length
+    cursor = endIndex + 1
+    return {
+      type: 'url_citation',
+      url: source.url,
+      title: source.title,
+      start_index: startIndex,
+      end_index: endIndex,
+    }
+  })
+
+  return [
+    {
+      type: 'web_search_call',
+      action: {
+        type: 'search',
+        sources: input.sources.map((source) => ({ type: 'url', url: source.url })),
+      },
+    },
+    {
+      type: 'message',
+      content: [{ type: 'output_text', text, annotations }],
+    },
+  ]
+}
+
+function buildSelectionForRecord(input: {
+  record: ManufacturerStructuredResearchRecord
+  identity: FertilizerEnrichmentIdentity
+  npkLabel?: string
+}): ManufacturerSearchCandidateSelection {
+  return selectCanonicalManufacturerSearchCandidate({
+    candidates: extractTrustedWebSearchCandidatesFromResponseOutput({
+      output: buildMockResponseOutputForSources({
+        identity: input.identity,
+        npkLabel: input.npkLabel,
+        sources: input.record.sources.map((source) => ({
+          url: source.url,
+          title: source.title,
+        })),
+      }),
+      manufacturerDomain: 'example-manufacturer.de',
+    }),
+    identity: input.identity,
+    npkLabel: input.npkLabel,
+  })
+}
+
+function buildMockProviderResult(input: {
+  record: ManufacturerStructuredResearchRecord
+  identity: FertilizerEnrichmentIdentity
+  npkLabel?: string
+  queries?: string[]
+}): ManufacturerStructuredResearchProviderResult {
+  const responseOutput = buildMockResponseOutputForSources({
+    identity: input.identity,
+    npkLabel: input.npkLabel,
+    sources: input.record.sources.map((source) => ({
+      url: source.url,
+      title: source.title,
+    })),
+  })
+  const candidateSelection = selectCanonicalManufacturerSearchCandidate({
+    candidates: extractTrustedWebSearchCandidatesFromResponseOutput({
+      output: responseOutput,
+      manufacturerDomain: 'example-manufacturer.de',
+    }),
+    identity: input.identity,
+    npkLabel: input.npkLabel,
+  })
+  const nutrientBindings = buildManufacturerSearchNutrientBindings({
+    record: input.record,
+    selection: candidateSelection,
+  })
+
+  return {
+    record: input.record,
+    webSearchToolCallObserved: true,
+    responseOutput,
+    generatedSearchQueries: input.queries ?? [],
+    candidateSelection,
+    researchDecision: buildManufacturerSearchResearchDecision({
+      selection: candidateSelection,
+      nutrientBindings,
+    }),
+  }
+}
+
 function fullDeclarationText(): string {
   return `Manufacturer: Example Manufacturer
 Product: Universal Feed
@@ -173,6 +291,7 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
       record,
       identity: IDENTITY,
       retrievedAt: '2026-07-29T10:00:00.000Z',
+      selection: buildSelectionForRecord({ record, identity: IDENTITY, npkLabel: '10-5-20' }),
     })
 
     expect(adapterResult?.status).toBe('success')
@@ -194,6 +313,7 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
       record,
       identity: IDENTITY,
       retrievedAt: '2026-07-29T10:00:00.000Z',
+      selection: buildSelectionForRecord({ record, identity: IDENTITY, npkLabel: '10-5-20' }),
     })
 
     expect(adapterResult?.sourceUrl).toBe(OFFICIAL_URL)
@@ -227,6 +347,7 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
       record,
       identity: IDENTITY,
       retrievedAt: '2026-07-29T10:00:00.000Z',
+      selection: buildSelectionForRecord({ record, identity: IDENTITY, npkLabel: '10-5-20' }),
     })
 
     expect(adapterResult?.status).toBe('partial')
@@ -247,10 +368,11 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
       identity: IDENTITY,
       structuredResearchProvider: createStructuredProvider(async () => {
         currentTime += 6_000
-        return {
+        return buildMockProviderResult({
           record: buildStructuredRecord(),
-          webSearchToolCallObserved: true,
-        }
+          identity: IDENTITY,
+          npkLabel: '10-5-20',
+        })
       }),
       fetchProvider: {
         fetchSource: async () => ({ ok: false, errorCode: 'source_not_found', retryable: false }),
@@ -277,10 +399,11 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
       identity: IDENTITY,
       structuredResearchProvider: createStructuredProvider(async () => {
         await new Promise((resolve) => setTimeout(resolve, 50))
-        return {
+        return buildMockProviderResult({
           record: buildStructuredRecord({ declarationComplete: false }),
-          webSearchToolCallObserved: true,
-        }
+          identity: IDENTITY,
+          npkLabel: '10-5-20',
+        })
       }),
       fetchProvider: {
         fetchSource: async () => {
@@ -297,7 +420,7 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
     expect(result.diagnostics.searchProviderOutcome).toBe('timeout')
     expect(result.diagnostics.directCandidateFallbackUsed).toBe(true)
     expect(result.diagnostics.researchSourceStrategy).toBe('structured_then_direct_fallback')
-    expect(fetchCount).toBeGreaterThan(0)
+    expect(fetchCount).toBe(0)
   })
 
   it('returns controlled diagnostics when structured research finds no source', async () => {
@@ -318,10 +441,13 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
   it('returns success diagnostics for complete declarations', async () => {
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
-      structuredResearchProvider: createStructuredProvider(async () => ({
-        record: buildStructuredRecord(),
-        webSearchToolCallObserved: true,
-      })),
+      structuredResearchProvider: createStructuredProvider(async () =>
+        buildMockProviderResult({
+          record: buildStructuredRecord(),
+          identity: IDENTITY,
+          npkLabel: '10-5-20',
+        }),
+      ),
       fetchProvider: {
         fetchSource: async () => ({ ok: false, errorCode: 'source_not_found', retryable: false }),
       },
@@ -342,10 +468,11 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
         expect(input.identity.officialName).toBe('Universal Feed')
         expect(input.npkLabel).toBe('10-5-20')
         expect(input.packageSizeLabel).toBe('5 kg')
-        return {
+        return buildMockProviderResult({
           record: buildStructuredRecord(),
-          webSearchToolCallObserved: true,
-        }
+          identity: IDENTITY,
+          npkLabel: '10-5-20',
+        })
       }),
       fetchProvider: {
         fetchSource: async () => ({ ok: false, errorCode: 'source_not_found', retryable: false }),
@@ -378,10 +505,13 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
   it('uses direct fetch fallback when structured research is incomplete', async () => {
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
-      structuredResearchProvider: createStructuredProvider(async () => ({
-        record: buildStructuredRecord({ declarationComplete: false }),
-        webSearchToolCallObserved: true,
-      })),
+      structuredResearchProvider: createStructuredProvider(async () =>
+        buildMockProviderResult({
+          record: buildStructuredRecord({ declarationComplete: false }),
+          identity: IDENTITY,
+          npkLabel: '10-5-20',
+        }),
+      ),
       fetchProvider: {
         fetchSource: async () => ({
           ok: true,
@@ -436,6 +566,7 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
       identity: IDENTITY,
       retrievedAt: '2026-07-29T10:00:00.000Z',
       declarationCompletenessValidation: validation,
+      selection: buildSelectionForRecord({ record, identity: IDENTITY, npkLabel: '10-5-20' }),
     })
 
     expect(adapterResult?.status).toBe('partial')
@@ -478,6 +609,11 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
       identity: PROFESSIONAL_STRESS_IDENTITY,
       retrievedAt: '2026-07-29T10:00:00.000Z',
       npkLabel: '0-0-30',
+      selection: buildSelectionForRecord({
+        record,
+        identity: PROFESSIONAL_STRESS_IDENTITY,
+        npkLabel: '0-0-30',
+      }),
     })
 
     expect(adapterResult?.status).toBe('success')
@@ -582,6 +718,11 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
       retrievedAt: '2026-07-29T10:00:00.000Z',
       npkLabel: '0-0-30',
       declarationCompletenessValidation: validation,
+      selection: buildSelectionForRecord({
+        record,
+        identity: PROFESSIONAL_STRESS_IDENTITY,
+        npkLabel: '0-0-30',
+      }),
     })
 
     const orchestrationInput = {
@@ -622,6 +763,7 @@ describe('fertilizerManufacturerStructuredResearchCore', () => {
       identity: IDENTITY,
       retrievedAt: '2026-07-29T10:00:00.000Z',
       npkLabel: '10-5-20',
+      selection: buildSelectionForRecord({ record, identity: IDENTITY, npkLabel: '10-5-20' }),
     })
 
     expect(adapterResult?.status).toBe('success')

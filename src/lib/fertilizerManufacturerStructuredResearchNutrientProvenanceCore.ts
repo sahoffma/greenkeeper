@@ -6,15 +6,13 @@ import type {
   ManufacturerStructuredResearchSourceRecord,
 } from './fertilizerManufacturerStructuredResearchCore'
 import {
-  evaluateStructuredResearchSourceIdentityEvidence,
-  type StructuredResearchSourceIdentityEvidence,
-} from './fertilizerManufacturerStructuredResearchSourceIdentityCore'
-import {
-  productLinesCompatible,
-  resolveExpectedStructuredResearchNpk,
-  npkTripletsCompatible,
-} from './fertilizerManufacturerStructuredResearchIdentityCore'
-import { parseNpkTripletFromText } from './fertilizerManufacturerStructuredResearchSourceIdentityCore'
+  buildManufacturerSearchNutrientBindings,
+  buildManufacturerSearchResearchDecision,
+  type ManufacturerSearchCandidateSelection,
+  type ManufacturerSearchNutrientBinding,
+  resolveModelSourceUrlForCandidate,
+} from './fertilizerManufacturerSearchCandidateCore'
+import { resolveExpectedStructuredResearchNpk } from './fertilizerManufacturerStructuredResearchIdentityCore'
 
 const NPK_MATRIX_KEYS = new Set<FertilizerNutrientMatrixKey>(['nitrogen', 'phosphate', 'potash'])
 
@@ -24,6 +22,8 @@ export type StructuredResearchNutrientProvenanceRejectionReason =
   | 'nutrient_source_missing'
   | 'nutrient_source_unverified'
   | 'nutrient_source_identity_mismatch'
+  | 'candidate_ambiguity'
+  | 'no_canonical_candidate'
 
 export interface StructuredResearchNutrientProvenanceValidation {
   accepted: boolean
@@ -35,82 +35,62 @@ export interface StructuredResearchNutrientProvenanceValidation {
   nutrientSourceMismatchCount: number
   mixedVariantNutrientSourceDetected: boolean
   acceptedNutrientKeys: FertilizerNutrientMatrixKey[]
+  nutrientSourceBindings: ManufacturerSearchNutrientBinding[]
+  canonicalCandidateId: string | null
 }
 
-function sourceIdentitiesCompatible(
-  left: ManufacturerStructuredResearchSourceRecord,
-  right: ManufacturerStructuredResearchSourceRecord,
-): boolean {
-  const leftIdentity = left.sourceIdentity
-  const rightIdentity = right.sourceIdentity
+function resolveNutrientSourceUrl(input: {
+  record: ManufacturerStructuredResearchRecord
+  key: FertilizerNutrientMatrixKey
+  canonicalSourceIndex: number
+}): string | null {
+  const explicitIndex = input.record.nutrientSourceIndices?.[input.key]
+  const sourceIndex =
+    typeof explicitIndex === 'number' && Number.isInteger(explicitIndex)
+      ? explicitIndex
+      : input.canonicalSourceIndex
 
-  if (!leftIdentity || !rightIdentity) {
-    return true
+  if (sourceIndex == null || sourceIndex < 0 || sourceIndex >= input.record.sources.length) {
+    return null
   }
 
-  if (
-    leftIdentity.productLine &&
-    rightIdentity.productLine &&
-    !productLinesCompatible(leftIdentity.productLine, rightIdentity.productLine)
-  ) {
+  return input.record.sources[sourceIndex]?.url ?? null
+}
+
+function detectCrossVariantNutrientBinding(input: {
+  record: ManufacturerStructuredResearchRecord
+  selection: ManufacturerSearchCandidateSelection
+  canonicalSourceIndex: number
+}): boolean {
+  const canonicalId = input.selection.canonicalCandidate?.candidateId ?? null
+  if (!canonicalId) {
     return false
   }
 
-  const leftNpk = parseNpkTripletFromText(leftIdentity.npkLabel)
-  const rightNpk = parseNpkTripletFromText(rightIdentity.npkLabel)
-  if (leftNpk && rightNpk && !npkTripletsCompatible(leftNpk, rightNpk)) {
-    return false
-  }
+  for (const key of FERTILIZER_NUTRIENT_MATRIX_KEYS) {
+    if (typeof input.record.nutrientMatrix[key] !== 'number') {
+      continue
+    }
 
-  return true
-}
+    const sourceUrl = resolveNutrientSourceUrl({
+      record: input.record,
+      key,
+      canonicalSourceIndex: input.canonicalSourceIndex,
+    })
+    if (!sourceUrl) {
+      continue
+    }
 
-function sourcesHaveMixedVariantIdentities(
-  sources: ManufacturerStructuredResearchSourceRecord[],
-): boolean {
-  for (let index = 0; index < sources.length; index += 1) {
-    for (let other = index + 1; other < sources.length; other += 1) {
-      if (!sourceIdentitiesCompatible(sources[index]!, sources[other]!)) {
-        return true
-      }
+    const boundCandidateId = resolveModelSourceUrlForCandidate({
+      url: sourceUrl,
+      candidates: input.selection.candidates,
+    })
+    if (boundCandidateId && boundCandidateId !== canonicalId) {
+      return true
     }
   }
 
   return false
-}
-
-function evaluateSourceIdentityEvidence(input: {
-  identity: FertilizerEnrichmentIdentity
-  npkLabel?: string | null
-  source: ManufacturerStructuredResearchSourceRecord
-  recordProductLineMatchesExpected: boolean
-  recordNpkCompatible: boolean
-}): StructuredResearchSourceIdentityEvidence {
-  return evaluateStructuredResearchSourceIdentityEvidence({
-    identity: input.identity,
-    npkLabel: input.npkLabel,
-    primarySource: input.source,
-    recordProductLineMatchesExpected: input.recordProductLineMatchesExpected,
-    recordNpkCompatible: input.recordNpkCompatible,
-  })
-}
-
-function resolveNutrientSourceIndex(
-  record: ManufacturerStructuredResearchRecord,
-  key: FertilizerNutrientMatrixKey,
-  primarySourceIndex: number,
-  singleVerifiedSourceOnly: boolean,
-): number | null {
-  const explicitIndex = record.nutrientSourceIndices?.[key]
-  if (typeof explicitIndex === 'number' && Number.isInteger(explicitIndex)) {
-    return explicitIndex
-  }
-
-  if (singleVerifiedSourceOnly) {
-    return primarySourceIndex
-  }
-
-  return null
 }
 
 export function validateStructuredResearchNutrientProvenance(input: {
@@ -121,10 +101,26 @@ export function validateStructuredResearchNutrientProvenance(input: {
   primarySourceIndex: number
   recordProductLineMatchesExpected: boolean
   recordNpkCompatible: boolean
+  selection: ManufacturerSearchCandidateSelection
 }): StructuredResearchNutrientProvenanceValidation {
   const sulfurValue = input.record.nutrientMatrix.sulfur
   const sulfurPresentInStructuredResult = typeof sulfurValue === 'number'
-  const mixedVariantNutrientSourceDetected = sourcesHaveMixedVariantIdentities(input.record.sources)
+  const nutrientSourceBindings = buildManufacturerSearchNutrientBindings({
+    record: input.record,
+    selection: input.selection,
+  })
+  const researchDecision = buildManufacturerSearchResearchDecision({
+    selection: input.selection,
+    nutrientBindings: nutrientSourceBindings,
+    candidateAmbiguityOverride: input.identity.hasIdentityAmbiguity
+      ? false
+      : undefined,
+  })
+  const mixedVariantNutrientSourceDetected = detectCrossVariantNutrientBinding({
+    record: input.record,
+    selection: input.selection,
+    canonicalSourceIndex: input.primarySourceIndex,
+  })
 
   const base = {
     sulfurPresentInStructuredResult,
@@ -134,6 +130,8 @@ export function validateStructuredResearchNutrientProvenance(input: {
     nutrientSourceMismatchCount: 0,
     mixedVariantNutrientSourceDetected,
     acceptedNutrientKeys: [] as FertilizerNutrientMatrixKey[],
+    nutrientSourceBindings,
+    canonicalCandidateId: input.selection.canonicalCandidate?.candidateId ?? null,
   }
 
   const reject = (
@@ -146,36 +144,33 @@ export function validateStructuredResearchNutrientProvenance(input: {
     rejectionReason,
   })
 
-  if (!input.primarySource) {
-    return reject('nutrient_source_unverified')
+  if (researchDecision.reason === 'candidate_ambiguity') {
+    return reject('candidate_ambiguity')
+  }
+
+  if (!input.selection.canonicalCandidate || !input.primarySource) {
+    return reject('no_canonical_candidate')
   }
 
   if (mixedVariantNutrientSourceDetected) {
     return reject('mixed_variant_sources')
   }
 
-  const verifiedSourceIndices = new Set<number>()
-  for (let index = 0; index < input.record.sources.length; index += 1) {
-    const evidence = evaluateSourceIdentityEvidence({
-      identity: input.identity,
-      npkLabel: input.npkLabel,
-      source: input.record.sources[index]!,
-      recordProductLineMatchesExpected: input.recordProductLineMatchesExpected,
-      recordNpkCompatible: input.recordNpkCompatible,
-    })
-
-    if (evidence.sourceBoundIdentityAccepted) {
-      verifiedSourceIndices.add(index)
-    }
+  if (!researchDecision.accepted) {
+    const sulfurBinding = nutrientSourceBindings.find((binding) => binding.nutrientKey === 'sulfur')
+    return reject(
+      researchDecision.reason === 'nutrient_not_bound_to_canonical_candidate'
+        ? 'nutrient_source_identity_mismatch'
+        : 'nutrient_source_unverified',
+      {
+        nutrientSourceMismatchCount: nutrientSourceBindings.filter((binding) => !binding.accepted).length,
+        sulfurSourcePresent: sulfurBinding?.candidateId != null,
+        sulfurSourceIdentityVerified: sulfurBinding?.accepted === true,
+        sulfurSourceMatchesCanonicalDeclarationSource: sulfurBinding?.accepted === true,
+      },
+    )
   }
 
-  if (verifiedSourceIndices.size === 0) {
-    return reject('nutrient_source_unverified')
-  }
-
-  const singleVerifiedSourceOnly =
-    verifiedSourceIndices.size === 1 && input.record.sources.length === 1
-  const primarySourceIndex = input.primarySourceIndex
   const acceptedNutrientKeys: FertilizerNutrientMatrixKey[] = []
   let nutrientSourceMismatchCount = 0
 
@@ -190,19 +185,8 @@ export function validateStructuredResearchNutrientProvenance(input: {
       continue
     }
 
-    const sourceIndex = resolveNutrientSourceIndex(
-      input.record,
-      key,
-      primarySourceIndex,
-      singleVerifiedSourceOnly,
-    )
-
-    if (sourceIndex == null || sourceIndex < 0 || sourceIndex >= input.record.sources.length) {
-      nutrientSourceMismatchCount += 1
-      continue
-    }
-
-    if (!verifiedSourceIndices.has(sourceIndex)) {
+    const binding = nutrientSourceBindings.find((entry) => entry.nutrientKey === key)
+    if (!binding?.accepted) {
       nutrientSourceMismatchCount += 1
       continue
     }
@@ -210,32 +194,18 @@ export function validateStructuredResearchNutrientProvenance(input: {
     acceptedNutrientKeys.push(key)
   }
 
-  const sulfurSourceIndex = resolveNutrientSourceIndex(
-    input.record,
-    'sulfur',
-    primarySourceIndex,
-    singleVerifiedSourceOnly,
-  )
-  const sulfurSourcePresent = sulfurSourceIndex != null
-  const sulfurSourceIdentityVerified =
-    sulfurSourceIndex != null && verifiedSourceIndices.has(sulfurSourceIndex)
-  const sulfurSourceMatchesCanonicalDeclarationSource =
-    sulfurSourceIdentityVerified && sulfurSourceIndex === primarySourceIndex
-
+  const sulfurBinding = nutrientSourceBindings.find((binding) => binding.nutrientKey === 'sulfur')
   const sulfurDiagnostics = {
-    sulfurSourcePresent,
-    sulfurSourceIdentityVerified,
-    sulfurSourceMatchesCanonicalDeclarationSource,
+    sulfurSourcePresent: sulfurBinding?.candidateId != null,
+    sulfurSourceIdentityVerified: sulfurBinding?.accepted === true,
+    sulfurSourceMatchesCanonicalDeclarationSource: sulfurBinding?.accepted === true,
   }
 
   if (nutrientSourceMismatchCount > 0) {
-    return reject(
-      input.record.sources.length > 1 ? 'nutrient_source_missing' : 'nutrient_source_unverified',
-      {
-        ...sulfurDiagnostics,
-        nutrientSourceMismatchCount,
-      },
-    )
+    return reject('nutrient_source_missing', {
+      ...sulfurDiagnostics,
+      nutrientSourceMismatchCount,
+    })
   }
 
   return {
@@ -277,6 +247,6 @@ export function filterStructuredResearchRecordNutrientsByProvenance(input: {
 export function resolveExpectedStructuredResearchNpkForProvenance(input: {
   identity: FertilizerEnrichmentIdentity
   npkLabel?: string | null
-}): ReturnType<typeof resolveExpectedStructuredResearchNpk> {
+}) {
   return resolveExpectedStructuredResearchNpk(input)
 }

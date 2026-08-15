@@ -52,6 +52,10 @@ export function buildManufacturerBrandToken(manufacturer: string | null | undefi
   return token && token.length >= 3 ? token : null
 }
 
+function quoteExactSearchTerm(value: string): string {
+  return value.includes(' ') ? `"${value}"` : value
+}
+
 export function buildManufacturerResearchSearchQueries(input: {
   identity: FertilizerEnrichmentIdentity
   npkLabel?: string | null
@@ -65,28 +69,66 @@ export function buildManufacturerResearchSearchQueries(input: {
   const packageSize = input.packageSizeLabel?.trim() ?? ''
 
   const productVariants = buildProductNameSearchVariants(officialName)
-  const queries = new Set<string>()
+  const prioritized: string[] = []
+  const broader = new Set<string>()
+  const brandToken = buildManufacturerBrandToken(manufacturer)
+  const exactProductName = officialName.trim()
 
-  for (const productVariant of productVariants) {
-    queries.add([manufacturer, productLine, productVariant, npk, packageSize].filter(Boolean).join(' ').trim())
-    queries.add([manufacturer, productLine, productVariant, 'Dünger', npk].filter(Boolean).join(' ').trim())
-    queries.add([manufacturer, productLine, productVariant, 'Produktdatenblatt'].filter(Boolean).join(' ').trim())
-    queries.add([manufacturer, productLine, productVariant, 'Datenblatt'].filter(Boolean).join(' ').trim())
-    queries.add([manufacturer, productLine, productVariant, 'Zusammensetzung'].filter(Boolean).join(' ').trim())
-    queries.add([manufacturer, productLine, productVariant, 'technical data'].filter(Boolean).join(' ').trim())
-    queries.add([manufacturer, productLine, productVariant, 'NPK', npk].filter(Boolean).join(' ').trim())
+  if (brandToken && productLine && exactProductName && npk) {
+    prioritized.push(
+      [`site:${brandToken}.de`, quoteExactSearchTerm(productLine), quoteExactSearchTerm(exactProductName), quoteExactSearchTerm(npk)]
+        .filter(Boolean)
+        .join(' ')
+        .trim(),
+    )
   }
 
-  const brandToken = buildManufacturerBrandToken(manufacturer)
+  if (brandToken && exactProductName && npk) {
+    prioritized.push(
+      [`site:${brandToken}.de`, quoteExactSearchTerm(exactProductName), quoteExactSearchTerm(npk)]
+        .filter(Boolean)
+        .join(' ')
+        .trim(),
+    )
+  }
+
+  if (brandToken && productLine && exactProductName) {
+    prioritized.push(
+      [`site:${brandToken}.de`, quoteExactSearchTerm(productLine), quoteExactSearchTerm(exactProductName), 'Produktdatenblatt']
+        .filter(Boolean)
+        .join(' ')
+        .trim(),
+    )
+  }
+
+  if (manufacturer && productLine && exactProductName && npk) {
+    prioritized.push(
+      [manufacturer, productLine, quoteExactSearchTerm(exactProductName), quoteExactSearchTerm(npk)]
+        .filter(Boolean)
+        .join(' ')
+        .trim(),
+    )
+  }
+
+  for (const productVariant of productVariants) {
+    broader.add([manufacturer, productLine, productVariant, npk, packageSize].filter(Boolean).join(' ').trim())
+    broader.add([manufacturer, productLine, productVariant, 'Dünger', npk].filter(Boolean).join(' ').trim())
+    broader.add([manufacturer, productLine, productVariant, 'Produktdatenblatt'].filter(Boolean).join(' ').trim())
+    broader.add([manufacturer, productLine, productVariant, 'Datenblatt'].filter(Boolean).join(' ').trim())
+    broader.add([manufacturer, productLine, productVariant, 'Zusammensetzung'].filter(Boolean).join(' ').trim())
+    broader.add([manufacturer, productLine, productVariant, 'technical data'].filter(Boolean).join(' ').trim())
+    broader.add([manufacturer, productLine, productVariant, 'NPK', npk].filter(Boolean).join(' ').trim())
+  }
+
   if (brandToken) {
     for (const productVariant of productVariants) {
-      queries.add(
+      broader.add(
         [`site:${brandToken}.de`, productLine, productVariant, 'Dünger', npk].filter(Boolean).join(' ').trim(),
       )
-      queries.add(
+      broader.add(
         [`site:${brandToken}.de`, productLine, productVariant, npk].filter(Boolean).join(' ').trim(),
       )
-      queries.add(
+      broader.add(
         [`site:${brandToken}.com`, productLine, productVariant, 'fertilizer', npk]
           .filter(Boolean)
           .join(' ')
@@ -95,7 +137,12 @@ export function buildManufacturerResearchSearchQueries(input: {
     }
   }
 
-  return [...queries].filter(Boolean)
+  const dedupedPrioritized = [...new Set(prioritized.filter(Boolean))]
+  const dedupedBroader = [...broader].filter(
+    (query) => query.length > 0 && !dedupedPrioritized.includes(query),
+  )
+
+  return [...dedupedPrioritized, ...dedupedBroader]
 }
 
 export function slugifyResearchSegment(value: string | null | undefined): string | null {

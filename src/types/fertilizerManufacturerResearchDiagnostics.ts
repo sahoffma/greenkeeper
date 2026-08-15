@@ -47,6 +47,40 @@ export interface StructuredResearchNutrientProvenanceValidationSummary {
   sulfurSourceMatchesCanonicalDeclarationSource: boolean
   nutrientSourceMismatchCount: number
   mixedVariantNutrientSourceDetected: boolean
+  canonicalCandidateId?: string | null
+}
+
+export interface ManufacturerSearchCandidateDiagnostic {
+  candidateId: string
+  url: string
+  title: string | null
+  evidenceKinds: string[]
+  officialDomainMatch: boolean
+  manufacturerEvidence: string
+  productNameEvidence: string
+  productLineEvidence: string
+  npkEvidence: string
+  identityScore: number
+  hardRejected: boolean
+  rejectionReason: string | null
+}
+
+export interface ManufacturerSearchResearchDecisionDiagnostic {
+  accepted: boolean
+  reason: string
+  canonicalSource: {
+    candidateId: string
+    url: string
+    title: string | null
+    whySelected: string | null
+  } | null
+  nutrientSourceBindings: Array<{
+    nutrientKey: string
+    candidateId: string | null
+    accepted: boolean
+  }>
+  candidateAmbiguity: boolean
+  verifiedVariantCount: number
 }
 
 export interface StructuredResearchIdentityValidationSummary {
@@ -125,4 +159,7 @@ export interface FertilizerManufacturerResearchDiagnostics {
   researchSourceStrategy: FertilizerManufacturerResearchSourceStrategy
   officialDeclarationFound: boolean
   nutrientChainDiagnostics?: FertilizerManufacturerNutrientChainDiagnostics | null
+  generatedSearchQueries?: string[]
+  searchCandidates?: ManufacturerSearchCandidateDiagnostic[]
+  finalResearchDecision?: ManufacturerSearchResearchDecisionDiagnostic | null
 }

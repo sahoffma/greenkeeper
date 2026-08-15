@@ -11,6 +11,7 @@ import { runAutomaticManufacturerResearch } from './fertilizerManufacturerResear
 import { MANUFACTURER_RESEARCH_TOTAL_BUDGET_MS } from './fertilizerManufacturerResearchTimingCore'
 import {
   runManufacturerStructuredResearchAttempt,
+  buildStructuredResearchProviderResultFromRecord,
   type FertilizerManufacturerStructuredResearchProvider,
 } from './fertilizerManufacturerStructuredResearchCore'
 
@@ -188,10 +189,13 @@ describe('runAutomaticManufacturerResearch structured integration', () => {
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
       structuredResearchProvider: {
-        runStructuredWebResearch: async () => ({
-          record: buildStructuredRecord(officialUrl),
-          webSearchToolCallObserved: true,
-        }),
+        runStructuredWebResearch: async () =>
+          buildStructuredResearchProviderResultFromRecord({
+            record: buildStructuredRecord(officialUrl),
+            identity: IDENTITY,
+            npkLabel: '10-5-20',
+            manufacturerDomain: 'example-manufacturer.de',
+          }),
       },
       fetchProvider: {
         fetchSource: async () => ({ ok: false, errorCode: 'source_not_found', retryable: false }),
@@ -213,10 +217,13 @@ describe('runAutomaticManufacturerResearch structured integration', () => {
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
       structuredResearchProvider: {
-        runStructuredWebResearch: async () => ({
-          record: buildStructuredRecord(pdfUrl),
-          webSearchToolCallObserved: true,
-        }),
+        runStructuredWebResearch: async () =>
+          buildStructuredResearchProviderResultFromRecord({
+            record: buildStructuredRecord(pdfUrl),
+            identity: IDENTITY,
+            npkLabel: '10-5-20',
+            manufacturerDomain: 'example-manufacturer.de',
+          }),
       },
       fetchProvider: {
         fetchSource: async () => ({ ok: false, errorCode: 'source_not_found', retryable: false }),
@@ -247,7 +254,7 @@ describe('runAutomaticManufacturerResearch structured integration', () => {
 
     expect(result.diagnostics.searchProviderOutcome).toBe('no_results')
     expect(result.diagnostics.researchSourceStrategy).toBe('structured_then_direct_fallback')
-    expect(fetchCount).toBeGreaterThan(0)
+    expect(fetchCount).toBe(0)
     expect(result.adapterResult).toBeNull()
   })
 
@@ -257,10 +264,13 @@ describe('runAutomaticManufacturerResearch structured integration', () => {
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
       structuredResearchProvider: {
-        runStructuredWebResearch: async () => ({
-          record: buildStructuredRecord(discoveredUrl),
-          webSearchToolCallObserved: true,
-        }),
+        runStructuredWebResearch: async () =>
+          buildStructuredResearchProviderResultFromRecord({
+            record: buildStructuredRecord(discoveredUrl),
+            identity: IDENTITY,
+            npkLabel: '10-5-20',
+            manufacturerDomain: 'example-manufacturer.de',
+          }),
       },
       fetchProvider: {
         fetchSource: async () => ({ ok: false, errorCode: 'source_not_found', retryable: false }),

@@ -225,6 +225,39 @@ export interface FertilizerEnrichmentStartManufacturerResearchDiagnostic {
     sulfurSourceMatchesCanonicalDeclarationSource: boolean
     nutrientSourceMismatchCount: number
     mixedVariantNutrientSourceDetected: boolean
+    canonicalCandidateId?: string | null
+  } | null
+  generatedSearchQueries?: string[]
+  searchCandidates?: Array<{
+    candidateId: string
+    url: string
+    title: string | null
+    evidenceKinds: string[]
+    officialDomainMatch: boolean
+    manufacturerEvidence: string
+    productNameEvidence: string
+    productLineEvidence: string
+    npkEvidence: string
+    identityScore: number
+    hardRejected: boolean
+    rejectionReason: string | null
+  }>
+  finalResearchDecision?: {
+    accepted: boolean
+    reason: string
+    canonicalSource: {
+      candidateId: string
+      url: string
+      title: string | null
+      whySelected: string | null
+    } | null
+    nutrientSourceBindings: Array<{
+      nutrientKey: string
+      candidateId: string | null
+      accepted: boolean
+    }>
+    candidateAmbiguity: boolean
+    verifiedVariantCount: number
   } | null
 }
 
@@ -1051,6 +1084,29 @@ function readManufacturerResearchDiagnosticSummary(
   const nutrientProvenanceValidation = readObjectRecord(
     nutrientChain?.structuredNutrientProvenanceValidation,
   )
+  const searchCandidates = Array.isArray(diagnostics.searchCandidates)
+    ? diagnostics.searchCandidates
+        .map((entry) => readObjectRecord(entry))
+        .filter((entry): entry is Record<string, unknown> => entry != null)
+        .map((entry) => ({
+          candidateId: readStringDiagnostic(entry, 'candidateId'),
+          url: readStringDiagnostic(entry, 'url'),
+          title: typeof entry.title === 'string' ? entry.title : null,
+          evidenceKinds: Array.isArray(entry.evidenceKinds)
+            ? entry.evidenceKinds.filter((value): value is string => typeof value === 'string')
+            : [],
+          officialDomainMatch: readBooleanDiagnostic(entry, 'officialDomainMatch'),
+          manufacturerEvidence: readStringDiagnostic(entry, 'manufacturerEvidence'),
+          productNameEvidence: readStringDiagnostic(entry, 'productNameEvidence'),
+          productLineEvidence: readStringDiagnostic(entry, 'productLineEvidence'),
+          npkEvidence: readStringDiagnostic(entry, 'npkEvidence'),
+          identityScore: readNumberDiagnostic(entry, 'identityScore'),
+          hardRejected: readBooleanDiagnostic(entry, 'hardRejected'),
+          rejectionReason: typeof entry.rejectionReason === 'string' ? entry.rejectionReason : null,
+        }))
+    : []
+  const finalResearchDecisionRecord = readObjectRecord(diagnostics.finalResearchDecision)
+  const canonicalSourceRecord = readObjectRecord(finalResearchDecisionRecord?.canonicalSource)
 
   return {
     searchProviderConfigured: readBooleanDiagnostic(diagnostics, 'searchProviderConfigured'),
@@ -1171,6 +1227,45 @@ function readManufacturerResearchDiagnosticSummary(
             nutrientProvenanceValidation,
             'mixedVariantNutrientSourceDetected',
           ),
+          canonicalCandidateId:
+            typeof nutrientProvenanceValidation.canonicalCandidateId === 'string'
+              ? nutrientProvenanceValidation.canonicalCandidateId
+              : null,
+        }
+      : null,
+    generatedSearchQueries: Array.isArray(diagnostics.generatedSearchQueries)
+      ? diagnostics.generatedSearchQueries.filter((value): value is string => typeof value === 'string')
+      : [],
+    searchCandidates,
+    finalResearchDecision: finalResearchDecisionRecord
+      ? {
+          accepted: readBooleanDiagnostic(finalResearchDecisionRecord, 'accepted'),
+          reason: readStringDiagnostic(finalResearchDecisionRecord, 'reason'),
+          canonicalSource: canonicalSourceRecord
+            ? {
+                candidateId: readStringDiagnostic(canonicalSourceRecord, 'candidateId'),
+                url: readStringDiagnostic(canonicalSourceRecord, 'url'),
+                title:
+                  typeof canonicalSourceRecord.title === 'string' ? canonicalSourceRecord.title : null,
+                whySelected:
+                  typeof canonicalSourceRecord.whySelected === 'string'
+                    ? canonicalSourceRecord.whySelected
+                    : null,
+              }
+            : null,
+          nutrientSourceBindings: Array.isArray(finalResearchDecisionRecord.nutrientSourceBindings)
+            ? finalResearchDecisionRecord.nutrientSourceBindings
+                .map((entry) => readObjectRecord(entry))
+                .filter((entry): entry is Record<string, unknown> => entry != null)
+                .map((entry) => ({
+                  nutrientKey: readStringDiagnostic(entry, 'nutrientKey'),
+                  candidateId:
+                    typeof entry.candidateId === 'string' ? entry.candidateId : null,
+                  accepted: readBooleanDiagnostic(entry, 'accepted'),
+                }))
+            : [],
+          candidateAmbiguity: readBooleanDiagnostic(finalResearchDecisionRecord, 'candidateAmbiguity'),
+          verifiedVariantCount: readNumberDiagnostic(finalResearchDecisionRecord, 'verifiedVariantCount'),
         }
       : null,
   }

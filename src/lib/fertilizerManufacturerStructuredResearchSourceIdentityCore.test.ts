@@ -13,6 +13,7 @@ import {
   mapStructuredResearchToAdapterResult,
   selectPrimaryStructuredResearchSource,
 } from './fertilizerManufacturerStructuredResearchCore'
+import { buildManufacturerSearchSelectionFromEvidence } from './fertilizerManufacturerSearchCandidateCore'
 
 const IDENTITY: FertilizerEnrichmentIdentity = {
   manufacturer: 'Rasendoktor GmbH',
@@ -180,6 +181,17 @@ describe('fertilizerManufacturerStructuredResearchSourceIdentityCore', () => {
       identity: IDENTITY,
       npkLabel: '0-0-30',
       primarySource: source,
+      selection: buildManufacturerSearchSelectionFromEvidence({
+        identity: IDENTITY,
+        npkLabel: '0-0-30',
+        candidates: [
+          {
+            url: source.url,
+            title: source.title,
+            trustedEvidenceText: 'rasendoktor professional stress manager npk 0 0 30',
+          },
+        ],
+      }),
     })
 
     expect(validation.identityMatchAccepted).toBe(true)
@@ -194,6 +206,17 @@ describe('fertilizerManufacturerStructuredResearchSourceIdentityCore', () => {
       identity: IDENTITY,
       retrievedAt: '2026-07-29T10:00:00.000Z',
       npkLabel: '0-0-30',
+      selection: buildManufacturerSearchSelectionFromEvidence({
+        identity: IDENTITY,
+        npkLabel: '0-0-30',
+        candidates: [
+          {
+            url: buildStandardSource().url,
+            title: buildStandardSource().title,
+            trustedEvidenceText: 'rasendoktor standard stressmanager npk 0 0 22',
+          },
+        ],
+      }),
     })
 
     expect(adapterResult).toBeNull()
@@ -216,6 +239,17 @@ describe('fertilizerManufacturerStructuredResearchSourceIdentityCore', () => {
       identity: IDENTITY,
       retrievedAt: '2026-07-29T10:00:00.000Z',
       npkLabel: '0-0-30',
+      selection: buildManufacturerSearchSelectionFromEvidence({
+        identity: IDENTITY,
+        npkLabel: '0-0-30',
+        candidates: [
+          {
+            url: source.url,
+            title: source.title,
+            trustedEvidenceText: 'rasendoktor professional stress manager npk 0 0 30 sulfur 10.2',
+          },
+        ],
+      }),
     })
 
     expect(adapterResult?.status).toBe('success')
@@ -233,10 +267,27 @@ describe('fertilizerManufacturerStructuredResearchSourceIdentityCore', () => {
           iron: 3,
         },
         sources: [buildProfessionalSource(), buildStandardSource()],
+        nutrientSourceIndices: { sulfur: 1 },
       }),
       identity: IDENTITY,
       retrievedAt: '2026-07-29T10:00:00.000Z',
       npkLabel: '0-0-30',
+      selection: buildManufacturerSearchSelectionFromEvidence({
+        identity: IDENTITY,
+        npkLabel: '0-0-30',
+        candidates: [
+          {
+            url: buildProfessionalSource().url,
+            title: buildProfessionalSource().title,
+            trustedEvidenceText: 'rasendoktor professional stress manager npk 0 0 30',
+          },
+          {
+            url: buildStandardSource().url,
+            title: buildStandardSource().title,
+            trustedEvidenceText: 'rasendoktor standard stressmanager npk 0 0 22',
+          },
+        ],
+      }),
     })
 
     expect(adapterResult).toBeNull()

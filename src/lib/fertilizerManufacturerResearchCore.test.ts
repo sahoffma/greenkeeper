@@ -80,6 +80,7 @@ describe('fertilizerManufacturerResearchCore', () => {
   it('parses a matching official HTML source into an adapter result', async () => {
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
+      hintedUrls: [OFFICIAL_URL],
       structuredResearchProvider: failingStructuredProvider,
       fetchProvider: {
         fetchSource: async () => ({
@@ -287,6 +288,7 @@ describe('fertilizerManufacturerResearchCore', () => {
   it('returns intake-ready success diagnostics when a full declaration is found', async () => {
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
+      hintedUrls: [OFFICIAL_URL],
       structuredResearchProvider: failingStructuredProvider,
       fetchProvider: {
         fetchSource: async () => ({
@@ -308,6 +310,7 @@ describe('fertilizerManufacturerResearchCore', () => {
   it('returns controlled fetch_failed diagnostics instead of throwing when no source matches', async () => {
     const result = await runAutomaticManufacturerResearch({
       identity: IDENTITY,
+      hintedUrls: [OFFICIAL_URL],
       structuredResearchProvider: failingStructuredProvider,
       fetchProvider: {
         fetchSource: async () => ({ ok: false, errorCode: 'source_not_found', retryable: false }),

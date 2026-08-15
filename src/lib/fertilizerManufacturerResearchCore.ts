@@ -155,6 +155,31 @@ export function rankOfficialSourceCandidates(
   })
 }
 
+export function buildCitationVerifiedDirectFetchCandidates(input: {
+  citationVerifiedUrls?: string[]
+  hintedUrls?: string[]
+}): FertilizerOfficialSourceCandidate[] {
+  const candidates = new Map<string, FertilizerOfficialSourceCandidate>()
+
+  for (const url of [...(input.hintedUrls ?? []), ...(input.citationVerifiedUrls ?? [])]) {
+    const trimmed = url.trim()
+    if (!trimmed) {
+      continue
+    }
+
+    candidates.set(trimmed, {
+      url: trimmed,
+      title: trimmed,
+      category: trimmed.toLowerCase().includes('.pdf') ? 'official_document' : 'official_manufacturer',
+      priority: sourceCategoryPriority(
+        trimmed.toLowerCase().includes('.pdf') ? 'official_document' : 'official_manufacturer',
+      ),
+    })
+  }
+
+  return rankOfficialSourceCandidates([...candidates.values()])
+}
+
 export function buildDefaultOfficialSourceCandidates(input: {
   identity: FertilizerEnrichmentIdentity
   manufacturerDomain: string | null
@@ -412,6 +437,9 @@ function finalizeDiagnostics(input: {
     fallbackRecommendation: input.bestResult ? 'none' : resolveFallbackRecommendation(stage),
     manufacturerResearchTiming: input.timing,
     officialDeclarationFound: input.bestResult?.status === 'success',
+    generatedSearchQueries: input.structuredAttempt?.generatedSearchQueries ?? [],
+    searchCandidates: input.structuredAttempt?.searchCandidateDiagnostics ?? [],
+    finalResearchDecision: input.structuredAttempt?.finalResearchDecision ?? null,
     nutrientChainDiagnostics: buildManufacturerNutrientChainDiagnostics({
       structuredRecord: input.structuredAttempt?.structuredRecord ?? null,
       adapterResult: input.bestResult ?? input.structuredAttempt?.adapterResult ?? null,
@@ -702,11 +730,6 @@ export async function runAutomaticManufacturerResearch(input: {
   const hintedUrls = input.hintedUrls ?? []
 
   const candidateBuildStartedAtMs = now()
-  const defaultCandidates = buildDefaultOfficialSourceCandidates({
-    identity: input.identity,
-    manufacturerDomain,
-    hintedUrls,
-  })
   timing.candidateBuildMs = now() - candidateBuildStartedAtMs
 
   const structuredResearchProvider = input.structuredResearchProvider ?? null
@@ -867,8 +890,22 @@ export async function runAutomaticManufacturerResearch(input: {
   const discoveredUrlSet = new Set<string>()
 
   if (useDirectFallback) {
+    const citationVerifiedUrls = structuredAttempt?.citationVerifiedUrls ?? []
+    let directFetchCandidates = buildCitationVerifiedDirectFetchCandidates({
+      citationVerifiedUrls,
+      hintedUrls,
+    })
+
+    if (directFetchCandidates.length === 0 && !structuredResearchProvider) {
+      directFetchCandidates = buildDefaultOfficialSourceCandidates({
+        identity: input.identity,
+        manufacturerDomain,
+        hintedUrls,
+      })
+    }
+
     candidates = limitOfficialResearchCandidates({
-      candidates: defaultCandidates,
+      candidates: directFetchCandidates,
       hintedUrls,
       maxCandidates: maxOfficialCandidates,
     })

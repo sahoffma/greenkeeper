@@ -10,6 +10,8 @@ import type {
   ManufacturerStructuredResearchSourceRecord,
 } from './fertilizerManufacturerStructuredResearchCore'
 import { evaluateStructuredResearchSourceIdentityEvidence } from './fertilizerManufacturerStructuredResearchSourceIdentityCore'
+import type { ManufacturerSearchCandidateSelection } from './fertilizerManufacturerSearchCandidateCore'
+import { candidateToPrimarySourceRecord } from './fertilizerManufacturerSearchCandidateCore'
 
 export type StructuredResearchIdentityRejectionReason =
   | 'none'
@@ -139,6 +141,7 @@ export function validateStructuredResearchIdentityMatch(input: {
   identity: FertilizerEnrichmentIdentity
   npkLabel?: string | null
   primarySource?: ManufacturerStructuredResearchSourceRecord | null
+  selection?: ManufacturerSearchCandidateSelection | null
 }): StructuredResearchIdentityValidation {
   const modelClaimedIdentityMatch = input.record.identityMatch
   const expectedNpk = resolveExpectedStructuredResearchNpk(input)
@@ -149,10 +152,17 @@ export function validateStructuredResearchIdentityMatch(input: {
     input.record.productLine,
   )
   const structuredNpkMatch = npkTripletsCompatible(expectedNpk, input.record.npk)
+
+  const canonicalCandidate = input.selection?.canonicalCandidate ?? null
+  const primarySource =
+    input.primarySource ??
+    (canonicalCandidate ? candidateToPrimarySourceRecord({ candidate: canonicalCandidate }) : null)
+
   const sourceEvidence = evaluateStructuredResearchSourceIdentityEvidence({
     identity: input.identity,
     npkLabel: input.npkLabel,
-    primarySource: input.primarySource,
+    primarySource,
+    trustedEvidenceText: canonicalCandidate?.trustedEvidenceText ?? null,
     recordProductLineMatchesExpected: structuredProductLineMatch,
     recordNpkCompatible: structuredNpkMatch,
   })
@@ -197,8 +207,16 @@ export function validateStructuredResearchIdentityMatch(input: {
     return reject('npk_mismatch')
   }
 
-  if (!input.primarySource) {
+  if (!primarySource) {
     return reject('source_identity_mismatch')
+  }
+
+  if (input.selection?.candidateAmbiguity && !input.identity.hasIdentityAmbiguity) {
+    return reject('source_identity_mismatch')
+  }
+
+  if (!canonicalCandidate) {
+    return reject(sourceEvidence.declarationSourceIdentityMismatch ? 'source_identity_mismatch' : 'source_product_line_unverified')
   }
 
   if (sourceEvidence.declarationSourceIdentityMismatch) {

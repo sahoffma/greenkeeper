@@ -6,7 +6,6 @@ import { FERTILIZER_NUTRIENT_MATRIX_KEYS } from '../types/fertilizerReadiness'
 import type { FertilizerOfficialSourceCandidateCategory } from './fertilizerManufacturerResearchCore'
 import { validateFertilizerManufacturerDocumentSource } from './fertilizerManufacturerDocumentSourceValidatorCore'
 import {
-  countOfficialSearchResults,
   normalizeSearchCategory,
 } from './fertilizerManufacturerResearchSearchProviderCore'
 import {
@@ -27,6 +26,20 @@ import {
   filterStructuredResearchRecordNutrientsByProvenance,
   type StructuredResearchNutrientProvenanceValidation,
 } from './fertilizerManufacturerStructuredResearchNutrientProvenanceCore'
+import {
+  extractTrustedWebSearchCandidatesFromResponseOutput,
+  selectCanonicalManufacturerSearchCandidate,
+  type ManufacturerSearchCandidateSelection,
+  type ManufacturerSearchResearchDecision,
+  buildManufacturerSearchNutrientBindings,
+  buildManufacturerSearchResearchDecision,
+  candidateToPrimarySourceRecord,
+  isModelSourceCitationVerified,
+} from './fertilizerManufacturerSearchCandidateCore'
+import type {
+  ManufacturerSearchCandidateDiagnostic,
+  ManufacturerSearchResearchDecisionDiagnostic,
+} from '../types/fertilizerManufacturerResearchDiagnostics'
 
 export const MANUFACTURER_RESEARCH_STRUCTURED_BUDGET_MS = 16_000
 
@@ -166,6 +179,10 @@ export interface ManufacturerStructuredResearchRecord {
 export interface ManufacturerStructuredResearchProviderResult {
   record: ManufacturerStructuredResearchRecord
   webSearchToolCallObserved: boolean
+  responseOutput: unknown[]
+  generatedSearchQueries: string[]
+  candidateSelection: ManufacturerSearchCandidateSelection
+  researchDecision: ManufacturerSearchResearchDecision
 }
 
 export interface FertilizerManufacturerStructuredResearchProvider {
@@ -194,6 +211,12 @@ export interface ManufacturerStructuredResearchAttemptResult {
   identityValidation: StructuredResearchIdentityValidation | null
   nutrientProvenanceValidation: StructuredResearchNutrientProvenanceValidation | null
   structuredMatrixCounts: StructuredMatrixCounts | null
+  generatedSearchQueries: string[]
+  candidateSelection: ManufacturerSearchCandidateSelection | null
+  researchDecision: ManufacturerSearchResearchDecision | null
+  searchCandidateDiagnostics: ManufacturerSearchCandidateDiagnostic[]
+  finalResearchDecision: ManufacturerSearchResearchDecisionDiagnostic | null
+  citationVerifiedUrls: string[]
 }
 
 export function buildManufacturerStructuredResearchPrompt(input: {
@@ -577,12 +600,25 @@ export function mapStructuredResearchToAdapterResult(input: {
   declarationCompletenessValidation?: StructuredDeclarationCompletenessValidation
   identityValidation?: StructuredResearchIdentityValidation
   nutrientProvenanceValidation?: StructuredResearchNutrientProvenanceValidation
+  selection: ManufacturerSearchCandidateSelection
 }): FertilizerSourceAdapterResult | null {
-  const primarySource = selectPrimaryStructuredResearchSource(input.record.sources)
-  const primarySourceIndex = resolvePrimaryStructuredResearchSourceIndex(
-    input.record.sources,
-    primarySource,
-  )
+  const canonicalCandidate = input.selection.canonicalCandidate
+  const primarySource = canonicalCandidate
+    ? candidateToPrimarySourceRecord({ candidate: canonicalCandidate })
+    : null
+  const primarySourceIndex = primarySource
+    ? input.record.sources.findIndex((source) => {
+        const normalized = validateFertilizerManufacturerDocumentSource(source.url)
+        return (
+          normalized.status === 'valid' &&
+          normalized.normalizedUrl === canonicalCandidate?.candidateId &&
+          isModelSourceCitationVerified({
+            url: source.url,
+            candidates: input.selection.candidates,
+          })
+        )
+      })
+    : -1
   const identityValidation =
     input.identityValidation ??
     validateStructuredResearchIdentityMatch({
@@ -590,6 +626,7 @@ export function mapStructuredResearchToAdapterResult(input: {
       identity: input.identity,
       npkLabel: input.npkLabel,
       primarySource,
+      selection: input.selection,
     })
 
   if (!primarySource || !identityValidation.identityMatchAccepted) {
@@ -603,9 +640,10 @@ export function mapStructuredResearchToAdapterResult(input: {
       identity: input.identity,
       npkLabel: input.npkLabel,
       primarySource,
-      primarySourceIndex,
+      primarySourceIndex: primarySourceIndex >= 0 ? primarySourceIndex : 0,
       recordProductLineMatchesExpected: identityValidation.structuredProductLineMatch,
       recordNpkCompatible: identityValidation.structuredNpkMatch,
+      selection: input.selection,
     })
 
   if (!nutrientProvenanceValidation.accepted) {
@@ -727,6 +765,50 @@ export function observeWebSearchToolCalls(response: { output?: Array<{ type?: st
   )
 }
 
+function buildSearchCandidateDiagnostics(
+  selection: ManufacturerSearchCandidateSelection,
+): ManufacturerSearchCandidateDiagnostic[] {
+  return selection.candidates.map((candidate) => ({
+    candidateId: candidate.candidateId,
+    url: candidate.url,
+    title: candidate.title,
+    evidenceKinds: candidate.trustedEvidenceKinds,
+    officialDomainMatch: candidate.officialDomainMatch,
+    manufacturerEvidence: candidate.manufacturerEvidence,
+    productNameEvidence: candidate.productNameEvidence,
+    productLineEvidence: candidate.productLineEvidence,
+    npkEvidence: candidate.npkEvidence,
+    identityScore: candidate.identityScore,
+    hardRejected: candidate.hardRejected,
+    rejectionReason: candidate.rejectionReason,
+  }))
+}
+
+function buildFinalResearchDecisionDiagnostic(input: {
+  selection: ManufacturerSearchCandidateSelection
+  researchDecision: ManufacturerSearchResearchDecision
+}): ManufacturerSearchResearchDecisionDiagnostic {
+  return {
+    accepted: input.researchDecision.accepted,
+    reason: input.researchDecision.reason,
+    canonicalSource: input.selection.canonicalCandidate
+      ? {
+          candidateId: input.selection.canonicalCandidate.candidateId,
+          url: input.selection.canonicalCandidate.url,
+          title: input.selection.canonicalCandidate.title,
+          whySelected: input.selection.canonicalSelectionReason,
+        }
+      : null,
+    nutrientSourceBindings: input.researchDecision.nutrientSourceBindings.map((binding) => ({
+      nutrientKey: binding.nutrientKey,
+      candidateId: binding.candidateId,
+      accepted: binding.accepted,
+    })),
+    candidateAmbiguity: input.selection.candidateAmbiguity,
+    verifiedVariantCount: input.selection.verifiedVariantCount,
+  }
+}
+
 async function runWithTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
@@ -763,6 +845,7 @@ export function createOpenAiManufacturerStructuredResearchProvider(
       const response = await openai.responses.create({
         model,
         tools: [{ type: 'web_search' }],
+        include: ['web_search_call.action.sources'],
         input: [
           {
             role: 'system',
@@ -802,9 +885,31 @@ export function createOpenAiManufacturerStructuredResearchProvider(
         return null
       }
 
+      const candidateSelection = selectCanonicalManufacturerSearchCandidate({
+        candidates: extractTrustedWebSearchCandidatesFromResponseOutput({
+          output: response.output ?? [],
+          manufacturerDomain: input.manufacturerDomain,
+        }),
+        identity: input.identity,
+        npkLabel: input.npkLabel,
+      })
+      const nutrientBindings = buildManufacturerSearchNutrientBindings({
+        record,
+        selection: candidateSelection,
+      })
+      const researchDecision = buildManufacturerSearchResearchDecision({
+        selection: candidateSelection,
+        nutrientBindings,
+        candidateAmbiguityOverride: input.identity.hasIdentityAmbiguity ? false : undefined,
+      })
+
       return {
         record,
         webSearchToolCallObserved: observeWebSearchToolCalls(response),
+        responseOutput: response.output ?? [],
+        generatedSearchQueries: input.queries,
+        candidateSelection,
+        researchDecision,
       }
     },
   }
@@ -848,6 +953,12 @@ export async function runManufacturerStructuredResearchAttempt(input: {
     identityValidation: null,
     nutrientProvenanceValidation: null,
     structuredMatrixCounts: null,
+    generatedSearchQueries: input.queries,
+    candidateSelection: null,
+    researchDecision: null,
+    searchCandidateDiagnostics: [],
+    finalResearchDecision: null,
+    citationVerifiedUrls: [],
   })
 
   if (!input.structuredResearchProvider) {
@@ -874,33 +985,45 @@ export async function runManufacturerStructuredResearchAttempt(input: {
       return emptyResult('no_results')
     }
 
-    const { record, webSearchToolCallObserved } = providerResult
-    const webSearchSourceCount = record.sources.length
-    const officialWebSearchSourceCount = countOfficialSearchResults(
-      record.sources.map((source) => ({
-        url: source.url,
-        title: source.title,
-        category: source.category,
-        priority: sourceCategoryRank(source.category),
-      })),
-    )
+    const { record, webSearchToolCallObserved, candidateSelection, researchDecision, generatedSearchQueries } =
+      providerResult
+    const webSearchSourceCount = candidateSelection.candidates.filter(
+      (candidate) => candidate.citationVerified,
+    ).length
+    const officialWebSearchSourceCount = candidateSelection.candidates.filter(
+      (candidate) => candidate.citationVerified && candidate.officialDomainMatch,
+    ).length
 
-    const primarySource = selectPrimaryStructuredResearchSource(record.sources)
+    const canonicalCandidate = candidateSelection.canonicalCandidate
+    const primarySource = canonicalCandidate
+      ? candidateToPrimarySourceRecord({ candidate: canonicalCandidate })
+      : null
+    const primarySourceIndex = primarySource
+      ? record.sources.findIndex((source) => {
+          const normalized = validateFertilizerManufacturerDocumentSource(source.url)
+          return (
+            normalized.status === 'valid' &&
+            normalized.normalizedUrl === canonicalCandidate?.candidateId
+          )
+        })
+      : -1
+
     const identityValidation = validateStructuredResearchIdentityMatch({
       record,
       identity: input.identity,
       npkLabel: input.npkLabel,
       primarySource,
+      selection: candidateSelection,
     })
-    const primarySourceIndex = resolvePrimaryStructuredResearchSourceIndex(record.sources, primarySource)
     const nutrientProvenanceValidation = validateStructuredResearchNutrientProvenance({
       record,
       identity: input.identity,
       npkLabel: input.npkLabel,
       primarySource,
-      primarySourceIndex,
+      primarySourceIndex: primarySourceIndex >= 0 ? primarySourceIndex : 0,
       recordProductLineMatchesExpected: identityValidation.structuredProductLineMatch,
       recordNpkCompatible: identityValidation.structuredNpkMatch,
+      selection: candidateSelection,
     })
     const declarationCompletenessValidation = validateStructuredDeclarationCompleteness({
       record,
@@ -919,8 +1042,14 @@ export async function runManufacturerStructuredResearchAttempt(input: {
       declarationCompletenessValidation,
       identityValidation,
       nutrientProvenanceValidation,
+      selection: candidateSelection,
     })
     const structuredPositiveNutrientCount = structuredMatrixCounts.structuredPositiveEntryCount
+    const searchCandidateDiagnostics = buildSearchCandidateDiagnostics(candidateSelection)
+    const finalResearchDecision = buildFinalResearchDecisionDiagnostic({
+      selection: candidateSelection,
+      researchDecision,
+    })
 
     return {
       adapterResult,
@@ -937,9 +1066,86 @@ export async function runManufacturerStructuredResearchAttempt(input: {
       identityValidation,
       nutrientProvenanceValidation,
       structuredMatrixCounts,
+      generatedSearchQueries,
+      candidateSelection,
+      researchDecision,
+      searchCandidateDiagnostics,
+      finalResearchDecision,
+      citationVerifiedUrls: candidateSelection.citationVerifiedUrls,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'manufacturer_research_structured_error'
     return emptyResult(message.includes('timeout') ? 'timeout' : 'error')
+  }
+}
+
+export function buildStructuredResearchProviderResultFromRecord(input: {
+  record: ManufacturerStructuredResearchRecord
+  identity: FertilizerEnrichmentIdentity
+  npkLabel?: string | null
+  queries?: string[]
+  manufacturerDomain?: string | null
+}): ManufacturerStructuredResearchProviderResult {
+  const excerpts = input.record.sources.map((source) =>
+    [
+      input.identity.productLine,
+      input.identity.officialName,
+      input.npkLabel ?? input.identity.variant,
+      source.title,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  )
+  const text = excerpts.join(' ')
+  let cursor = 0
+  const annotations = input.record.sources.map((source, index) => {
+    const excerpt = excerpts[index] ?? source.title
+    const startIndex = cursor
+    const endIndex = startIndex + excerpt.length
+    cursor = endIndex + 1
+    return {
+      type: 'url_citation',
+      url: source.url,
+      title: source.title,
+      start_index: startIndex,
+      end_index: endIndex,
+    }
+  })
+  const responseOutput = [
+    {
+      type: 'web_search_call',
+      action: {
+        type: 'search',
+        sources: input.record.sources.map((source) => ({ type: 'url', url: source.url })),
+      },
+    },
+    {
+      type: 'message',
+      content: [{ type: 'output_text', text, annotations }],
+    },
+  ]
+  const candidateSelection = selectCanonicalManufacturerSearchCandidate({
+    candidates: extractTrustedWebSearchCandidatesFromResponseOutput({
+      output: responseOutput,
+      manufacturerDomain: input.manufacturerDomain ?? null,
+    }),
+    identity: input.identity,
+    npkLabel: input.npkLabel,
+  })
+  const nutrientBindings = buildManufacturerSearchNutrientBindings({
+    record: input.record,
+    selection: candidateSelection,
+  })
+
+  return {
+    record: input.record,
+    webSearchToolCallObserved: true,
+    responseOutput,
+    generatedSearchQueries: input.queries ?? [],
+    candidateSelection,
+    researchDecision: buildManufacturerSearchResearchDecision({
+      selection: candidateSelection,
+      nutrientBindings,
+    }),
   }
 }
