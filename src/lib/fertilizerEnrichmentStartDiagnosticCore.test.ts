@@ -758,4 +758,82 @@ describe('fertilizerEnrichmentStartDiagnosticCore', () => {
       }),
     )
   })
+
+  it('includes manufacturer research v2 shadow diagnostics in outcome warning summary', () => {
+    const warning = buildFertilizerEnrichmentStartOutcomeWarningDiagnostic({
+      requestId: '01M02T5RSNXTAWWXS18B4VDTS5',
+      httpStatus: 200,
+      responseBody: buildStartResponseBody({
+        status: 'needs_input',
+        recommendedNextAction: 'optionally_upload_back_photo',
+        manufacturerResearchDiagnostics: {
+          searchProviderConfigured: true,
+          searchProviderAttempted: true,
+          searchProviderOutcome: 'success',
+          manufacturerResearchV2Shadow: {
+            executed: true,
+            modelUsed: 'gpt-4o',
+            durationMs: 4817,
+            status: 'resolved',
+            confidence: 'high',
+            identifiedProduct: {
+              manufacturer: 'ExampleCo',
+              productLine: 'Professional',
+              productName: 'Stress-Manager',
+              variant: '0-0-30',
+              npkLabel: '0-0-30',
+            },
+            declarationSourceUrl: 'https://example.com/product',
+            aiReturnedNutrients: [
+              {
+                nutrientKey: 'potash',
+                value: 30,
+                unit: '%',
+                declarationBasis: 'K2O',
+              },
+            ],
+            declarationComplete: true,
+            ambiguity: {
+              unresolved: false,
+              reason: null,
+              questionForUser: null,
+            },
+            finalShadowDecision: 'rejected',
+          },
+        },
+      }),
+      inputCounts: INPUT_COUNTS,
+    })
+
+    expect(warning?.manufacturerResearchDiagnostics?.manufacturerResearchV2Shadow).toEqual({
+      executed: true,
+      modelUsed: 'gpt-4o',
+      durationMs: 4817,
+      status: 'resolved',
+      confidence: 'high',
+      identifiedProduct: {
+        manufacturer: 'ExampleCo',
+        productLine: 'Professional',
+        productName: 'Stress-Manager',
+        variant: '0-0-30',
+        npkLabel: '0-0-30',
+      },
+      declarationSourceUrl: 'https://example.com/product',
+      aiReturnedNutrients: [
+        {
+          nutrientKey: 'potash',
+          value: 30,
+          unit: '%',
+          declarationBasis: 'K2O',
+        },
+      ],
+      declarationComplete: true,
+      ambiguity: {
+        unresolved: false,
+        reason: null,
+        questionForUser: null,
+      },
+      finalShadowDecision: 'rejected',
+    })
+  })
 })

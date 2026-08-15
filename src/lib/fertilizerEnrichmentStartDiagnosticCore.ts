@@ -15,6 +15,13 @@ import {
   type FertilizerSourceProvenanceReadinessDiagnostic,
 } from './fertilizerSourceProvenanceReadinessDiagnosticCore'
 import type { RawFertilizerDeclarationInput } from '../types/fertilizerDeclarationNormalization'
+import type {
+  ManufacturerResearchV2Ambiguity,
+  ManufacturerResearchV2Confidence,
+  ManufacturerResearchV2Nutrient,
+  ManufacturerResearchV2ShadowFinalDecision,
+  ManufacturerResearchV2Status,
+} from '../types/fertilizerManufacturerResearchV2'
 
 export const FERTILIZER_ENRICHMENT_START_FUNCTION_NAME = 'fertilizer-enrichment-start'
 
@@ -259,6 +266,27 @@ export interface FertilizerEnrichmentStartManufacturerResearchDiagnostic {
     candidateAmbiguity: boolean
     verifiedVariantCount: number
   } | null
+  manufacturerResearchV2Shadow?: FertilizerEnrichmentStartManufacturerResearchV2ShadowDiagnostic | null
+}
+
+export interface FertilizerEnrichmentStartManufacturerResearchV2ShadowDiagnostic {
+  executed: boolean
+  modelUsed: string | null
+  durationMs: number | null
+  status: ManufacturerResearchV2Status | 'error' | null
+  confidence: ManufacturerResearchV2Confidence | null
+  identifiedProduct: {
+    manufacturer: string | null
+    productLine: string | null
+    productName: string | null
+    variant: string | null
+    npkLabel: string | null
+  } | null
+  declarationSourceUrl: string | null
+  aiReturnedNutrients: ManufacturerResearchV2Nutrient[] | null
+  declarationComplete: boolean | null
+  ambiguity: ManufacturerResearchV2Ambiguity | null
+  finalShadowDecision: ManufacturerResearchV2ShadowFinalDecision | null
 }
 
 export interface FertilizerEnrichmentStartOutcomeWarningDiagnostic {
@@ -1068,6 +1096,87 @@ function readStringDiagnostic(record: Record<string, unknown> | null, key: strin
   return typeof value === 'string' ? value : 'unknown'
 }
 
+function readStringOrNullDiagnostic(record: Record<string, unknown> | null, key: string): string | null {
+  const value = record?.[key]
+  return typeof value === 'string' ? value : null
+}
+
+function readManufacturerResearchV2ShadowDiagnosticSummary(
+  diagnostics: Record<string, unknown>,
+): FertilizerEnrichmentStartManufacturerResearchV2ShadowDiagnostic | null {
+  const shadow = readObjectRecord(diagnostics.manufacturerResearchV2Shadow)
+  if (!shadow) {
+    return null
+  }
+
+  const identifiedProduct = readObjectRecord(shadow.identifiedProduct)
+  const ambiguity = readObjectRecord(shadow.ambiguity)
+  const statusValue = shadow.status
+  const status =
+    statusValue === 'resolved' ||
+    statusValue === 'ambiguous' ||
+    statusValue === 'not_found' ||
+    statusValue === 'error'
+      ? statusValue
+      : null
+  const confidenceValue = shadow.confidence
+  const confidence =
+    confidenceValue === 'high' || confidenceValue === 'medium' || confidenceValue === 'low'
+      ? confidenceValue
+      : null
+  const finalShadowDecisionValue = shadow.finalShadowDecision
+  const finalShadowDecision =
+    finalShadowDecisionValue === 'resolved_valid' ||
+    finalShadowDecisionValue === 'ambiguous' ||
+    finalShadowDecisionValue === 'rejected' ||
+    finalShadowDecisionValue === 'not_found' ||
+    finalShadowDecisionValue === 'not_executed' ||
+    finalShadowDecisionValue === 'error'
+      ? finalShadowDecisionValue
+      : null
+  const aiReturnedNutrients = Array.isArray(shadow.aiReturnedNutrients)
+    ? shadow.aiReturnedNutrients
+        .map((entry) => readObjectRecord(entry))
+        .filter((entry): entry is Record<string, unknown> => entry != null)
+        .map((entry) => ({
+          nutrientKey: readStringDiagnostic(entry, 'nutrientKey'),
+          value: readNumberDiagnostic(entry, 'value'),
+          unit: readStringDiagnostic(entry, 'unit'),
+          declarationBasis: readStringOrNullDiagnostic(entry, 'declarationBasis'),
+        }))
+        .filter((entry) => entry.nutrientKey !== 'unknown')
+    : null
+
+  return {
+    executed: readBooleanDiagnostic(shadow, 'executed'),
+    modelUsed: readStringOrNullDiagnostic(shadow, 'modelUsed'),
+    durationMs: typeof shadow.durationMs === 'number' ? shadow.durationMs : null,
+    status,
+    confidence,
+    identifiedProduct: identifiedProduct
+      ? {
+          manufacturer: readStringOrNullDiagnostic(identifiedProduct, 'manufacturer'),
+          productLine: readStringOrNullDiagnostic(identifiedProduct, 'productLine'),
+          productName: readStringOrNullDiagnostic(identifiedProduct, 'productName'),
+          variant: readStringOrNullDiagnostic(identifiedProduct, 'variant'),
+          npkLabel: readStringOrNullDiagnostic(identifiedProduct, 'npkLabel'),
+        }
+      : null,
+    declarationSourceUrl: readStringOrNullDiagnostic(shadow, 'declarationSourceUrl'),
+    aiReturnedNutrients,
+    declarationComplete:
+      typeof shadow.declarationComplete === 'boolean' ? shadow.declarationComplete : null,
+    ambiguity: ambiguity
+      ? {
+          unresolved: readBooleanDiagnostic(ambiguity, 'unresolved'),
+          reason: readStringOrNullDiagnostic(ambiguity, 'reason'),
+          questionForUser: readStringOrNullDiagnostic(ambiguity, 'questionForUser'),
+        }
+      : null,
+    finalShadowDecision,
+  }
+}
+
 function readManufacturerResearchDiagnosticSummary(
   jobResult: Record<string, unknown>,
 ): FertilizerEnrichmentStartManufacturerResearchDiagnostic | null {
@@ -1268,6 +1377,7 @@ function readManufacturerResearchDiagnosticSummary(
           verifiedVariantCount: readNumberDiagnostic(finalResearchDecisionRecord, 'verifiedVariantCount'),
         }
       : null,
+    manufacturerResearchV2Shadow: readManufacturerResearchV2ShadowDiagnosticSummary(diagnostics),
   }
 }
 
