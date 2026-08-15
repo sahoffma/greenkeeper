@@ -209,7 +209,7 @@ describe('fertilizerManufacturerStructuredResearchSourceIdentityCore', () => {
         sulfur: 10.2,
         iron: 3,
       },
-      sources: [source, buildStandardSource()],
+      sources: [source],
     })
     const adapterResult = mapStructuredResearchToAdapterResult({
       record,
@@ -220,6 +220,26 @@ describe('fertilizerManufacturerStructuredResearchSourceIdentityCore', () => {
 
     expect(adapterResult?.status).toBe('success')
     expect(adapterResult?.sourceUrl).toBe(source.url)
+  })
+
+  it('rejects adapter result when conflicting variant sources are listed together', () => {
+    const adapterResult = mapStructuredResearchToAdapterResult({
+      record: buildEchoRecord({
+        nutrientMatrix: {
+          ...buildEchoRecord().nutrientMatrix,
+          magnesium: null,
+          calcium: null,
+          sulfur: 10.2,
+          iron: 3,
+        },
+        sources: [buildProfessionalSource(), buildStandardSource()],
+      }),
+      identity: IDENTITY,
+      retrievedAt: '2026-07-29T10:00:00.000Z',
+      npkLabel: '0-0-30',
+    })
+
+    expect(adapterResult).toBeNull()
   })
 
   it('selects official source but identity validation rejects wrong variant', () => {

@@ -38,6 +38,17 @@ export interface StructuredDeclarationCompletenessValidation {
   rejectionReason: StructuredDeclarationCompletenessRejectionReason
 }
 
+export interface StructuredResearchNutrientProvenanceValidationSummary {
+  accepted: boolean
+  rejectionReason: string
+  sulfurPresentInStructuredResult: boolean
+  sulfurSourcePresent: boolean
+  sulfurSourceIdentityVerified: boolean
+  sulfurSourceMatchesCanonicalDeclarationSource: boolean
+  nutrientSourceMismatchCount: number
+  mixedVariantNutrientSourceDetected: boolean
+}
+
 export interface StructuredResearchIdentityValidationSummary {
   modelClaimedIdentityMatch: boolean
   identityMatchAccepted: boolean
@@ -77,6 +88,7 @@ export interface FertilizerManufacturerNutrientChainDiagnostics {
   normalizedPositiveEntryCount: number
   declarationCompletenessValidation: StructuredDeclarationCompletenessValidation | null
   structuredIdentityValidation: StructuredResearchIdentityValidationSummary | null
+  structuredNutrientProvenanceValidation: StructuredResearchNutrientProvenanceValidationSummary | null
   nutrientPresence: FertilizerManufacturerNutrientPresenceDiagnostic[]
 }
 

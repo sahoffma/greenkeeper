@@ -418,6 +418,7 @@ function finalizeDiagnostics(input: {
       declarationCompletenessValidation:
         input.structuredAttempt?.declarationCompletenessValidation ?? null,
       identityValidation: input.structuredAttempt?.identityValidation ?? null,
+      nutrientProvenanceValidation: input.structuredAttempt?.nutrientProvenanceValidation ?? null,
     }),
   }
 }

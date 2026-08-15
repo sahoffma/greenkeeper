@@ -216,6 +216,16 @@ export interface FertilizerEnrichmentStartManufacturerResearchDiagnostic {
     structuredIdentityEchoSuspected: boolean
     sourceBoundIdentityAccepted: boolean
   } | null
+  structuredNutrientProvenanceValidation: {
+    accepted: boolean
+    rejectionReason: string
+    sulfurPresentInStructuredResult: boolean
+    sulfurSourcePresent: boolean
+    sulfurSourceIdentityVerified: boolean
+    sulfurSourceMatchesCanonicalDeclarationSource: boolean
+    nutrientSourceMismatchCount: number
+    mixedVariantNutrientSourceDetected: boolean
+  } | null
 }
 
 export interface FertilizerEnrichmentStartOutcomeWarningDiagnostic {
@@ -1038,6 +1048,9 @@ function readManufacturerResearchDiagnosticSummary(
   const nutrientChain = readObjectRecord(diagnostics.nutrientChainDiagnostics)
   const declarationValidation = readObjectRecord(nutrientChain?.declarationCompletenessValidation)
   const identityValidation = readObjectRecord(nutrientChain?.structuredIdentityValidation)
+  const nutrientProvenanceValidation = readObjectRecord(
+    nutrientChain?.structuredNutrientProvenanceValidation,
+  )
 
   return {
     searchProviderConfigured: readBooleanDiagnostic(diagnostics, 'searchProviderConfigured'),
@@ -1127,6 +1140,36 @@ function readManufacturerResearchDiagnosticSummary(
           sourceBoundIdentityAccepted: readBooleanDiagnostic(
             identityValidation,
             'sourceBoundIdentityAccepted',
+          ),
+        }
+      : null,
+    structuredNutrientProvenanceValidation: nutrientProvenanceValidation
+      ? {
+          accepted: readBooleanDiagnostic(nutrientProvenanceValidation, 'accepted'),
+          rejectionReason: readStringDiagnostic(nutrientProvenanceValidation, 'rejectionReason'),
+          sulfurPresentInStructuredResult: readBooleanDiagnostic(
+            nutrientProvenanceValidation,
+            'sulfurPresentInStructuredResult',
+          ),
+          sulfurSourcePresent: readBooleanDiagnostic(
+            nutrientProvenanceValidation,
+            'sulfurSourcePresent',
+          ),
+          sulfurSourceIdentityVerified: readBooleanDiagnostic(
+            nutrientProvenanceValidation,
+            'sulfurSourceIdentityVerified',
+          ),
+          sulfurSourceMatchesCanonicalDeclarationSource: readBooleanDiagnostic(
+            nutrientProvenanceValidation,
+            'sulfurSourceMatchesCanonicalDeclarationSource',
+          ),
+          nutrientSourceMismatchCount: readNumberDiagnostic(
+            nutrientProvenanceValidation,
+            'nutrientSourceMismatchCount',
+          ),
+          mixedVariantNutrientSourceDetected: readBooleanDiagnostic(
+            nutrientProvenanceValidation,
+            'mixedVariantNutrientSourceDetected',
           ),
         }
       : null,

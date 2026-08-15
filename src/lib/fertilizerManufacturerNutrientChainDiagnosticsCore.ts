@@ -6,8 +6,10 @@ import type {
   FertilizerManufacturerNutrientChainDiagnostics,
   StructuredDeclarationCompletenessValidation,
   StructuredResearchIdentityValidationSummary,
+  StructuredResearchNutrientProvenanceValidationSummary,
 } from '../types/fertilizerManufacturerResearchDiagnostics'
 import type { StructuredResearchIdentityValidation } from './fertilizerManufacturerStructuredResearchIdentityCore'
+import type { StructuredResearchNutrientProvenanceValidation } from './fertilizerManufacturerStructuredResearchNutrientProvenanceCore'
 
 export type { FertilizerManufacturerNutrientChainDiagnostics, StructuredDeclarationCompletenessValidation }
 
@@ -216,6 +218,26 @@ export function summarizeStructuredResearchIdentityValidation(
   }
 }
 
+export function summarizeStructuredResearchNutrientProvenanceValidation(
+  validation: StructuredResearchNutrientProvenanceValidation | null | undefined,
+): StructuredResearchNutrientProvenanceValidationSummary | null {
+  if (!validation) {
+    return null
+  }
+
+  return {
+    accepted: validation.accepted,
+    rejectionReason: validation.rejectionReason,
+    sulfurPresentInStructuredResult: validation.sulfurPresentInStructuredResult,
+    sulfurSourcePresent: validation.sulfurSourcePresent,
+    sulfurSourceIdentityVerified: validation.sulfurSourceIdentityVerified,
+    sulfurSourceMatchesCanonicalDeclarationSource:
+      validation.sulfurSourceMatchesCanonicalDeclarationSource,
+    nutrientSourceMismatchCount: validation.nutrientSourceMismatchCount,
+    mixedVariantNutrientSourceDetected: validation.mixedVariantNutrientSourceDetected,
+  }
+}
+
 export function buildManufacturerNutrientChainDiagnostics(input: {
   structuredRecord?: StructuredNutrientMatrixRecord | null
   adapterResult?: FertilizerSourceAdapterResult | null
@@ -223,6 +245,7 @@ export function buildManufacturerNutrientChainDiagnostics(input: {
   normalizedNutrientMatrix?: FertilizerEnrichmentNutrientMatrix | null
   declarationCompletenessValidation?: StructuredDeclarationCompletenessValidation | null
   identityValidation?: StructuredResearchIdentityValidation | null
+  nutrientProvenanceValidation?: StructuredResearchNutrientProvenanceValidation | null
 }): FertilizerManufacturerNutrientChainDiagnostics {
   const structuredCounts = countStructuredMatrixEntries(input.structuredRecord)
   const adapterCounts = countAdapterMatrixEntries(input.adapterResult)
@@ -237,6 +260,9 @@ export function buildManufacturerNutrientChainDiagnostics(input: {
     ...normalizedCounts,
     declarationCompletenessValidation: input.declarationCompletenessValidation ?? null,
     structuredIdentityValidation: summarizeStructuredResearchIdentityValidation(input.identityValidation),
+    structuredNutrientProvenanceValidation: summarizeStructuredResearchNutrientProvenanceValidation(
+      input.nutrientProvenanceValidation,
+    ),
     nutrientPresence: buildNutrientPresenceSnapshots(input),
   }
 }

@@ -22,6 +22,11 @@ import {
   type StructuredResearchIdentityValidation,
 } from './fertilizerManufacturerStructuredResearchIdentityCore'
 import type { StructuredResearchSourceIdentityRecord } from './fertilizerManufacturerStructuredResearchSourceIdentityCore'
+import {
+  validateStructuredResearchNutrientProvenance,
+  filterStructuredResearchRecordNutrientsByProvenance,
+  type StructuredResearchNutrientProvenanceValidation,
+} from './fertilizerManufacturerStructuredResearchNutrientProvenanceCore'
 
 export const MANUFACTURER_RESEARCH_STRUCTURED_BUDGET_MS = 16_000
 
@@ -66,6 +71,14 @@ export const manufacturerStructuredResearchSchema = {
     nutrientDeclarationBases: {
       type: 'object',
       properties: nutrientDeclarationBasisSchemaProperties,
+      required: [...FERTILIZER_NUTRIENT_MATRIX_KEYS],
+      additionalProperties: false,
+    },
+    nutrientSourceIndices: {
+      type: 'object',
+      properties: Object.fromEntries(
+        FERTILIZER_NUTRIENT_MATRIX_KEYS.map((key) => [key, { type: ['integer', 'null'] }]),
+      ),
       required: [...FERTILIZER_NUTRIENT_MATRIX_KEYS],
       additionalProperties: false,
     },
@@ -115,6 +128,7 @@ export const manufacturerStructuredResearchSchema = {
     'npk',
     'nutrientMatrix',
     'nutrientDeclarationBases',
+    'nutrientSourceIndices',
     'declarationComplete',
     'identityMatch',
     'confidence',
@@ -139,6 +153,9 @@ export interface ManufacturerStructuredResearchRecord {
   nutrientMatrix: Partial<Record<(typeof FERTILIZER_NUTRIENT_MATRIX_KEYS)[number], number | null>>
   nutrientDeclarationBases: Partial<
     Record<(typeof FERTILIZER_NUTRIENT_MATRIX_KEYS)[number], string | null>
+  >
+  nutrientSourceIndices?: Partial<
+    Record<(typeof FERTILIZER_NUTRIENT_MATRIX_KEYS)[number], number | null>
   >
   declarationComplete: boolean
   identityMatch: boolean
@@ -175,6 +192,7 @@ export interface ManufacturerStructuredResearchAttemptResult {
   structuredRecord: ManufacturerStructuredResearchRecord | null
   declarationCompletenessValidation: StructuredDeclarationCompletenessValidation | null
   identityValidation: StructuredResearchIdentityValidation | null
+  nutrientProvenanceValidation: StructuredResearchNutrientProvenanceValidation | null
   structuredMatrixCounts: StructuredMatrixCounts | null
 }
 
@@ -203,7 +221,7 @@ export function buildManufacturerStructuredResearchPrompt(input: {
       'reputable_retailer_only_as_supplement',
     ],
     instruction:
-      'Recherchiere das konkrete Düngerprodukt ausschließlich über das Web-Search-Tool anhand der kanonischen Produktidentität inklusive productLine und NPK. Keine Bilddaten, keine Modell-Erinnerung, keine Schätzungen. Priorität: 1) offizielle Herstellerseite, 2) offizielles Hersteller-PDF/Datenblatt, 3) offizeller Herstellerkatalog, 4) seriöse Händlerseite nur ergänzend. Bei Widersprüchen hat die offizielle Herstellerquelle Vorrang. Lies die vollständige Hersteller-Zusammensetzung/Deklaration aus (NPK plus Zusatz- und Spurennährstoffe). Trage Werte in nutrientMatrix und die exakte Herstellerbasis in nutrientDeclarationBases ein. Für Schwefel: S bleibt S, SO3 bleibt SO3 — keine Umbenennung. Nährstoffwerte dürfen nur aus Quellen übernommen werden, die exakt zur gesuchten Produktvariante gehören; keine Mischung ähnlich benannter Varianten. Identity-Felder (manufacturer, productLine, productName, npk) dürfen nicht aus dem Input übernommen werden, wenn die verwendete Quelle sie nicht belegt — trage pro Source sourceIdentity mit den aus der Quelle belegten Identitätsfeldern ein. Jede Deklaration muss einer konkreten Source zugeordnet sein. identityMatch nur true bei Übereinstimmung von manufacturer, productLine, productName und NPK mit der kanonischen Identität und der verwendeten Quelle; ähnliche Produktnamen anderer Produktlinie oder widersprechende NPK sind kein Match. Setze declarationComplete nur true bei vollständiger Zusammensetzungssektion mit mindestens einem Zusatz-/Spurennährstoff außerhalb reiner NPK-Makros und nur wenn die kanonische Quelle dieselbe Variante eindeutig trägt. Bei Unsicherheit keine vollständige Deklaration behaupten. Fehlende Werte als null, keine erfundenen 0-Werte.',
+      'Recherchiere das konkrete Düngerprodukt ausschließlich über das Web-Search-Tool anhand der kanonischen Produktidentität inklusive productLine und NPK. Keine Bilddaten, keine Modell-Erinnerung, keine Schätzungen. Priorität: 1) offizielle Herstellerseite, 2) offizielles Hersteller-PDF/Datenblatt, 3) offizeller Herstellerkatalog, 4) seriöse Händlerseite nur ergänzend. Bei Widersprüchen hat die offizielle Herstellerquelle Vorrang. Lies die vollständige Hersteller-Zusammensetzung/Deklaration aus (NPK plus Zusatz- und Spurennährstoffe). Trage Werte in nutrientMatrix und die exakte Herstellerbasis in nutrientDeclarationBases ein. Für Schwefel: S bleibt S, SO3 bleibt SO3 — keine Umbenennung. Nährstoffwerte dürfen nur aus Quellen übernommen werden, die exakt zur gesuchten Produktvariante gehören; keine Mischung ähnlich benannter Varianten. Trage pro deklariertem Nährstoff den Index der verwendeten Source in nutrientSourceIndices ein. Identity-Felder (manufacturer, productLine, productName, npk) dürfen nicht aus dem Input übernommen werden, wenn die verwendete Quelle sie nicht belegt — trage pro Source sourceIdentity mit den aus der Quelle belegten Identitätsfeldern ein. Jede Deklaration muss einer konkreten Source zugeordnet sein. identityMatch nur true bei Übereinstimmung von manufacturer, productLine, productName und NPK mit der kanonischen Identität und der verwendeten Quelle; ähnliche Produktnamen anderer Produktlinie oder widersprechende NPK sind kein Match. Setze declarationComplete nur true bei vollständiger Zusammensetzungssektion mit mindestens einem Zusatz-/Spurennährstoff außerhalb reiner NPK-Makros und nur wenn die kanonische Quelle dieselbe Variante eindeutig trägt. Bei Unsicherheit keine vollständige Deklaration behaupten. Fehlende Werte als null, keine erfundenen 0-Werte.',
   })
 }
 
@@ -242,6 +260,19 @@ function resolveStructuredNutrientDeclarationBasis(
     default:
       return 'N'
   }
+}
+
+export function resolvePrimaryStructuredResearchSourceIndex(
+  sources: ManufacturerStructuredResearchSourceRecord[],
+  primarySource: ManufacturerStructuredResearchSourceRecord | null,
+): number {
+  if (!primarySource) {
+    return -1
+  }
+
+  return sources.findIndex(
+    (source) => source.url === primarySource.url && source.title === primarySource.title,
+  )
 }
 
 function isOfficialStructuredSourceCategory(
@@ -436,15 +467,22 @@ export function parseManufacturerStructuredResearchRecord(
     record.nutrientDeclarationBases && typeof record.nutrientDeclarationBases === 'object'
       ? (record.nutrientDeclarationBases as Record<string, unknown>)
       : {}
+  const nutrientSourceIndexRecord =
+    record.nutrientSourceIndices && typeof record.nutrientSourceIndices === 'object'
+      ? (record.nutrientSourceIndices as Record<string, unknown>)
+      : {}
   const nutrientMatrix: ManufacturerStructuredResearchRecord['nutrientMatrix'] = {}
   const nutrientDeclarationBases: ManufacturerStructuredResearchRecord['nutrientDeclarationBases'] =
     {}
+  const nutrientSourceIndices: ManufacturerStructuredResearchRecord['nutrientSourceIndices'] = {}
 
   for (const key of FERTILIZER_NUTRIENT_MATRIX_KEYS) {
     const value = nutrientMatrixRecord[key]
     nutrientMatrix[key] = typeof value === 'number' ? value : null
     const basis = nutrientBasisRecord[key]
     nutrientDeclarationBases[key] = typeof basis === 'string' ? basis.trim() : null
+    const sourceIndex = nutrientSourceIndexRecord[key]
+    nutrientSourceIndices[key] = typeof sourceIndex === 'number' ? sourceIndex : null
   }
 
   let npk: ManufacturerStructuredResearchRecord['npk'] = null
@@ -523,6 +561,7 @@ export function parseManufacturerStructuredResearchRecord(
     npk,
     nutrientMatrix,
     nutrientDeclarationBases,
+    nutrientSourceIndices,
     declarationComplete: record.declarationComplete,
     identityMatch: record.identityMatch,
     confidence: record.confidence,
@@ -537,8 +576,13 @@ export function mapStructuredResearchToAdapterResult(input: {
   npkLabel?: string | null
   declarationCompletenessValidation?: StructuredDeclarationCompletenessValidation
   identityValidation?: StructuredResearchIdentityValidation
+  nutrientProvenanceValidation?: StructuredResearchNutrientProvenanceValidation
 }): FertilizerSourceAdapterResult | null {
   const primarySource = selectPrimaryStructuredResearchSource(input.record.sources)
+  const primarySourceIndex = resolvePrimaryStructuredResearchSourceIndex(
+    input.record.sources,
+    primarySource,
+  )
   const identityValidation =
     input.identityValidation ??
     validateStructuredResearchIdentityMatch({
@@ -552,10 +596,31 @@ export function mapStructuredResearchToAdapterResult(input: {
     return null
   }
 
+  const nutrientProvenanceValidation =
+    input.nutrientProvenanceValidation ??
+    validateStructuredResearchNutrientProvenance({
+      record: input.record,
+      identity: input.identity,
+      npkLabel: input.npkLabel,
+      primarySource,
+      primarySourceIndex,
+      recordProductLineMatchesExpected: identityValidation.structuredProductLineMatch,
+      recordNpkCompatible: identityValidation.structuredNpkMatch,
+    })
+
+  if (!nutrientProvenanceValidation.accepted) {
+    return null
+  }
+
+  const provenanceFilteredRecord = filterStructuredResearchRecordNutrientsByProvenance({
+    record: input.record,
+    acceptedNutrientKeys: nutrientProvenanceValidation.acceptedNutrientKeys,
+  })
+
   const validation =
     input.declarationCompletenessValidation ??
     validateStructuredDeclarationCompleteness({
-      record: input.record,
+      record: provenanceFilteredRecord,
       primarySource,
       identityValidation,
     })
@@ -563,7 +628,7 @@ export function mapStructuredResearchToAdapterResult(input: {
 
   const sourceId = `manufacturer-web-search:${primarySource.url}`
   const extractedNutrients = FERTILIZER_NUTRIENT_MATRIX_KEYS.flatMap((key) => {
-    const value = input.record.nutrientMatrix[key]
+    const value = provenanceFilteredRecord.nutrientMatrix[key]
     if (typeof value !== 'number') {
       return []
     }
@@ -572,7 +637,7 @@ export function mapStructuredResearchToAdapterResult(input: {
       return []
     }
 
-    const declarationBasis = resolveStructuredNutrientDeclarationBasis(key, input.record)
+    const declarationBasis = resolveStructuredNutrientDeclarationBasis(key, provenanceFilteredRecord)
 
     return [
       {
@@ -781,6 +846,7 @@ export async function runManufacturerStructuredResearchAttempt(input: {
     structuredRecord: null,
     declarationCompletenessValidation: null,
     identityValidation: null,
+    nutrientProvenanceValidation: null,
     structuredMatrixCounts: null,
   })
 
@@ -826,6 +892,16 @@ export async function runManufacturerStructuredResearchAttempt(input: {
       npkLabel: input.npkLabel,
       primarySource,
     })
+    const primarySourceIndex = resolvePrimaryStructuredResearchSourceIndex(record.sources, primarySource)
+    const nutrientProvenanceValidation = validateStructuredResearchNutrientProvenance({
+      record,
+      identity: input.identity,
+      npkLabel: input.npkLabel,
+      primarySource,
+      primarySourceIndex,
+      recordProductLineMatchesExpected: identityValidation.structuredProductLineMatch,
+      recordNpkCompatible: identityValidation.structuredNpkMatch,
+    })
     const declarationCompletenessValidation = validateStructuredDeclarationCompleteness({
       record,
       primarySource,
@@ -842,6 +918,7 @@ export async function runManufacturerStructuredResearchAttempt(input: {
       npkLabel: input.npkLabel,
       declarationCompletenessValidation,
       identityValidation,
+      nutrientProvenanceValidation,
     })
     const structuredPositiveNutrientCount = structuredMatrixCounts.structuredPositiveEntryCount
 
@@ -858,6 +935,7 @@ export async function runManufacturerStructuredResearchAttempt(input: {
       structuredRecord: record,
       declarationCompletenessValidation,
       identityValidation,
+      nutrientProvenanceValidation,
       structuredMatrixCounts,
     }
   } catch (error) {
