@@ -7,13 +7,12 @@ import {
 } from './homeVoiceInteraction'
 
 describe('HomeScreen voice-only contract', () => {
-  it('renders the Düngung erfassen home action between area grid and voice section', () => {
+  it('does not render a Düngung erfassen home action', () => {
     const source = readFileSync('src/pages/HomeScreen.tsx', 'utf8')
 
-    expect(source).toContain('Düngung erfassen')
-    expect(source).toContain('fertilizerHomeApplicationPath')
-    expect(source.indexOf('<HomeAreaSelector')).toBeLessThan(source.indexOf('Düngung erfassen'))
-    expect(source.indexOf('Düngung erfassen')).toBeLessThan(source.indexOf('<HomeVoiceSection'))
+    expect(source).not.toContain('Düngung erfassen')
+    expect(source).not.toContain('fertilizerHomeApplicationPath')
+    expect(source.indexOf('<HomeAreaSelector')).toBeLessThan(source.indexOf('<HomeVoiceSection'))
   })
 
   it('uses HomeVoiceSection for the home voice entry', () => {

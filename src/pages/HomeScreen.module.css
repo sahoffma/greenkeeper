@@ -36,32 +36,6 @@
   gap: 12px;
 }
 
-.activitySection {
-  margin-top: var(--space-md);
-}
-
-.fertilizerCta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  padding: 0.75rem 1rem;
-  border: 0;
-  border-radius: 999px;
-  background: var(--color-accent);
-  color: #fff;
-  font: inherit;
-  font-size: 0.98rem;
-  font-weight: 600;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.fertilizerCta:focus-visible {
-  outline: 2px solid rgba(47, 107, 79, 0.55);
-  outline-offset: 3px;
-}
-
 .voiceRegion {
   display: flex;
   flex: 1 1 auto;

@@ -8,7 +8,6 @@ import { HomeVoiceSection } from '../components/home/HomeVoiceSection'
 import { useAuth } from '../contexts/AuthContext'
 import { fetchAreas } from '../lib/areas'
 import { fetchCareGroupMemberships } from '../lib/careGroups'
-import { fertilizerHomeApplicationPath } from '../lib/fertilizerRoutes'
 import { subscribeAreasChanged } from '../lib/areasRefresh'
 import { resolveProfileFirstName } from '../lib/greeting'
 import { fetchUserProfileState } from '../lib/profile'
@@ -155,11 +154,6 @@ export function HomeScreen() {
             <div className={styles.homeTop}>
               <HomeAreaSelector areas={lawnAreas} memberships={memberships} />
             </div>
-            <section className={styles.activitySection} aria-label="Düngung erfassen">
-              <Link to={fertilizerHomeApplicationPath()} className={styles.fertilizerCta}>
-                Düngung erfassen
-              </Link>
-            </section>
             <div className={styles.voiceRegion}>
               <HomeVoiceSection selectedArea={voiceArea} />
             </div>
