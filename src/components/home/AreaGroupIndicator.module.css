@@ -1,0 +1,80 @@
+.indicator {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  pointer-events: none;
+}
+
+.indicatorNumbered {
+  gap: 2px;
+  width: auto;
+  min-width: 28px;
+  height: 24px;
+  padding: 0 7px 0 6px;
+  border-radius: 999px;
+}
+
+.icon {
+  display: flex;
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  color: var(--color-accent);
+}
+
+.number {
+  color: rgba(31, 61, 43, 0.72);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.accent0 .icon {
+  color: rgba(47, 107, 79, 0.92);
+}
+
+.accent1 .icon {
+  color: rgba(58, 98, 132, 0.92);
+}
+
+.accent2 .icon {
+  color: rgba(118, 88, 48, 0.92);
+}
+
+.accent3 .icon {
+  color: rgba(92, 74, 132, 0.92);
+}
+
+.accent0 {
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.1),
+    inset 0 0 0 1px rgba(47, 107, 79, 0.18);
+}
+
+.accent1 {
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.1),
+    inset 0 0 0 1px rgba(58, 98, 132, 0.18);
+}
+
+.accent2 {
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.1),
+    inset 0 0 0 1px rgba(118, 88, 48, 0.18);
+}
+
+.accent3 {
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.1),
+    inset 0 0 0 1px rgba(92, 74, 132, 0.18);
+}

@@ -1,0 +1,16 @@
+.section {
+  padding: 2px 0 0;
+  text-align: center;
+}
+
+.headline {
+  margin: 0 auto;
+  max-width: min(100%, 320px);
+  color: rgba(31, 61, 43, 0.58);
+  font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  font-size: clamp(1.08rem, 3.4vw, 1.26rem);
+  font-weight: 500;
+  line-height: 1.28;
+  letter-spacing: 0.015em;
+  text-wrap: balance;
+}

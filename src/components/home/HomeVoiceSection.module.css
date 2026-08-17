@@ -1,0 +1,326 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  margin-top: 0;
+  padding: 0;
+  text-align: center;
+}
+
+.intro {
+  max-width: 300px;
+}
+
+.title {
+  margin: 0;
+  color: rgba(31, 61, 43, 0.82);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+
+.micWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  margin-top: 16px;
+}
+
+.micButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 120px;
+  height: 120px;
+  margin: 0;
+  padding: 0;
+  border: 3px solid var(--color-bg);
+  border-radius: 999px;
+  background: linear-gradient(180deg, #3a7a5c 0%, #2f6b4f 100%);
+  color: #fff;
+  box-shadow:
+    0 12px 32px rgba(47, 107, 79, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  cursor: pointer;
+}
+
+.micButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.micButtonActive {
+  box-shadow:
+    0 0 0 4px rgba(47, 107, 79, 0.14),
+    0 12px 32px rgba(47, 107, 79, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.micButton:focus-visible,
+.stopButton:focus-visible,
+.textToggle:focus-visible,
+.sendButton:focus-visible,
+.cancelTextButton:focus-visible,
+.savedDismiss:focus-visible {
+  outline: 2px solid rgba(47, 107, 79, 0.55);
+  outline-offset: 3px;
+}
+
+.micIcon {
+  display: flex;
+  width: 46px;
+  height: 46px;
+}
+
+.micIcon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.status {
+  margin: 8px 0 0;
+  color: var(--color-accent);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.stopButton {
+  margin-top: 6px;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.textToggle {
+  margin-top: 12px;
+  padding: 0.15rem 0.3rem;
+  border: 0;
+  background: none;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.textToggle:hover {
+  color: rgba(31, 61, 43, 0.72);
+}
+
+.textPanel {
+  width: 100%;
+  max-width: 520px;
+  margin-top: var(--space-sm);
+  padding: var(--space-sm);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  text-align: left;
+}
+
+.textLabel {
+  display: block;
+  margin-bottom: var(--space-xs);
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--color-text);
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.examples {
+  margin: var(--space-xs) 0 0;
+  padding-left: 1.1rem;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.textActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.sendButton {
+  flex: 1 1 180px;
+  min-height: 42px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sendButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cancelTextButton {
+  padding: 0.4rem 0.75rem;
+  border: 0;
+  background: none;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.transcriptPreview {
+  width: 100%;
+  max-width: 520px;
+  margin-top: var(--space-sm);
+  padding: var(--space-sm);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--color-border);
+  text-align: left;
+}
+
+.transcriptLabel {
+  margin: 0 0 var(--space-xs);
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.transcriptText {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.message {
+  margin: var(--space-sm) 0 0;
+  max-width: 420px;
+  color: var(--color-text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.error {
+  margin: var(--space-xs) 0 0;
+  max-width: 420px;
+  color: #8a4a3b;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.hint {
+  margin: var(--space-xs) 0 0;
+  max-width: 420px;
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.savedBanner {
+  width: 100%;
+  max-width: 520px;
+  margin-top: var(--space-sm);
+  padding: var(--space-sm);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}
+
+.savedBanner p {
+  margin: 0;
+}
+
+.savedDismiss {
+  margin-top: var(--space-xs);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent-muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.fertilizerPanel,
+.fertilizerSummaryPanel {
+  width: 100%;
+  max-width: 520px;
+  margin-top: var(--space-sm);
+  padding: var(--space-sm);
+  border: 1px solid rgba(31, 61, 43, 0.08);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.82);
+  text-align: left;
+}
+
+.fertilizerLabel {
+  display: block;
+  margin-bottom: var(--space-xs);
+  color: rgba(31, 61, 43, 0.78);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.fertilizerInput {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--space-sm);
+  border: 1px solid rgba(31, 61, 43, 0.12);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: #1f3d2b;
+  font: inherit;
+}
+
+.fertilizerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-top: var(--space-sm);
+}
+
+.fertilizerSummaryTitle {
+  margin: 0;
+  color: #1f3d2b;
+  font-size: 0.98rem;
+  font-weight: 650;
+}
+
+.fertilizerSummaryStock {
+  margin: var(--space-xs) 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+@media (min-width: 900px) {
+  .textPanel,
+  .transcriptPreview,
+  .savedBanner {
+    max-width: 560px;
+  }
+}

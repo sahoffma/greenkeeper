@@ -1,14 +1,39 @@
 .screen {
-  width: min(100%, var(--max-width));
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: min(100%, 720px);
   margin: 0 auto;
   padding:
-    max(var(--space-sm), env(safe-area-inset-top))
-    var(--space-md)
-    calc(var(--nav-height) + var(--space-xl));
+    max(6px, env(safe-area-inset-top))
+    var(--space-sm)
+    calc(var(--nav-height) + max(8px, env(safe-area-inset-bottom)));
+  background: #faf8f3;
+  min-height: 100dvh;
 }
 
-.lawnSpacing {
-  margin-top: var(--space-lg);
+.homeHeader {
+  display: grid;
+  grid-template-columns: minmax(40px, 1fr) minmax(0, auto) minmax(40px, 1fr);
+  align-items: start;
+  margin-bottom: 12px;
+}
+
+.headerSide {
+  min-height: 40px;
+}
+
+.headerCenter {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.homeTop {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .activitySection {
@@ -35,6 +60,20 @@
 .fertilizerCta:focus-visible {
   outline: 2px solid rgba(47, 107, 79, 0.55);
   outline-offset: 3px;
+}
+
+.voiceRegion {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.lawnSpacing {
+  margin-top: var(--space-lg);
 }
 
 .stateCard {
@@ -68,4 +107,29 @@
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+}
+
+.setupLink {
+  display: inline-block;
+  margin-top: var(--space-md);
+  color: var(--color-accent-muted);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.setupLink:focus-visible {
+  outline: 2px solid rgba(47, 107, 79, 0.55);
+  outline-offset: 3px;
+}
+
+@media (min-width: 768px) {
+  .homeTop {
+    gap: 14px;
+  }
+}
+
+@media (max-height: 700px) {
+  .homeTop {
+    gap: 10px;
+  }
 }

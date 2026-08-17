@@ -1,0 +1,125 @@
+.wrapper {
+  position: relative;
+  justify-self: end;
+}
+
+.accountButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 35px;
+  height: 35px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(47, 107, 79, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: rgba(31, 61, 43, 0.58);
+  box-shadow: 0 4px 14px rgba(31, 61, 43, 0.06);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.accountButton:hover {
+  color: rgba(31, 61, 43, 0.78);
+  border-color: rgba(47, 107, 79, 0.2);
+}
+
+.accountButton[aria-expanded='true'] {
+  color: var(--color-accent);
+  border-color: rgba(47, 107, 79, 0.28);
+  box-shadow: 0 6px 18px rgba(47, 107, 79, 0.12);
+}
+
+.accountButton:focus-visible {
+  outline: 2px solid rgba(47, 107, 79, 0.55);
+  outline-offset: 2px;
+}
+
+.accountIcon {
+  display: flex;
+  width: 19px;
+  height: 19px;
+}
+
+.accountIcon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  width: max-content;
+  min-width: 0;
+  max-width: min(100vw - 24px, 240px);
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 16px 40px rgba(31, 61, 43, 0.14);
+  animation: menuIn 0.18s ease-out;
+}
+
+@keyframes menuIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.menuItem,
+.menuItemDisabled {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 42px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 500;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.menuItem:hover,
+.menuItem:focus-visible {
+  background: rgba(47, 107, 79, 0.06);
+  outline: none;
+}
+
+.menuItemDisabled {
+  color: var(--color-text-tertiary);
+  cursor: default;
+}
+
+.menuDivider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--color-border);
+}
+
+.menuItemDanger {
+  color: #8a4a3b;
+}
+
+.menuItemDanger:hover,
+.menuItemDanger:focus-visible {
+  background: rgba(138, 74, 59, 0.08);
+}

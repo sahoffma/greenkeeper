@@ -29,6 +29,7 @@ export interface AreaDetailRow {
 export interface AreaDetail extends Area {
   sizeSqm: number | null
   coverImagePath: string | null
+  coverImageUrl: string | null
 }
 
 function mapAreaDetailError(error: unknown, fallback: string): Error {
@@ -73,6 +74,7 @@ export function mapAreaDetailRow(row: AreaDetailRow): AreaDetail {
     statusLabel: row.status_label ?? 'Entwicklung beobachten',
     summary: row.summary,
     coverImagePath: row.cover_image_path,
+    coverImageUrl: null,
   }
 }
 
@@ -135,4 +137,24 @@ export async function updateAreaDetails(input: {
     summary: null,
     cover_image_path: result.cover_image_path ?? null,
   })
+}
+
+export function buildAreaDetailPath(areaId: string): string {
+  return `/rasenflaechen/${areaId}`
+}
+
+type AreaWithCoverPath = {
+  coverImagePath?: string | null
+}
+
+export async function attachCoverUrls<T extends AreaWithCoverPath>(
+  items: T[],
+): Promise<Array<T & { coverImageUrl: string | null }>> {
+  const { createSignedCoverUrls } = await import('./areaCoverPersistence')
+  const urlMap = await createSignedCoverUrls(items.map((item) => item.coverImagePath))
+
+  return items.map((item) => ({
+    ...item,
+    coverImageUrl: item.coverImagePath ? (urlMap.get(item.coverImagePath) ?? null) : null,
+  }))
 }

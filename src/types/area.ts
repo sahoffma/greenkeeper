@@ -29,6 +29,8 @@ export interface Area {
   status: AreaStatus
   statusLabel: string
   summary: string | null
+  coverImagePath?: string | null
+  coverImageUrl?: string | null
   dashboard?: AreaDashboard
 }
 
